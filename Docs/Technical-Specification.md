@@ -173,8 +173,10 @@ a storage redesign.
 theme = "system"                 # "light", "dark", "system"
 default_clone_dir = "~/Projects"
 check_for_updates = true         # Check Flatpak remote for updates
+active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
 [[instances]]
+id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 name = "BigRanga Tech GitLab"
 base_url = "https://gitlab.bigrangatech.com"
 api_version = "v4"               # Detected/confirmed on first connect
@@ -189,7 +191,9 @@ last_connected = "2026-07-01T15:30:00Z"
 ```
 
 SaaS base URLs such as `https://gitlab.com` must be rejected when adding
-an instance.
+an instance. Instance `id` and `active_instance_id` are required for
+cache foreign keys and a future multi-instance UI; V1 still exposes one
+active instance in the UI. See `data-model.md`.
 
 ## 5. V1 Feature Matrix
 

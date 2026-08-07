@@ -54,6 +54,9 @@ Prefer updating docs when behaviour is undecided.
 | Decisions | `Docs/adr/` (+ index) |
 | Credentials / TLS / keyring / git helper | `Docs/security-credentials.md` |
 | GitLab REST usage | `Docs/api-contract.md` |
+| Config / SQLite / entities | `Docs/data-model.md` |
+| End-user help (shell) | `Docs/user-guide.md` |
+| Contributor guide (shell) | `Docs/dev-guide.md` |
 | UX flows | `Docs/user-journey.md` |
 | Human contribution rules | `CONTRIBUTING.md` |
 | What changed | `CHANGELOG.md` |

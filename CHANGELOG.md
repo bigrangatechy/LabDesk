@@ -22,8 +22,14 @@ under **[Unreleased]**.
 - `Docs/api-contract.md` — GitLab REST v4 contract (`PRIVATE-TOKEN`,
   `/user`, `/version`, `/projects?membership=true`, create MR; pipelines
   / branch verify as nice-to-have). Notes that `membership=true` is
-  confirmed for solo instances; multi-user gaps may need a later
-  documented extension.
+  confirmed for small instances (e.g. day-to-day as `Ranga`); multi-user
+  gaps may need a later documented extension.
+- `Docs/data-model.md` — config TOML, SQLite cache, local repos,
+  secrets layout; multi-instance-ready schema with V1 single active
+  instance. Instance `id` / `active_instance_id` accepted; per-row
+  `fetched_at` and `last_push_at`; MR cache table deferred.
+- `Docs/user-guide.md` / `Docs/dev-guide.md` — guide shells for
+  end-user (UI-embeddable) and contributor docs.
 - `AGENTS.md` — rules for AI-assisted contributions.
 - `CONTRIBUTING.md` — human contributor expectations (GPLv2+,
   docs-first, changelog discipline).
@@ -40,8 +46,8 @@ under **[Unreleased]**.
 - ADR-001…007 updated to match the above (identity repo name `labdesk`,
   Flatpak remote update check, documentation layout).
 - ADR-007 now requires root `CHANGELOG.md` discipline.
-- Auth no longer described as “PAT for everything”; API vs git split
-  owned by ADR-008.
+- Technical specification §4.2: instance `id` and
+  `active_instance_id` added to match data model.
 
 ### Security
 
