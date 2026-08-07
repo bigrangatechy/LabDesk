@@ -7,114 +7,252 @@ instances. It provides GitHub Desktop-style functionality (clone,
 branch, commit, push/pull, diff view, merge request creation) targeted
 exclusively at users who run their own GitLab infrastructure.
 
+Public SaaS hosts such as `gitlab.com` are **not supported** and must be
+rejected at instance setup (see ADR-001).
+
 ## 2. System Architecture
 
 ### 2.1 Layer Diagram
 
-┌─────────────────────────────────────────────────────────────┐ │ LabDesk Application │ ├─────────────────────────────────────────────────────────────┤ │ │ │ UI Layer (Python + PySide6 + QScintilla) │ │ ├── MainWindow (sidebar + content area) │ │ ├── RepoView (Changes, History, Branches tabs) │ │ ├── DiffViewer (QScintilla widget) │ │ ├── InstanceConfigDialog (URL + PAT setup) │ │ └── MRDialog (Merge request creation form) │ │ │ │ ──── PyO3 Bridge ──────────────────────────────────── │ │ │ │ Core Layer (Rust) │ │ ├── git_ops (libgit2 wrapper: status, commit, push) │ │ ├── api_client (GitLab REST API v4 client) │ │ ├── cache (SQLite read/write, sync logic) │ │ ├── diff_engine (libgit2 diff formatting for QScintilla) │ │ ├── config (TOML parser, instance management) │ │ └── crypto (PAT encryption at rest) │ │ │ │ Storage │ │ ├── SQLite (cache: projects, branches, MR metadata) │ │ └── TOML (config: instances, preferences) │ │ │ ├─────────────────────────────────────────────────────────────┤ │ External Interfaces │ ├─────────────────────────────────────────────────────────────┤ │ GitLab API v4 (REST over HTTPS) │ │ Git Protocol (SSH or HTTPS with embedded PAT) │ └─────────────────────────────────────────────────────────────┘
-
+```
+┌─────────────────────────────────────────────────────────────┐
+│ LabDesk Application                                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  UI Layer (Python + PySide6)                                │
+│  ├── MainWindow (sidebar + content area)                    │
+│  ├── RepoView (Changes, History, Branches tabs)             │
+│  ├── DiffViewer (read-only QTextEdit)                       │
+│  ├── InstanceConfigDialog (URL + PAT; git auth via helper)  │
+│  └── MRDialog (Merge request creation form)                 │
+│                                                             │
+│  ──── PyO3 Bridge ────────────────────────────────────      │
+│                                                             │
+│  Core Layer (Rust)                                          │
+│  ├── git_ops (libgit2 + credential helper; SSH)             │
+│  ├── api_client (GitLab REST API v4, PRIVATE-TOKEN)         │
+│  ├── cache (SQLite read/write, sync logic)                  │
+│  ├── diff_engine (libgit2 diff → text for QTextEdit)        │
+│  ├── config (TOML parser, instance management)              │
+│  └── secrets (system keyring for API PAT)                   │
+│                                                             │
+│  Storage                                                    │
+│  ├── SQLite (cache: projects, branches, MR metadata)        │
+│  ├── TOML (config: instance + preferences; no raw secrets)  │
+│  ├── OS keyring (API PAT)                                   │
+│  └── Git credential helper store (HTTPS git creds)          │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│ External Interfaces                                         │
+├─────────────────────────────────────────────────────────────┤
+│  GitLab API v4 (REST over HTTPS, PRIVATE-TOKEN)             │
+│  Git Protocol (SSH, or HTTPS via credential helper)         │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### 2.2 Technology Stack Summary
 
-| Layer        | Technology         | License    | Role                           |
-|--------------|--------------------|------------|--------------------------------|
-| UI Framework | PySide6 (Qt 6)     | LGPL v3    | Window management, widgets    |
-| Code Viewer  | QScintilla         | Apache 2.0 | Diff rendering, syntax highlight |
-| Backend      | Rust               | MIT/Apache  | Core logic, git ops, API       |
-| Bridge       | Maturin / PyO3     | MIT        | Python ↔ Rust interoperability |
-| Git Library  | libgit2            | GPLv2+     | Local git operations           |
-| Database     | SQLite             | Public dom | Local cache                    |
-| Config       | TOML (toml crate)  | MIT/Apache  | Instance + preference storage  |
-| Distribution | Flatpak            | LGPL       | Linux packaging                |
+| Layer        | Technology              | License (summary)              | Role                          |
+|--------------|-------------------------|--------------------------------|-------------------------------|
+| UI Framework | PySide6 (Qt 6)          | LGPL-3.0 OR GPL-2.0 OR GPL-3.0 | Window management, widgets    |
+| Diff viewer  | Qt `QTextEdit` (+ highlighter) | via PySide6/Qt            | Read-only diffs / file view   |
+| Backend      | Rust                    | MIT/Apache (typical crates)    | Core logic, git ops, API      |
+| Bridge       | Maturin / PyO3          | MIT                            | Python ↔ Rust                 |
+| Git Library  | libgit2                 | GPLv2 with linking exception   | Local git operations          |
+| Database     | SQLite                  | Public domain                  | Local cache                   |
+| Config       | TOML                    | MIT/Apache                     | Instance + preference storage |
+| Secrets      | OS keyring              | (platform)                     | API PAT at rest               |
+| Git HTTPS    | Git credential helper   | (helper-dependent)             | Username/password or PAT-as-password |
+| Distribution | Flatpak                 | (runtime/deps vary)            | Linux packaging               |
+
+Riverbank QScintilla is **not** used (ADR-002, ADR-003).
 
 ## 3. Data Flow
 
-### 3.1 Happy Path: Clone → Edit → Commit → Push → Create MR
+### 3.1 Happy Path: Clone → Edit (external) → Commit → Push → Create MR
 
-User UI Layer Core (Rust) GitLab API │ │ │ │ │── Add Instance ──→ │── validate() ────→│── GET /user ──────→│ │ │←── result ─────────│←── 200 OK ────────│ │ │ │ │ │── List Projects ──→│── fetch() ───────→│── GET /projects ──→│ │ │←── project_list ───│←── JSON array ─────│ │ │ │ │ │── Clone Repo ─────→│── clone(url,path)→│── libgit2.clone() │ │ │ │ (no API needed) │ │ │←── success ────────│ │ │ │ │ │ │── Edit Files ─────→│ │ │ │ │ │ │ │── View Changes ───→│── status() ──────→│── libgit2.status() │ │ │←── file_list ──────│ (local only) │ │ │ │ │ │── Stage + Commit ─→│── commit(msg) ───→│── libgit2.commit() │ │ │←── success ────────│ (local only) │ │ │ │ │ │── Push ──────────→│── push() ────────→│── libgit2.push() │ │ │ │ (SSH/HTTPS) │ │ │←── success ────────│ │ │ │ │ │ │── Create MR ─────→│── create_mr() ───→│── POST /mr ───────→│ │ │←── mr_web_url ─────│←── 201 Created ────│ │ │ │ │ │── Open in Browser→│── open_url() ────→│ (xdg-open) │
+```
+User          UI Layer         Core (Rust)              GitLab / Git
+ │               │                  │                        │
+ │── Add Instance ─→ validate() ────→ GET /user ─────────────→│
+ │               │←── result ────────←── 200 OK ─────────────│
+ │               │                  │                        │
+ │── List Projects → fetch() ───────→ GET /projects ─────────→│
+ │               │←── project_list ──←── JSON ───────────────│
+ │               │                  │                        │
+ │── Clone Repo ──→ clone(url,path) → libgit2.clone()        │
+ │               │←── success ───────│                        │
+ │               │                  │                        │
+ │── Edit Files ──→ open external editor (xdg-open / portal) │
+ │               │                  │                        │
+ │── View Changes → status() ───────→ libgit2.status()       │
+ │               │←── file_list ─────│ (local)                │
+ │               │                  │                        │
+ │── Stage+Commit → commit(msg) ────→ libgit2.commit()       │
+ │               │←── success ───────│ (local)                │
+ │               │                  │                        │
+ │── Push ────────→ push() ─────────→ libgit2.push()         │
+ │               │                  │ (SSH or HTTPS via       │
+ │               │                  │  credential helper)     │
+ │               │←── success ───────│                        │
+ │               │                  │                        │
+ │── Force push ──→ push(--force) ──→ after explicit confirm │
+ │               │                  │                        │
+ │── Create MR ───→ create_mr() ────→ POST /merge_requests ─→│
+ │               │                  │ (PRIVATE-TOKEN)        │
+ │               │←── mr_web_url ────←── 201 Created ────────│
+ │               │                  │                        │
+ │── Open in GitLab → open_url() ───→ (xdg-open)             │
+```
 
+Editing is **always external** in V1. Diff view is read-only. Any
+future in-app editor would be built from scratch (not QScintilla).
+
+API calls use header **`PRIVATE-TOKEN`** (ADR-008). Git HTTPS uses the
+**credential helper**; SSH uses agent/keys.
 
 ### 3.2 Offline Behavior
 
-| Operation              | Requires Network? | Behavior When Offline          |
-|------------------------|--------------------|-------------------------------|
-| View repo status       | No                 | Full functionality             |
-| Stage/unstage files    | No                 | Full functionality             |
-| Commit                 | No                 | Full functionality             |
-| View diff              | No                 | Full functionality             |
-| Create/switch branch   | No                 | Full functionality             |
-| Merge (local)          | No                 | Full functionality             |
-| Push/Pull              | Yes                | Disable button, show warning   |
-| List remote projects   | Yes                | Show cached list with staleness indicator |
-| Create MR              | Yes                | Disable, show "requires connection" |
-| View pipeline status   | Yes                | Show last cached status with timestamp |
+| Operation              | Requires Network? | Behavior When Offline                          |
+|------------------------|-------------------|------------------------------------------------|
+| View repo status       | No                | Full functionality                             |
+| Stage/unstage files    | No                | Full functionality                             |
+| Commit                 | No                | Full functionality                             |
+| View diff              | No                | Full functionality                             |
+| Create/switch branch   | No                | Full functionality                             |
+| Merge (local, clean)   | No                | Full functionality; conflicts → external       |
+| Push/Pull              | Yes               | Disable button, show warning                   |
+| Force push             | Yes               | Disabled offline; confirm dialog when used     |
+| List remote projects   | Yes               | Show cached list with staleness indicator      |
+| Create MR              | Yes               | Disable, show "requires connection"            |
+| View pipeline status   | Yes               | Nice-to-have (post-V1); if present, show cache |
 
 ## 4. Configuration Model
 
-### 4.1 File Locations (Flatpak-aware)
+### 4.1 File Locations
 
-~/.var/app/com.bigrangatech.LabDesk/ ├── config/ │ └── labdesk/ │ ├── config.toml # Instances + preferences │ └── trusted_certs/ # Imported CA certificates └── data/ └── labdesk/ ├── cache.db # SQLite database └── logs/ # Application logs
+**Flatpak (production):**
 
+```
+~/.var/app/com.bigrangatech.LabDesk/
+├── config/
+│   └── labdesk/
+│       ├── config.toml          # Instance + preferences (no raw PAT)
+│       └── trusted_certs/       # Imported CA certificates
+└── data/
+    └── labdesk/
+        ├── cache.db             # SQLite database
+        └── logs/                # Application logs
+```
+
+**Unpackaged / development (XDG):**
+
+```
+$XDG_CONFIG_HOME/labdesk/        # default: ~/.config/labdesk/
+    config.toml
+    trusted_certs/
+$XDG_DATA_HOME/labdesk/          # default: ~/.local/share/labdesk/
+    cache.db
+    logs/
+```
+
+PATs for the **API** are stored in the **system keyring**, not in
+`config.toml`. Git HTTPS username/password (or PAT-as-password) is
+handled by the **Git credential helper** (ADR-008).
 
 ### 4.2 Configuration Structure
 
+V1 UX configures **one** GitLab instance. The on-disk schema uses an
+`[[instances]]` array so multiple instances can be added later without
+a storage redesign.
+
 ```toml
-# ~/.var/app/com.bigrangatech.LabDesk/config/labdesk/config.toml
+# Example (Flatpak path shown; XDG path equivalent in unpackaged runs)
 
 [general]
-theme = "system"           # "light", "dark", "system"
+theme = "system"                 # "light", "dark", "system"
 default_clone_dir = "~/Projects"
-check_for_updates = true
+check_for_updates = true         # Check Flatpak remote for updates
 
 [[instances]]
 name = "BigRanga Tech GitLab"
 base_url = "https://gitlab.bigrangatech.com"
-api_version = "v4"           # Auto-detected on first connect
-auth_type = "PAT"
-token_encrypted = true       # Stored in system keyring or encrypted blob
+api_version = "v4"               # Detected/confirmed on first connect
+api_auth = "PAT"                 # API always uses PRIVATE-TOKEN + PAT
+# API PAT lives in the OS keyring; config only references it.
+keyring_account = "labdesk:https://gitlab.bigrangatech.com"
+# Git HTTPS uses the Git credential helper (username/password or PAT-as-password).
+git_https_auth = "credential_helper"
+ssl_mode = "strict"              # "strict", "allow_self_signed", "imported_ca"
 created_at = "2026-07-01T12:00:00Z"
 last_connected = "2026-07-01T15:30:00Z"
+```
 
-[[instances]]
-name = "Personal Server"
-base_url = "https://gitlab.personal.lan:8443"
-api_version = "v4"
-auth_type = "PAT"
-token_encrypted = true
-ssl_mode = "strict"          # "strict", "allow_self_signed", "imported_ca"
-created_at = "2026-07-01T12:00:00Z"
+SaaS base URLs such as `https://gitlab.com` must be rejected when adding
+an instance.
 
-5. V1 Feature Matrix
-Feature	Local (libgit2)	Remote (API)	Priority
-Instance setup	—	GET /user, GET /version	P0
-List projects	—	GET /projects?owned=true	P0
-Clone repository	libgit2.clone()	—	P0
-View changes/status	libgit2.status()	—	P0
-Stage/unstage	libgit2.stage()	—	P0
-Commit	libgit2.commit()	—	P0
-Diff view	libgit2.diff()	—	P0
-Push/Pull/Fetch	libgit2.push()	—	P0
-Branch create/switch	libgit2.branch()	—	P0
-Create MR	—	POST /merge_requests	P0
-Open in GitLab	—	(xdg-open)	P0
-Pipeline status	—	GET /pipelines	P1
-Branch comparison	libgit2.compare	GET /branches (verify remote)	P1
-6. Error Handling Strategy
-Scenario	User-Facing Response	Internal Action
-Invalid PAT	"Authentication failed. Check your token."	Clear token, prompt re-entry
-Self-signed cert	"Certificate not trusted. Import CA or allow."	Offer trust override
-Network unreachable	"Cannot reach instance. Working offline."	Switch to cached mode
-API rate limited	"Rate limited. Retrying in N seconds."	Exponential backoff
-Git push rejected	"Push rejected. Pull first?"	Offer pull/merge dialog
-MR creation fails	"Failed to create MR: {error}"	Preserve form data, allow retry
-SQLite corruption	"Cache corrupted. Rebuilding."	Delete + recreate cache.db
-7. Known Constraints (V1)
+## 5. V1 Feature Matrix
 
-    Single-user focus. No multi-account within a single instance.
-    PAT authentication only. No OAuth, SSO, or LDAP pass-through.
-    No in-app code editing. Diff view is read-only. External editor launches via xdg-open.
-    No conflict resolution UI. Conflicts are detected and the user is directed to resolve externally.
-    No admin/runner management. Focused on developer workflow only.
-    English-only UI. Localization deferred to post-V1.
-    No repository search. Project list is browsable but not searchable in V1 (may change if SQLite caching makes it trivial).
+| Feature              | Local (libgit2)     | Remote (API)                         | Priority |
+|----------------------|---------------------|--------------------------------------|----------|
+| Instance setup       | —                   | `GET /user`, `GET /version`          | P0       |
+| List projects        | —                   | owned + membership + group projects  | P0       |
+| Clone repository     | `clone()`           | —                                    | P0       |
+| View changes/status  | `status()`          | —                                    | P0       |
+| Stage/unstage        | index APIs          | —                                    | P0       |
+| Commit               | `commit()`          | —                                    | P0       |
+| Diff view            | `diff()`            | —                                    | P0       |
+| Push/Pull/Fetch      | push/pull/fetch     | credential helper or SSH         | P0       |
+| Force push           | push (force)        | explicit confirm; not default    | P0       |
+| Branch create/switch | branch APIs         | —                                | P0       |
+| Local merge (clean)  | merge               | —                                    | P0       |
+| Create MR            | —                   | `POST /merge_requests`               | P0       |
+| Open in GitLab       | —                   | `xdg-open` / portal                  | P0       |
+| Pipeline status      | —                   | `GET /pipelines`                     | Nice-to-have |
+| Branch comparison    | compare             | remote branch verify                 | Nice-to-have |
 
+## 6. Error Handling Strategy
+
+| Scenario             | User-Facing Response                         | Internal Action                    |
+|----------------------|----------------------------------------------|------------------------------------|
+| SaaS URL rejected    | "LabDesk supports self-hosted GitLab only."  | Block save; do not store           |
+| Invalid PAT          | "Authentication failed. Check your token."   | Clear keyring entry; prompt re-entry |
+| Git auth failed      | "Git authentication failed. Check credentials or SSH keys." | Prompt helper / guide to SSH or PAT |
+| 2FA blocks password  | "Password git auth blocked. Use SSH or a PAT." | Point to ADR-008 options        |
+| Self-signed cert     | "Certificate not trusted. Import CA or allow." | Offer trust override             |
+| Network unreachable  | "Cannot reach instance. Working offline."    | Switch to cached mode              |
+| API rate limited     | "Rate limited. Retrying in N seconds."       | Exponential backoff                |
+| Git push rejected    | "Push rejected. Pull first?"                 | Offer pull; force push only via separate confirmed action |
+| Force push confirm   | "Force push to {branch}? This can overwrite remote history." | Proceed only on explicit yes |
+| Merge conflict       | "Conflicts detected. Resolve externally."    | Do not offer in-app resolve        |
+| MR creation fails    | "Failed to create MR: {error}"               | Preserve form data; allow retry    |
+| SQLite corruption    | "Cache corrupted. Rebuilding."               | Delete + recreate cache.db         |
+| Keyring unavailable  | "Cannot access system keyring."              | Block PAT save; explain            |
+
+## 7. Known Constraints (V1)
+
+- **One active instance in the UI** for now; storage schema remains
+  multi-instance-ready.
+- **One human user of the app; one API PAT** for that instance (no
+  multi-account per instance).
+- **API auth:** PAT via **`PRIVATE-TOKEN`** only. No OAuth, SSO, or
+  LDAP pass-through for the API (ADR-008).
+- **Git HTTPS auth:** Git **credential helper** (username/password when
+  the instance allows it, or username + PAT as password). **SSH** also
+  supported.
+- **API PAT in system keyring only** — never plaintext in config. Git
+  passwords are not stored in `config.toml` either.
+- **Force push** is available behind an explicit confirmation dialog;
+  it is not the default recovery from a rejected push.
+- **No in-app code editing.** Diff view is read-only. Open files with
+  an external editor via `xdg-open` / portal. A future in-app editor,
+  if any, would be built from scratch.
+- **No conflict resolution UI.** Conflicts are detected; user resolves
+  externally. Clean local merges are supported.
+- **No admin/runner management.** Developer workflow only.
+- **English-only UI.** Localization deferred.
+- **No repository search** in V1 (may change if SQLite caching makes it
+  trivial).
+- **Linux only.** No Windows or macOS.
+- **Pipeline status** and richer branch comparison are nice-to-have,
+  not V1 blockers.
