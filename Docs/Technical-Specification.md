@@ -184,10 +184,10 @@ revert to a **last known good** config, relaunch, and show an error
 [general]
 theme = "system"                 # UI: Settings — "light", "dark", "system"
 default_clone_dir = "~/Projects" # UI: Settings
-check_for_updates = true         # config-only: check Ranga/flatpaks remote
+check_for_updates = true         # UI: Settings — Flatpak remote (Ranga/flatpaks)
 active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 active_ui_view = "projects"      # View menu (+ config); not Settings form
-ui_shell = "classic"             # config-only: "classic" | "sidebar"
+ui_shell = "classic"             # UI: Settings / View — "classic" | "sidebar"
 [[instances]]
 id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 name = "BigRanga Tech GitLab"

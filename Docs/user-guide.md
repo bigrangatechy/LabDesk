@@ -67,11 +67,13 @@ flatpak update --appstream
 flatpak update
 ```
 
-In-app **`check_for_updates`** (in `config.toml`) means “check this
-Flatpak remote for a newer LabDesk”, not a custom downloader. The
-Settings UI will expose it once the check is confirmed working; until
-then, use `flatpak update` as above. New builds appear only after CI on
-`labdesk` has pushed to `Ranga/flatpaks`.
+In-app **`check_for_updates`** (Settings and `config.toml`) means “check
+this Flatpak remote for a newer LabDesk”, not a custom downloader.
+Settings can toggle startup checks and run **Check for updates now**.
+Inside the Flatpak sandbox the check uses `flatpak-spawn --host` (needs
+`--talk-name=org.freedesktop.Flatpak`). You can always fall back to
+`flatpak update` as above. New builds appear only after CI on `labdesk`
+has pushed to `Ranga/flatpaks`.
 
 ### 2.4 Config paths (Flatpak vs unpackaged)
 
@@ -87,17 +89,19 @@ After install or a major update:
 1. Launch LabDesk; theme and shell layout load from config.
 2. Connect to self-hosted GitLab (PAT in keyring).
 3. Refresh projects; **Open local** or **Add existing…** for a clone.
-4. Repo window: Changes (stage / commit), History, Branches, Pull / Push,
-   Open in editor, Create merge request (when online).
+4. Repo window: Changes (stage / commit), History, Branches (create /
+   switch / merge), Fetch / Pull / Push, ahead/behind vs upstream,
+   Open in editor, Create merge request (when online; offered after push).
 5. Confirm offline banner if the instance is unreachable (local git still
    works; push/MR/refresh disabled).
 6. Run `flatpak update com.bigrangatech.LabDesk` after a new CI publish
-   and confirm the app still launches.
+   and confirm the app still launches (PySide6 UI included).
 
 ---
 
 ## 3. First-time setup
 
+- On first launch with no instances, LabDesk offers **Add / connect**.
 - Add instance (URL + API personal access token).
 - Why SaaS URLs are rejected.
 - TLS / self-signed / imported CA (short, practical).
@@ -111,17 +115,15 @@ After install or a major update:
 
 - **`config.toml` is the full preference surface** — as many options as
   practical live there (including ones that are not in the UI yet).
-- **Settings → Preferences** only shows options that are **confirmed
-  working** for everyday use (today: clone folder, theme).
+- **Settings → Preferences** shows options confirmed for everyday use:
+  clone folder, theme, main window layout (`ui_shell`), and Flatpak
+  update checks (`check_for_updates` + Check now).
 - Switch main views via the **View** menu; last view is stored as
   `general.active_ui_view` (not a Settings form field).
-- Main window **layout** (`classic` / `sidebar`) is config-only for now:
-  set `general.ui_shell` in `config.toml`, or use **View → Classic /
-  Sidebar layout**. Settings stays limited to confirmed options.
+- Main window **layout** (`classic` / `sidebar`) is also available under
+  **View → Classic / Sidebar layout**.
 - **Clone into:** folder where new clones go (e.g. `~/Documents/gitlab`).
   Saved as `general.default_clone_dir`.
-- Other keys (e.g. `check_for_updates`) stay **config-only** until the
-  matching feature is ready, then may gain a Settings control.
 - Advanced / not-yet-in-UI options: edit `config.toml` directly (paths
   under Flatpak vs XDG — fill when writing this section).
 - Changes are saved whether made in the UI or in the file; Settings
@@ -148,9 +150,10 @@ After install or a major update:
 - **Changes:** stage / unstage / commit; read-only diffs.
 - **Open in editor:** opens the selected file with the desktop default
   (`xdg-open` / portal).
-- **Branches** tab: list, switch, create (dirty-tree checkout may fail
-  with a clear git error — resolve or stash outside LabDesk).
-- Clean local merge / conflict UI: not in V1; resolve conflicts externally.
+- **Branches** tab: list, switch, create, and **merge into current**
+  (clean merge only; conflicts abort with **`LD-GIT-020`** — resolve
+  externally).
+- **Fetch / Pull / Push** and ahead/behind vs upstream in the header.
 
 → Journey C.
 
@@ -158,8 +161,10 @@ After install or a major update:
 
 ## 6. Push, force push & merge requests
 
-- **Pull / Push** from the repo toolbar (disabled while offline).
+- **Fetch / Pull / Push** from the repo toolbar (disabled while offline).
 - **Force push…** only after confirming the branch name.
+- After a successful (non-force) push, LabDesk offers to **create a merge
+  request**.
 - **Create merge request…:** title, description, source/target; on
   success, optionally open the MR in the browser.
 

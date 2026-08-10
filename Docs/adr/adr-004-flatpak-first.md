@@ -51,8 +51,8 @@ The application will be distributed **exclusively as a Flatpak**.
 1. User adds the Flatpak remote served from `Ranga/flatpaks` (exact
    `flatpak remote-add` URL documented in `user-guide.md` once the
    remote layout is published).
-2. `flatpak update com.bigrangatech.LabDesk` (or in-app check when
-   `check_for_updates` is UI-wired).
+2. `flatpak update com.bigrangatech.LabDesk` (or in-app check via
+   Settings / `check_for_updates`).
 3. CI on `labdesk` is responsible for pushing new builds into
    `Ranga/flatpaks` so that remote stays current.
 

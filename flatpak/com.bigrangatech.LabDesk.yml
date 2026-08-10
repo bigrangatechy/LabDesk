@@ -22,13 +22,12 @@ finish-args:
   - --socket=wayland
   - --device=dri
   - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Flatpak
   - --filesystem=xdg-documents
   - --filesystem=home
   - --env=PYTHONUNBUFFERED=1
 modules:
-  # Python + PySide6 from Freedesktop SDK python; PySide may need a
-  # dedicated module or pip in a later iteration. Beta skeleton builds
-  # the Rust core and installs a launcher that expects the UI tree.
+  # Rust core (maturin) + PySide6 + Python UI tree + launcher.
   - name: labdesk-core
     buildsystem: simple
     build-options:
@@ -46,6 +45,7 @@ modules:
           . /usr/lib/sdk/rust-stable/enable.sh
         fi
       - pip3 install --prefix=/app --no-deps maturin || true
+      - pip3 install --prefix=/app 'PySide6>=6.6,<6.9'
       - |
         set -euo pipefail
         if [ -f /usr/lib/sdk/rust-stable/enable.sh ]; then
@@ -72,7 +72,8 @@ modules:
         mkdir -p /app/lib/labdesk /app/bin
         cp -a src/labdesk_ui /app/lib/labdesk/
         printf '%s\n' '#!/bin/sh' \
-          'export PYTHONPATH=/app/lib/labdesk:${PYTHONPATH:-}' \
+          'SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path(\"purelib\"))" 2>/dev/null || true)' \
+          'export PYTHONPATH=/app/lib/labdesk:${SITE:+$SITE:}${PYTHONPATH:-}' \
           'exec python3 -m labdesk_ui.main "$@"' \
           > /app/bin/labdesk
         chmod 755 /app/bin/labdesk
@@ -86,3 +87,4 @@ modules:
           - flatpak-build
           - repo
           - .flatpak-builder
+

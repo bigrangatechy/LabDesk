@@ -506,6 +506,156 @@ pub fn pull(repo_path: &Path, remote_name: &str, auth: &AuthOptions<'_>) -> Resu
     ))
 }
 
+/// Ahead/behind vs upstream tracking branch (or `origin/<current>`).
+/// Returns (ahead, behind, upstream_name).
+pub fn ahead_behind(
+    repo_path: &Path,
+    remote_name: &str,
+) -> Result<(usize, usize, Option<String>)> {
+    let repo = open_repo(repo_path)?;
+    let head = repo.head().map_err(|e| {
+        map_git_error(e, "LD-GIT-001", "Git operation failed.")
+    })?;
+    if !head.is_branch() {
+        return Ok((0, 0, None));
+    }
+    let branch_name = head.shorthand().unwrap_or("HEAD").to_string();
+    let local = repo
+        .find_branch(&branch_name, git2::BranchType::Local)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let upstream = match local.upstream() {
+        Ok(up) => up,
+        Err(_) => {
+            match repo.find_branch(
+                &format!("{remote_name}/{branch_name}"),
+                git2::BranchType::Remote,
+            ) {
+                Ok(b) => b,
+                Err(_) => return Ok((0, 0, None)),
+            }
+        }
+    };
+    let upstream_name = upstream
+        .name()
+        .ok()
+        .flatten()
+        .map(|s| s.to_string());
+    let local_oid = head.peel_to_commit().map_err(|e| {
+        map_git_error(e, "LD-GIT-001", "Git operation failed.")
+    })?.id();
+    let upstream_oid = upstream
+        .get()
+        .peel_to_commit()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?
+        .id();
+    let (ahead, behind) = repo
+        .graph_ahead_behind(local_oid, upstream_oid)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    Ok((ahead, behind, upstream_name))
+}
+
+/// Merge another local branch into HEAD. Clean merge only; conflicts → LD-GIT-020.
+pub fn merge_local_branch(repo_path: &Path, their_branch: &str) -> Result<String> {
+    let their_branch = their_branch.trim();
+    if their_branch.is_empty() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail("Branch name is required."),
+        ));
+    }
+    let repo = open_repo(repo_path)?;
+    let their = repo
+        .find_branch(their_branch, git2::BranchType::Local)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let annotated = repo
+        .reference_to_annotated_commit(their.get())
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+
+    let (analysis, _) = repo.merge_analysis(&[&annotated]).map_err(|e| {
+        map_git_error(e, "LD-GIT-001", "Git operation failed.")
+    })?;
+    if analysis.is_up_to_date() {
+        return Ok(format!("Already up to date with {their_branch}."));
+    }
+    if analysis.is_fast_forward() {
+        let mut head = repo.head().map_err(|e| {
+            map_git_error(e, "LD-GIT-001", "Git operation failed.")
+        })?;
+        let name = head.name().unwrap_or("HEAD").to_string();
+        head.set_target(annotated.id(), &format!("LabDesk merge FF {their_branch}"))
+            .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+        repo.set_head(&name)
+            .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
+            .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+        return Ok(format!("Fast-forwarded to {their_branch}."));
+    }
+    if !analysis.is_normal() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail(format!("Cannot merge {their_branch} (unsupported analysis).")),
+        ));
+    }
+
+    repo.merge(&[&annotated], None, None).map_err(|e| {
+        map_git_error(e, "LD-GIT-001", "Git operation failed.")
+    })?;
+
+    let mut index = repo.index().map_err(|e| {
+        map_git_error(e, "LD-GIT-001", "Git operation failed.")
+    })?;
+    if index.has_conflicts() {
+        let _ = repo.cleanup_state();
+        // Best-effort reset index/worktree to HEAD to leave a clean tree.
+        if let Ok(obj) = repo.revparse_single("HEAD") {
+            let _ = repo.reset(&obj, git2::ResetType::Hard, None);
+        }
+        return Err(LabDeskError::App(
+            ErrorInfo::new(
+                "LD-GIT-020",
+                "Conflicts detected. Resolve externally.",
+            )
+            .with_detail(format!(
+                "Merge of {their_branch} into HEAD has conflicts; aborted. Resolve in an external tool, then continue."
+            )),
+        ));
+    }
+
+    let tree_oid = index.write_tree().map_err(|e| {
+        map_git_error(e, "LD-GIT-001", "Git operation failed.")
+    })?;
+    let tree = repo.find_tree(tree_oid).map_err(|e| {
+        map_git_error(e, "LD-GIT-001", "Git operation failed.")
+    })?;
+    let sig = repo.signature().map_err(|_| {
+        LabDeskError::App(ErrorInfo::new(
+            "LD-GIT-040",
+            "Git user.name / user.email not configured.",
+        ))
+    })?;
+    let head_commit = repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let their_commit = their
+        .get()
+        .peel_to_commit()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let msg = format!("Merge branch '{their_branch}'");
+    repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        &msg,
+        &tree,
+        &[&head_commit, &their_commit],
+    )
+    .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    repo.cleanup_state()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    Ok(format!("Merged {their_branch} into HEAD."))
+}
+
 pub fn push(
     repo_path: &Path,
     remote_name: &str,

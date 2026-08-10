@@ -44,7 +44,7 @@ checkouts (see root `.gitignore`).
 | `--talk-name=org.freedesktop.secrets` | API PAT keyring |
 | `--filesystem=xdg-documents` (and/or home) | Default clone dirs under Documents |
 | `--filesystem=xdg-download:ro` | Optional |
-| `--talk-name=org.freedesktop.Flatpak` | Optional in-app update checks later |
+| `--talk-name=org.freedesktop.Flatpak` | In-app update checks via `flatpak-spawn --host` |
 
 Exact YAML lives in `flatpak/com.bigrangatech.LabDesk.yml` and may grow;
 keep this table in sync when permissions change.

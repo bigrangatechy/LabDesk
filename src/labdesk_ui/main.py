@@ -29,6 +29,8 @@ def main() -> int:
     startup_mod.mark_ready()
     if recovery:
         QTimer.singleShot(0, window.show_startup_recovery_if_needed)
+    QTimer.singleShot(0, window.prompt_first_run_if_needed)
+    QTimer.singleShot(1500, window.check_updates_on_startup_if_enabled)
     return app.exec()
 
 

@@ -389,6 +389,51 @@ class MainWindow(QMainWindow):
             f"{detail}".strip(),
         )
 
+    def prompt_first_run_if_needed(self) -> None:
+        """Offer Add/connect when no instances exist yet."""
+        try:
+            import labdesk_core
+
+            cfg = labdesk_core.load_config()
+            if cfg.get("instances"):
+                return
+        except Exception:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Welcome to LabDesk",
+            "No GitLab instance is configured yet.\n\n"
+            "Add a self-hosted instance to get started?",
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.show_connect_dialog()
+
+    def check_updates_on_startup_if_enabled(self) -> None:
+        """Quiet Flatpak update check when general.check_for_updates is true."""
+        try:
+            import labdesk_core
+
+            cfg = labdesk_core.load_config()
+            general = cfg.get("general") or {}
+            if not bool(general.get("check_for_updates", True)):
+                return
+            from labdesk_ui.utils.flatpak_updates import check_for_labdesk_updates
+
+            result = check_for_labdesk_updates()
+            if result.get("available"):
+                self.set_detail(str(result.get("detail") or "Update available."))
+                QMessageBox.information(
+                    self,
+                    "Update available",
+                    str(result.get("detail") or "A LabDesk Flatpak update is available."),
+                )
+        except Exception as exc:
+            # Non-fatal: leave a detail line; Settings can retry.
+            code, msg = format_error(exc)
+            if code == "LD-SYS-021":
+                self.set_detail(f"[{code}] {msg}")
+
+
     def switch_view(self, view_id: str, *, persist: bool = True) -> None:
         widget = self._view_widgets.get(view_id)
         if widget is None:

@@ -766,6 +766,46 @@ fn repo_pull(repo_path: String) -> PyResult<String> {
 }
 
 #[pyfunction]
+fn repo_fetch(repo_path: String) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some(inst) = cfg.active_instance() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let pat = secrets::load_pat(&inst.keyring_account).ok();
+    let auth = git_ops::AuthOptions {
+        pat_fallback: pat.as_deref(),
+        ssl_insecure: inst.ssl_mode == "allow_self_signed",
+        prefer_ssh: false,
+    };
+    git_ops::fetch(std::path::Path::new(&repo_path), "origin", &auth)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn repo_ahead_behind(py: Python<'_>, repo_path: String) -> PyResult<PyObject> {
+    let (ahead, behind, upstream) =
+        git_ops::ahead_behind(std::path::Path::new(&repo_path), "origin")?;
+    let d = PyDict::new(py);
+    d.set_item("ahead", ahead)?;
+    d.set_item("behind", behind)?;
+    d.set_item("upstream", upstream)?;
+    Ok(d.into())
+}
+
+#[pyfunction]
+fn repo_merge_branch(repo_path: String, their_branch: String) -> PyResult<String> {
+    Ok(git_ops::merge_local_branch(
+        std::path::Path::new(&repo_path),
+        &their_branch,
+    )?)
+}
+
+#[pyfunction]
 #[pyo3(signature = (repo_path, force=false))]
 fn repo_push(repo_path: String, force: bool) -> PyResult<()> {
     let paths = paths::AppPaths::detect();
@@ -862,6 +902,17 @@ fn set_active_ui_view(view_id: String) -> PyResult<()> {
     Ok(())
 }
 
+/// Persist `general.check_for_updates`.
+#[pyfunction]
+fn set_check_for_updates(enabled: bool) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    let mut cfg = config::load_or_default(&paths)?;
+    cfg.general.check_for_updates = enabled;
+    config::save(&paths, &mut cfg)?;
+    let _ = config::save_known_good(&paths);
+    Ok(())
+}
+
 /// Persist `general.ui_shell` (`classic` | `sidebar`).
 #[pyfunction]
 fn set_ui_shell(shell: String) -> PyResult<()> {
@@ -900,10 +951,14 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(resolve_repo_project, m)?)?;
     m.add_function(wrap_pyfunction!(create_merge_request, m)?)?;
     m.add_function(wrap_pyfunction!(repo_pull, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_ahead_behind, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_merge_branch, m)?)?;
     m.add_function(wrap_pyfunction!(repo_push, m)?)?;
     m.add_function(wrap_pyfunction!(get_default_clone_dir, m)?)?;
     m.add_function(wrap_pyfunction!(set_default_clone_dir, m)?)?;
     m.add_function(wrap_pyfunction!(set_theme, m)?)?;
+    m.add_function(wrap_pyfunction!(set_check_for_updates, m)?)?;
     m.add_function(wrap_pyfunction!(set_active_ui_view, m)?)?;
     m.add_function(wrap_pyfunction!(set_ui_shell, m)?)?;
     m.add_function(wrap_pyfunction!(revert_config_to_known_good, m)?)?;

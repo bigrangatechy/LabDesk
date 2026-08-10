@@ -84,6 +84,10 @@ class RepoWindow(QMainWindow):
         self.btn_pull.clicked.connect(self._pull)
         row.addWidget(self.btn_pull)
 
+        self.btn_fetch = QPushButton("Fetch")
+        self.btn_fetch.clicked.connect(self._fetch)
+        row.addWidget(self.btn_fetch)
+
         self.btn_push = QPushButton("Push")
         self.btn_push.clicked.connect(self._push)
         row.addWidget(self.btn_push)
@@ -121,11 +125,13 @@ class RepoWindow(QMainWindow):
         self.btn_push.setEnabled(available)
         self.btn_force.setEnabled(available)
         self.btn_pull.setEnabled(available)
+        self.btn_fetch.setEnabled(available)
         self.btn_mr.setEnabled(available)
         tip = "Working offline — network git actions disabled." if not available else ""
         self.btn_push.setToolTip(tip)
         self.btn_force.setToolTip(tip)
         self.btn_pull.setToolTip(tip)
+        self.btn_fetch.setToolTip(tip)
         self.btn_mr.setToolTip(tip)
 
     def _build_changes_tab(self) -> QWidget:
@@ -225,6 +231,9 @@ class RepoWindow(QMainWindow):
         self.btn_create_branch = QPushButton("Create…")
         self.btn_create_branch.clicked.connect(self._create_branch)
         row.addWidget(self.btn_create_branch)
+        self.btn_merge_branch = QPushButton("Merge into current…")
+        self.btn_merge_branch.clicked.connect(self._merge_branch)
+        row.addWidget(self.btn_merge_branch)
         row.addStretch(1)
         layout.addLayout(row)
         return page
@@ -248,10 +257,72 @@ class RepoWindow(QMainWindow):
             head_line = f"{self.repo_path}  ({branch})"
             if summary:
                 head_line += f"\nHEAD: {summary}"
-            self.header.setText(head_line)
+            sync = ""
+            try:
+                ab = labdesk_core.repo_ahead_behind(self.repo_path)
+                ahead = int(ab.get("ahead") or 0)
+                behind = int(ab.get("behind") or 0)
+                upstream = ab.get("upstream") or ""
+                if upstream:
+                    parts = []
+                    if ahead:
+                        parts.append(f"↑{ahead}")
+                    if behind:
+                        parts.append(f"↓{behind}")
+                    if not parts:
+                        parts.append("up to date")
+                    sync = f"\nUpstream {upstream}: {' '.join(parts)}"
+            except Exception:
+                sync = ""
+            self.header.setText(head_line + sync)
         except Exception as exc:
             code, msg = format_error(exc)
             self.header.setText(f"[{code}] {msg}")
+
+    def _merge_branch(self) -> None:
+        name = self._selected_branch_name()
+        if not name:
+            QMessageBox.information(
+                self, "Merge", "Select a branch to merge into the current branch."
+            )
+            return
+        try:
+            import labdesk_core
+
+            current = labdesk_core.repo_branch(self.repo_path)
+            if name == current:
+                QMessageBox.information(
+                    self, "Merge", "Select a different branch than the current one."
+                )
+                return
+            reply = QMessageBox.question(
+                self,
+                "Merge",
+                f"Merge '{name}' into '{current}'?\n\n"
+                "Only clean merges are supported. On conflict, LabDesk aborts "
+                "and you resolve externally.",
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            msg = labdesk_core.repo_merge_branch(self.repo_path, name)
+            self.footer.setText(msg)
+            self.refresh()
+            QMessageBox.information(self, "Merge", msg)
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+    def _fetch(self) -> None:
+        try:
+            import labdesk_core
+
+            labdesk_core.repo_fetch(self.repo_path)
+            self.footer.setText("Fetch OK.")
+            self._refresh_header()
+            QMessageBox.information(self, "Fetch", "Fetched from origin.")
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
 
     def _refresh_branches(self) -> None:
         try:
@@ -717,6 +788,15 @@ class RepoWindow(QMainWindow):
                 "Force push succeeded." if force else "Push succeeded.",
             )
             self._refresh_history()
+            self._refresh_header()
+            if not force and self._network_available:
+                reply = QMessageBox.question(
+                    self,
+                    "Create merge request?",
+                    "Push succeeded. Create a merge request on GitLab now?",
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self._create_mr()
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")

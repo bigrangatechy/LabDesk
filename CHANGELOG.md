@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **01:22:30  11/08/2026** — Local merge (clean only; `LD-GIT-020` on
+  conflict), Fetch + ahead/behind in repo window, Flatpak bundles
+  PySide6, in-app Flatpak update check (`LD-SYS-021` / Settings),
+  first-run connect prompt, and Create MR offer after push.
 - **00:45:08  11/08/2026** — Flatpak CI: push to credentialed URL directly;
   clearer failure hints when token can clone but not write.
 - **00:34:36  11/08/2026** — Flatpak CI publish: force **https** for
