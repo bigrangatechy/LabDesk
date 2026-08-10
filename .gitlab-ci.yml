@@ -102,15 +102,23 @@ flatpak_build_publish:
       cd /tmp/flatpaks-publish
       git config user.email "ci@labdesk.local"
       git config user.name "LabDesk CI"
-      # Keep credentials on the remote URL for push (same as clone).
-      git remote set-url origin "${AUTH_DEST}"
       git add -A labdesk/
       if git diff --cached --quiet; then
         echo "No changes to publish."
         exit 0
       fi
       git commit -m "labdesk: publish ${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
-      git push origin HEAD:main
+      # Push to the credentialed URL directly (clone remotes often drop auth).
+      echo "Pushing to flatpaks (credentials redacted)…"
+      if ! git push "${AUTH_DEST}" HEAD:main; then
+        echo "Push failed. Check FLATPAKS_DEPLOY_TOKEN on labdesk:"
+        echo "  - Token is from Ranga/flatpaks (not labdesk)"
+        echo "  - Scope includes write_repository (read-only is enough for clone, not push)"
+        echo "  - Role is Developer or Maintainer (Reporter cannot push)"
+        echo "  - If main is protected, token role must be allowed to push"
+        echo "  - Variable not 'Protected' unless this branch/tag is protected"
+        exit 1
+      fi
   artifacts:
     when: on_success
     paths:

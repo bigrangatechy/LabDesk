@@ -20,6 +20,8 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:45:08  11/08/2026** — Flatpak CI: push to credentialed URL directly;
+  clearer failure hints when token can clone but not write.
 - **00:34:36  11/08/2026** — Flatpak CI publish: force **https** for
   `flatpaks` remote (http redirects strip Basic auth); optional
   `FLATPAKS_DEPLOY_USER` for deploy-token usernames.
