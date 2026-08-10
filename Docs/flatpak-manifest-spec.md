@@ -99,8 +99,11 @@ CI variables (set in GitLab `labdesk` project settings, not in git):
 
 | Variable | Purpose |
 |----------|---------|
-| `FLATPAKS_REPO_URL` | Default `http://git.bigrangatech.com/Ranga/flatpaks.git` |
-| `FLATPAKS_DEPLOY_TOKEN` or SSH deploy key | Push access to `flatpaks` |
+| `FLATPAKS_REPO_URL` | Default `https://git.bigrangatech.com/Ranga/flatpaks.git` (use **https**, not http — redirects drop credentials) |
+| `FLATPAKS_DEPLOY_TOKEN` | Project/group access token on **`flatpaks`** with `write_repository` (password). Username defaults to `oauth2`. |
+| `FLATPAKS_DEPLOY_USER` | Optional. Set if using a **deploy token** (its username) instead of `oauth2`. |
+
+Token CI variable flags: **Masked**; uncheck **Protected** unless the job only runs on protected branches/tags.
 
 ## 6. Local build (optional)
 

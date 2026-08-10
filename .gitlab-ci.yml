@@ -12,7 +12,7 @@ stages:
 
 variables:
   SECRET_DETECTION_ENABLED: "true"
-  FLATPAKS_REPO_URL: "http://git.bigrangatech.com/Ranga/flatpaks.git"
+  FLATPAKS_REPO_URL: "https://git.bigrangatech.com/Ranga/flatpaks.git"
   FLATPAK_APP_ID: "com.bigrangatech.LabDesk"
 
 include:
@@ -77,9 +77,18 @@ flatpak_build_publish:
         exit 0
       fi
       DEST="${FLATPAKS_REPO_URL}"
+      # Prefer https — http→https redirects strip Basic credentials.
       case "${DEST}" in
-        http://*|https://*)
-          AUTH_DEST=$(echo "${DEST}" | sed "s#://#://oauth2:${FLATPAKS_DEPLOY_TOKEN}@#")
+        http://*)
+          DEST="https://${DEST#http://}"
+          ;;
+      esac
+      case "${DEST}" in
+        https://*)
+          # Project/group access tokens: username oauth2 + token as password.
+          # Deploy tokens: set FLATPAKS_DEPLOY_USER to the deploy-token username.
+          USERNAME="${FLATPAKS_DEPLOY_USER:-oauth2}"
+          AUTH_DEST=$(echo "${DEST}" | sed "s#://#://${USERNAME}:${FLATPAKS_DEPLOY_TOKEN}@#")
           ;;
         *)
           AUTH_DEST="${DEST}"
@@ -93,6 +102,8 @@ flatpak_build_publish:
       cd /tmp/flatpaks-publish
       git config user.email "ci@labdesk.local"
       git config user.name "LabDesk CI"
+      # Keep credentials on the remote URL for push (same as clone).
+      git remote set-url origin "${AUTH_DEST}"
       git add -A labdesk/
       if git diff --cached --quiet; then
         echo "No changes to publish."

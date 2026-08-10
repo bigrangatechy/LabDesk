@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:34:36  11/08/2026** — Flatpak CI publish: force **https** for
+  `flatpaks` remote (http redirects strip Basic auth); optional
+  `FLATPAKS_DEPLOY_USER` for deploy-token usernames.
 - **00:24:16  11/08/2026** — Flatpak CI publish: use `cp -a` instead of
   `rsync` (image has no rsync).
 - **00:14:19  11/08/2026** — Flatpak: `maturin --skip-auditwheel` and
