@@ -34,7 +34,7 @@ it reflects final APIs.
   allows it); SSH also supported.
 - Force push only with explicit confirmation.
 
-Details: `README.md` (when rewritten), `Docs/Technical-Specification.md`,
+Details: `README.md`, `Docs/Technical-Specification.md`,
 and `Docs/adr/`.
 
 ## How to propose changes

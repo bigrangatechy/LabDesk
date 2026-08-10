@@ -20,6 +20,8 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **01:26:16  11/08/2026** — Replace default GitLab README with a proper
+  LabDesk project README (features, Flatpak, develop, docs map).
 - **01:22:30  11/08/2026** — Local merge (clean only; `LD-GIT-020` on
   conflict), Fetch + ahead/behind in repo window, Flatpak bundles
   PySide6, in-app Flatpak update check (`LD-SYS-021` / Settings),

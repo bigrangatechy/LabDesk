@@ -21,7 +21,7 @@ the full API or SQLite schema here.
   merge requests).
 - Distributed as **Flatpak** for releases.
 
-*(Expand from README / product blurb when README is rewritten.)*
+See also the project `README.md`.
 
 ---
 
