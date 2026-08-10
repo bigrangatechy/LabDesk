@@ -61,23 +61,37 @@ keep this table in sync when permissions change.
    (see `user-guide.md`). Updating `flatpaks` is what makes
    `flatpak update` / `check_for_updates` see new versions.
 
-The Docker runner for `flatpak_build_publish` should use
-**`privileged = true`** (helps bubblewrap / user namespaces). openh264
-`apply_extra` / bwrap warnings are often non-fatal.
+The Docker runner for `flatpak_build_publish` **must** allow bubblewrap
+user namespaces. Without that, module builds fail with
+`bwrap: No permissions to creating new namespace`.
 
-CI uses **`flatpak-builder --disable-rofiles-fuse`** so the job does not
-require `/dev/fuse` inside the container (avoids
-`Failure spawning rofiles-fuse` on typical Docker runners). Optionally
-still set `devices = ["/dev/fuse"]` if you drop that flag later.
+Under `[runners.docker]` for the Labdesk runner:
 
 ```toml
 privileged = true
-# optional if not using --disable-rofiles-fuse:
+security_opt = ["seccomp:unconfined", "apparmor:unconfined"]
+# optional; CI also uses --disable-rofiles-fuse
 # devices = ["/dev/fuse"]
 ```
 
-Restart the runner after config changes
-(`sudo systemctl restart gitlab-runner`).
+On **Ubuntu 24.04+ / 26.04** hosts, AppArmor often blocks nested userns
+even in privileged containers. Persistently enable:
+
+```bash
+# temporary
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+# permanent
+echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee \
+  /etc/sysctl.d/99-labdesk-userns.conf
+sudo sysctl --system
+sudo systemctl restart gitlab-runner
+```
+
+openh264 `apply_extra` / bwrap warnings during `flatpak install` are
+often non-fatal; the hard failure is when **module build** hits bwrap.
+
+CI uses **`flatpak-builder --disable-rofiles-fuse`** so `/dev/fuse` is
+not required.
 
 CI variables (set in GitLab `labdesk` project settings, not in git):
 

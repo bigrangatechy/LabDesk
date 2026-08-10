@@ -20,6 +20,8 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **23:41:51  10/08/2026** — Flatpak CI: fail-fast userns check + docs for
+  `privileged` / `security_opt` / Ubuntu AppArmor (module build bwrap).
 - **23:28:19  10/08/2026** — Flatpak CI: `flatpak-builder
   --disable-rofiles-fuse` so Docker jobs do not need `/dev/fuse`
   (fixes `Failure spawning rofiles-fuse`).

@@ -43,6 +43,17 @@ flatpak_build_publish:
       when: manual
   before_script:
     - flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    # Fail fast if this Docker job cannot create user namespaces (bwrap).
+    - |
+      if ! unshare --user --pid echo ok >/dev/null 2>&1; then
+        echo "ERROR: bwrap/userns unavailable in this job."
+        echo "On the runner host, under [runners.docker] for Labdesk set:"
+        echo "  privileged = true"
+        echo "  security_opt = [\"seccomp:unconfined\", \"apparmor:unconfined\"]"
+        echo "And on Ubuntu hosts often also:"
+        echo "  sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0"
+        exit 1
+      fi
     # Manifest pins Freedesktop 24.08 + rust-stable; CI image does not ship them.
     - |
       flatpak install -y --noninteractive --user \
