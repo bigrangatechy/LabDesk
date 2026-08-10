@@ -141,12 +141,12 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
   `/dev/fuse` is not required. openh264 `apply_extra` / bwrap
   warnings are often non-fatal. See `flatpak-manifest-spec.md` §5.
 - Users add that Flatpak remote and install/update
-  `com.bigrangatech.LabDesk` (user-guide).
+  `com.bigrangatech.LabDesk` (user-guide). Prefer GPG-signed remotes
+  (`FLATPAK_GPG_PRIVATE_KEY` in CI; `./scripts/flatpak-gpg-create.sh`).
 - Secrets portal / `org.freedesktop.secrets`; finish args in
   `flatpak-manifest-spec.md`.
 - Preference `check_for_updates` means checking **this** Flatpak remote
-  (data-model / ADR-004) — still config-only until the in-app check
-  ships.
+  (data-model / ADR-004).
 
 ---
 

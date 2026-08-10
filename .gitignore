@@ -28,3 +28,4 @@ repo/
 *.flatpak
 *.ostree
 *.tar.xz
+flatpak-gpg-out/

@@ -1,8 +1,11 @@
 # LabDesk CI — build Flatpak and publish to Ranga/flatpaks (not into this repo).
 #
 # Required CI/CD variables (project settings → Variables), not committed:
-#   FLATPAKS_REPO_URL   default http://git.bigrangatech.com/Ranga/flatpaks.git
+#   FLATPAKS_REPO_URL   default https://git.bigrangatech.com/Ranga/flatpaks.git
 #   FLATPAKS_DEPLOY_TOKEN  write access to Ranga/flatpaks
+# Optional (recommended — system installs need a signed remote):
+#   FLATPAK_GPG_PRIVATE_KEY  ASCII-armored secret key (or File variable)
+#   FLATPAK_GPG_KEY_ID       fingerprint (optional; auto-detected)
 #
 # See Docs/flatpak-manifest-spec.md and Docs/dev-guide.md §1.1.
 
@@ -64,11 +67,65 @@ flatpak_build_publish:
     - |
       set -euo pipefail
       echo "Building ${FLATPAK_APP_ID}…"
+      rm -rf ci-flatpak-meta
+      mkdir -p ci-flatpak-meta
+      GPG_ARGS=()
+      if [ -n "${FLATPAK_GPG_PRIVATE_KEY:-}" ]; then
+        export GNUPGHOME
+        GNUPGHOME="$(mktemp -d)"
+        chmod 700 "${GNUPGHOME}"
+        # Support File-type CI vars (path), ASCII-armored secret, or
+        # single-line base64 (required for GitLab Masked variables —
+        # armored keys contain newlines and cannot be Masked).
+        if [ -f "${FLATPAK_GPG_PRIVATE_KEY}" ]; then
+          if grep -q "BEGIN PGP" "${FLATPAK_GPG_PRIVATE_KEY}"; then
+            gpg --batch --import "${FLATPAK_GPG_PRIVATE_KEY}"
+          else
+            base64 -d < "${FLATPAK_GPG_PRIVATE_KEY}" | gpg --batch --import
+          fi
+        elif printf '%s' "${FLATPAK_GPG_PRIVATE_KEY}" | grep -q "BEGIN PGP"; then
+          printf '%s\n' "${FLATPAK_GPG_PRIVATE_KEY}" | gpg --batch --import
+        else
+          printf '%s' "${FLATPAK_GPG_PRIVATE_KEY}" | base64 -d | gpg --batch --import
+        fi
+        KEY_ID="${FLATPAK_GPG_KEY_ID:-}"
+        if [ -z "${KEY_ID}" ]; then
+          KEY_ID="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}')"
+        fi
+        if [ -z "${KEY_ID}" ]; then
+          echo "ERROR: FLATPAK_GPG_PRIVATE_KEY imported but no key id found."
+          exit 1
+        fi
+        echo "GPG signing with ${KEY_ID}"
+        GPG_ARGS=(--gpg-sign="${KEY_ID}" --gpg-homedir="${GNUPGHOME}")
+        gpg --armor --export "${KEY_ID}" > ci-flatpak-meta/bigrangatech-flatpak.gpg
+        GPG_B64="$(gpg --export "${KEY_ID}" | base64 -w0)"
+        REPO_URL="https://git.bigrangatech.com/Ranga/flatpaks/-/raw/main/labdesk/repo"
+        {
+          echo "[Flatpak Repo]"
+          echo "Title=BigRanga LabDesk"
+          echo "Url=${REPO_URL}"
+          echo "Homepage=https://git.bigrangatech.com/Ranga/labdesk"
+          echo "Comment=LabDesk Flatpak remote"
+          echo "Description=Self-hosted Flatpak remote for LabDesk (BigRanga Tech)"
+          echo "GPGKey=${GPG_B64}"
+        } > ci-flatpak-meta/labdesk.flatpakrepo
+      else
+        echo "WARNING: FLATPAK_GPG_PRIVATE_KEY unset — publishing unsigned repo."
+        echo "System Flatpak installs will refuse it (need --user --no-gpg-verify)."
+      fi
       # --disable-rofiles-fuse: avoid /dev/fuse requirement in Docker CI
       flatpak-builder --user --force-clean --disable-rofiles-fuse \
         --install-deps-from=flathub \
-        --repo=repo flatpak-build \
+        --repo=repo \
+        ${GPG_ARGS[@]+"${GPG_ARGS[@]}"} \
+        flatpak-build \
         flatpak/com.bigrangatech.LabDesk.yml
+      if [ "${#GPG_ARGS[@]}" -gt 0 ]; then
+        flatpak build-update-repo "${GPG_ARGS[@]}" repo
+      else
+        flatpak build-update-repo repo
+      fi
     - |
       set -euo pipefail
       if [ -z "${FLATPAKS_DEPLOY_TOKEN:-}" ]; then
@@ -99,6 +156,14 @@ flatpak_build_publish:
       mkdir -p /tmp/flatpaks-publish/labdesk
       rm -rf /tmp/flatpaks-publish/labdesk/repo
       cp -a repo /tmp/flatpaks-publish/labdesk/repo
+      if [ -f ci-flatpak-meta/bigrangatech-flatpak.gpg ]; then
+        cp -a ci-flatpak-meta/bigrangatech-flatpak.gpg \
+          /tmp/flatpaks-publish/labdesk/bigrangatech-flatpak.gpg
+      fi
+      if [ -f ci-flatpak-meta/labdesk.flatpakrepo ]; then
+        cp -a ci-flatpak-meta/labdesk.flatpakrepo \
+          /tmp/flatpaks-publish/labdesk/labdesk.flatpakrepo
+      fi
       cd /tmp/flatpaks-publish
       git config user.email "ci@labdesk.local"
       git config user.name "LabDesk CI"
@@ -123,4 +188,5 @@ flatpak_build_publish:
     when: on_success
     paths:
       - repo/
+      - ci-flatpak-meta/
     expire_in: 7 days

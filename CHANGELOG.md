@@ -20,6 +20,13 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **01:48:36  11/08/2026** — Flatpak GPG CI var: accept single-line
+  **base64** secrets so GitLab **Masked** works (armored keys have
+  newlines and are rejected).
+- **01:36:50  11/08/2026** — Flatpak remote GPG signing in CI
+  (`FLATPAK_GPG_PRIVATE_KEY`), `scripts/flatpak-gpg-create.sh`, and
+  install docs for signed `.flatpakrepo` vs temporary `--user
+  --no-gpg-verify` (fixes untrusted non-gpg remote installs).
 - **01:26:16  11/08/2026** — Replace default GitLab README with a proper
   LabDesk project README (features, Flatpak, develop, docs map).
 - **01:22:30  11/08/2026** — Local merge (clean only; `LD-GIT-020` on

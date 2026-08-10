@@ -33,19 +33,48 @@ of [`Ranga/flatpaks`](http://git.bigrangatech.com/Ranga/flatpaks.git)
 
 ### 2.1 Add the remote (once)
 
-When CI has published the Flatpak remote layout, add it (remote name
-and URL may be refined in release notes — keep this section current):
+Flatpak **system** installs refuse unsigned remotes (`Can't pull from
+untrusted non-gpg verified remote`). Prefer the signed `.flatpakrepo`
+after CI has published with GPG (see §2.1a). Until then, use a **user**
+remote with `--no-gpg-verify`:
 
 ```bash
-# Example — adjust if your flatpaks repo serves a different remote URL
-flatpak remote-add --if-not-exists bigrangatech-flatpaks \
-  http://git.bigrangatech.com/Ranga/flatpaks/raw/main/labdesk/repo \
-  --no-gpg-verify
+# Temporary unsigned path (user install only)
+flatpak remote-delete --user bigrangatech-flatpaks 2>/dev/null || true
+flatpak remote-add --if-not-exists --user --no-gpg-verify bigrangatech-flatpaks \
+  https://git.bigrangatech.com/Ranga/flatpaks/-/raw/main/labdesk/repo
+flatpak install --user bigrangatech-flatpaks com.bigrangatech.LabDesk
 ```
 
-If the published layout uses GPG, drop `--no-gpg-verify` and import the
-key documented with the release. Prefer HTTPS remotes when TLS is set
-up for the GitLab host.
+### 2.1a Signed remote (recommended)
+
+After operators create a signing key (`./scripts/flatpak-gpg-create.sh`)
+and set `FLATPAK_GPG_PRIVATE_KEY` in GitLab CI, each publish writes
+`labdesk.flatpakrepo` + `bigrangatech-flatpak.gpg` into `Ranga/flatpaks`.
+
+```bash
+flatpak remote-delete --user bigrangatech-flatpaks 2>/dev/null || true
+# Also remove a broken system remote if you added one earlier:
+#   sudo flatpak remote-delete bigrangatech-flatpaks
+
+flatpak remote-add --if-not-exists bigrangatech-flatpaks \
+  https://git.bigrangatech.com/Ranga/flatpaks/-/raw/main/labdesk/labdesk.flatpakrepo
+
+flatpak install bigrangatech-flatpaks com.bigrangatech.LabDesk
+flatpak run com.bigrangatech.LabDesk
+```
+
+Or import the public key explicitly:
+
+```bash
+curl -fsSL -o /tmp/bigrangatech-flatpak.gpg \
+  https://git.bigrangatech.com/Ranga/flatpaks/-/raw/main/labdesk/bigrangatech-flatpak.gpg
+flatpak remote-add --if-not-exists --gpg-import=/tmp/bigrangatech-flatpak.gpg \
+  bigrangatech-flatpaks \
+  https://git.bigrangatech.com/Ranga/flatpaks/-/raw/main/labdesk/repo
+```
+
+Prefer **HTTPS** remotes when TLS is set up for the GitLab host.
 
 ### 2.2 Install
 

@@ -25,10 +25,14 @@ releases. Stack: **PySide6** UI + **Rust** core via PyO3/Maturin. License:
 
 Releases are published into
 [`Ranga/flatpaks`](http://git.bigrangatech.com/Ranga/flatpaks.git).
-Exact remote URL and install steps: [Docs/user-guide.md](Docs/user-guide.md).
+Exact remote URL and install steps: [Docs/user-guide.md](Docs/user-guide.md)
+(signed `.flatpakrepo` preferred; temporary `--user --no-gpg-verify` until
+GPG is configured in CI).
 
 ```bash
-# Example — see user-guide for the current remote URL
+# After CI publishes labdesk.flatpakrepo (signed):
+flatpak remote-add --if-not-exists bigrangatech-flatpaks \
+  https://git.bigrangatech.com/Ranga/flatpaks/-/raw/main/labdesk/labdesk.flatpakrepo
 flatpak install bigrangatech-flatpaks com.bigrangatech.LabDesk
 flatpak run com.bigrangatech.LabDesk
 ```

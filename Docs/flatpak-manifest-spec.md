@@ -102,8 +102,17 @@ CI variables (set in GitLab `labdesk` project settings, not in git):
 | `FLATPAKS_REPO_URL` | Default `https://git.bigrangatech.com/Ranga/flatpaks.git` (use **https**, not http — redirects drop credentials) |
 | `FLATPAKS_DEPLOY_TOKEN` | Project/group access token on **`flatpaks`** with `write_repository` (password). Username defaults to `oauth2`. |
 | `FLATPAKS_DEPLOY_USER` | Optional. Set if using a **deploy token** (its username) instead of `oauth2`. |
+| `FLATPAK_GPG_PRIVATE_KEY` | **Recommended.** Signing secret for the ostree repo. For **Masked** GitLab variables use **single-line base64** of the armored secret (`*.gpg.b64` from `./scripts/flatpak-gpg-create.sh`) — Masked values cannot contain whitespace/newlines. Or Type **File** with the armored key and leave Masked off. Never commit. |
+| `FLATPAK_GPG_KEY_ID` | Optional fingerprint; CI auto-detects after import. |
 
 Token CI variable flags: **Masked**; uncheck **Protected** unless the job only runs on protected branches/tags.
+
+**GPG:** Without `FLATPAK_GPG_PRIVATE_KEY`, CI still publishes an unsigned
+`labdesk/repo`. Flatpak **system** installs will then fail with
+`Can't pull from untrusted non-gpg verified remote` — use
+`--user --no-gpg-verify` only as a temporary workaround
+(`user-guide.md` §2.1). With the key set, CI also publishes
+`labdesk/labdesk.flatpakrepo` and `labdesk/bigrangatech-flatpak.gpg`.
 
 ## 6. Local build (optional)
 
