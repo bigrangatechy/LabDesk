@@ -74,6 +74,8 @@ class MainWindow(QMainWindow):
         self._view_actions: dict[str, QAction] = {}
         self._nav_buttons: dict[str, QPushButton] = {}
         self._shell = "classic"
+        self._online = True
+        self._startup_recovery: dict | None = None
 
         ensure_builtin_views()
 
@@ -258,8 +260,28 @@ class MainWindow(QMainWindow):
 
     def open_repo_window(self, path: str, title: str | None = None) -> None:
         win = RepoWindow(path, title=title or f"LabDesk — {path}", parent=self)
+        win.set_network_available(self._online)
         win.show()
         self._repo_windows.append(win)
+
+    def is_network_available(self) -> bool:
+        return self._online
+
+    def set_network_available(self, available: bool, *, detail: str | None = None) -> None:
+        self._online = available
+        projects = self._view_widgets.get("projects")
+        if projects is not None and hasattr(projects, "set_network_available"):
+            projects.set_network_available(available)
+        alive: list[RepoWindow] = []
+        for win in self._repo_windows:
+            try:
+                win.set_network_available(available)
+                alive.append(win)
+            except RuntimeError:
+                continue
+        self._repo_windows = alive
+        if not available and detail:
+            self.detail.setText(detail)
 
     def open_repository_dialog(self) -> None:
         start = ""
@@ -325,6 +347,7 @@ class MainWindow(QMainWindow):
                     "Add a self-hosted instance to get started."
                 )
                 self.detail.setText("")
+                self.set_network_available(True)
                 return
 
             user = labdesk_core.fetch_current_user()
@@ -333,10 +356,38 @@ class MainWindow(QMainWindow):
                 f"Instance: {user.get('instance_name')} — {user.get('base_url')}"
             )
             self.detail.setText("")
+            self.set_network_available(True)
         except Exception as exc:
             code, msg = format_error(exc)
-            self.status.setText(f"[{code}] {msg}")
-            self.detail.setText(str(exc))
+            if code == "LD-NET-001":
+                self.status.setText(
+                    f"Working offline — [{code}] {msg}\n"
+                    "Local git still works; push / MR / project refresh are disabled."
+                )
+                self.detail.setText(str(exc))
+                self.set_network_available(False, detail=str(exc))
+            else:
+                self.status.setText(f"[{code}] {msg}")
+                self.detail.setText(str(exc))
+                if code.startswith("LD-NET"):
+                    self.set_network_available(False, detail=str(exc))
+                else:
+                    # Auth/config errors: keep network actions, user must reconnect.
+                    self.set_network_available(True)
+
+    def show_startup_recovery_if_needed(self) -> None:
+        info = self._startup_recovery
+        if not info:
+            return
+        self._startup_recovery = None
+        code = info.get("code") or "LD-CFG-010"
+        detail = info.get("detail") or ""
+        QMessageBox.warning(
+            self,
+            f"Startup recovery ({code})",
+            f"[{code}] Startup hung; config was reset to last known good.\n\n"
+            f"{detail}".strip(),
+        )
 
     def switch_view(self, view_id: str, *, persist: bool = True) -> None:
         widget = self._view_widgets.get(view_id)

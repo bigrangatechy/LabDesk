@@ -1,13 +1,15 @@
-"""Local repository window — changes, files, history, push/pull."""
+"""Local repository window — changes, files, history, branches, push/pull."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QPalette, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -22,6 +24,8 @@ from PySide6.QtWidgets import (
 )
 
 from labdesk_ui.utils.helpers import format_error
+from labdesk_ui.utils.open_external import open_path, open_url
+from labdesk_ui.windows.mr_dialog import MRDialog
 
 
 def _format_commit_time(epoch: int | float | None) -> str:
@@ -58,6 +62,7 @@ class RepoWindow(QMainWindow):
     def __init__(self, repo_path: str, title: str | None = None, parent=None) -> None:
         super().__init__(parent)
         self.repo_path = repo_path
+        self._network_available = True
         self.setWindowTitle(title or f"LabDesk — {repo_path}")
         self.resize(1100, 700)
 
@@ -86,12 +91,22 @@ class RepoWindow(QMainWindow):
         self.btn_force = QPushButton("Force push…")
         self.btn_force.clicked.connect(self._force_push)
         row.addWidget(self.btn_force)
+
+        self.btn_mr = QPushButton("Create merge request…")
+        self.btn_mr.clicked.connect(self._create_mr)
+        row.addWidget(self.btn_mr)
+
+        self.btn_editor = QPushButton("Open in editor")
+        self.btn_editor.clicked.connect(self._open_in_editor)
+        self.btn_editor.setEnabled(False)
+        row.addWidget(self.btn_editor)
         row.addStretch(1)
         layout.addLayout(row)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_changes_tab(), "Changes")
         self.tabs.addTab(self._build_history_tab(), "History")
+        self.tabs.addTab(self._build_branches_tab(), "Branches")
         layout.addWidget(self.tabs, stretch=1)
 
         self.footer = QLabel("")
@@ -99,6 +114,19 @@ class RepoWindow(QMainWindow):
         layout.addWidget(self.footer)
 
         self.refresh()
+        self.set_network_available(True)
+
+    def set_network_available(self, available: bool) -> None:
+        self._network_available = available
+        self.btn_push.setEnabled(available)
+        self.btn_force.setEnabled(available)
+        self.btn_pull.setEnabled(available)
+        self.btn_mr.setEnabled(available)
+        tip = "Working offline — network git actions disabled." if not available else ""
+        self.btn_push.setToolTip(tip)
+        self.btn_force.setToolTip(tip)
+        self.btn_pull.setToolTip(tip)
+        self.btn_mr.setToolTip(tip)
 
     def _build_changes_tab(self) -> QWidget:
         page = QWidget()
@@ -128,7 +156,9 @@ class RepoWindow(QMainWindow):
 
         left_layout.addWidget(QLabel("Commit message"))
         self.commit_message = QTextEdit()
-        self.commit_message.setPlaceholderText("Summary (required)\n\nOptional longer description…")
+        self.commit_message.setPlaceholderText(
+            "Summary (required)\n\nOptional longer description…"
+        )
         self.commit_message.setFixedHeight(90)
         left_layout.addWidget(self.commit_message)
         self.btn_commit = QPushButton("Commit")
@@ -182,10 +212,28 @@ class RepoWindow(QMainWindow):
         layout.addWidget(split)
         return page
 
+    def _build_branches_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        self.branches = QListWidget()
+        self.branches.itemDoubleClicked.connect(lambda _i: self._switch_branch())
+        layout.addWidget(self.branches, stretch=1)
+        row = QHBoxLayout()
+        self.btn_switch_branch = QPushButton("Switch")
+        self.btn_switch_branch.clicked.connect(self._switch_branch)
+        row.addWidget(self.btn_switch_branch)
+        self.btn_create_branch = QPushButton("Create…")
+        self.btn_create_branch.clicked.connect(self._create_branch)
+        row.addWidget(self.btn_create_branch)
+        row.addStretch(1)
+        layout.addLayout(row)
+        return page
+
     def refresh(self) -> None:
         self._refresh_header()
         self._refresh_changes()
         self._refresh_history()
+        self._refresh_branches()
 
     def _refresh_header(self) -> None:
         try:
@@ -205,6 +253,144 @@ class RepoWindow(QMainWindow):
             code, msg = format_error(exc)
             self.header.setText(f"[{code}] {msg}")
 
+    def _refresh_branches(self) -> None:
+        try:
+            import labdesk_core
+
+            data = labdesk_core.repo_list_branches(self.repo_path)
+            current = data.get("current") or ""
+            self.branches.clear()
+            for name in data.get("branches") or []:
+                label = f"* {name}" if name == current else f"  {name}"
+                item = QListWidgetItem(label)
+                item.setData(Qt.ItemDataRole.UserRole, name)
+                self.branches.addItem(item)
+                if name == current:
+                    self.branches.setCurrentItem(item)
+        except Exception as exc:
+            code, msg = format_error(exc)
+            self.footer.setText(f"[{code}] {msg}")
+
+    def _selected_branch_name(self) -> str | None:
+        item = self.branches.currentItem()
+        if item is None:
+            return None
+        data = item.data(Qt.ItemDataRole.UserRole)
+        return str(data) if data else None
+
+    def _switch_branch(self) -> None:
+        name = self._selected_branch_name()
+        if not name:
+            QMessageBox.information(self, "Switch branch", "Select a branch.")
+            return
+        try:
+            import labdesk_core
+
+            current = labdesk_core.repo_branch(self.repo_path)
+            if name == current:
+                return
+            labdesk_core.repo_checkout_branch(self.repo_path, name)
+            self.footer.setText(f"Switched to {name}.")
+            self.refresh()
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+    def _create_branch(self) -> None:
+        name, ok = QInputDialog.getText(self, "Create branch", "New branch name:")
+        if not ok or not name.strip():
+            return
+        try:
+            import labdesk_core
+
+            labdesk_core.repo_create_branch(self.repo_path, name.strip(), True)
+            self.footer.setText(f"Created and switched to {name.strip()}.")
+            self.refresh()
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+    def _selected_file_path(self) -> str | None:
+        item = self.files.currentItem()
+        if item is None:
+            return None
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(data, dict) and data.get("path"):
+            return str(data["path"])
+        return None
+
+    def _open_in_editor(self) -> None:
+        rel = self._selected_file_path()
+        if not rel:
+            QMessageBox.information(self, "Open in editor", "Select a file first.")
+            return
+        abs_path = Path(self.repo_path) / rel
+        try:
+            open_path(abs_path)
+            self.footer.setText(f"Opened {rel} in external application.")
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+    def _create_mr(self) -> None:
+        if not self._network_available:
+            QMessageBox.information(
+                self,
+                "Create merge request",
+                "Working offline — cannot create a merge request.",
+            )
+            return
+        try:
+            import labdesk_core
+
+            info = labdesk_core.resolve_repo_project(self.repo_path)
+            dlg = MRDialog(
+                source_branch=info.get("current_branch")
+                or labdesk_core.repo_branch(self.repo_path),
+                target_branch=info.get("default_branch") or "main",
+                project_label=info.get("path_with_namespace") or "",
+                parent=self,
+            )
+            if dlg.exec() != MRDialog.DialogCode.Accepted:
+                return
+            source, target, title, description = dlg.values()
+            if not title:
+                QMessageBox.warning(self, "Create merge request", "Title is required.")
+                return
+            if not source or not target:
+                QMessageBox.warning(
+                    self,
+                    "Create merge request",
+                    "Source and target branches are required.",
+                )
+                return
+            mr = labdesk_core.create_merge_request(
+                int(info["project_id"]),
+                source,
+                target,
+                title,
+                description or None,
+            )
+            web = mr.get("web_url") or ""
+            iid = mr.get("iid")
+            self.footer.setText(f"Created !{iid}")
+            reply = QMessageBox.information(
+                self,
+                "Merge request created",
+                f"Created !{iid}: {mr.get('title') or title}\n\nOpen in GitLab?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply == QMessageBox.StandardButton.Yes and web:
+                try:
+                    open_url(web)
+                except Exception as exc:
+                    code, msg = format_error(exc)
+                    QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
     def _refresh_changes(self) -> None:
         try:
             import labdesk_core
@@ -221,12 +407,11 @@ class RepoWindow(QMainWindow):
 
             self.files.clear()
             self.diff.clear()
+            self.btn_editor.setEnabled(False)
 
             if changes:
                 staged_only = [
-                    e
-                    for e in changes
-                    if e.get("staged") and not e.get("unstaged")
+                    e for e in changes if e.get("staged") and not e.get("unstaged")
                 ]
                 other = [
                     e
@@ -359,7 +544,6 @@ class RepoWindow(QMainWindow):
             changes = labdesk_core.repo_status(self.repo_path)
             paths = [e["path"] for e in changes if e.get("path") and e.get("unstaged")]
             if not paths:
-                # Also stage anything that might only show as untracked etc.
                 paths = [e["path"] for e in changes if e.get("path")]
             if not paths:
                 QMessageBox.information(self, "Stage all", "Nothing to stage.")
@@ -429,12 +613,15 @@ class RepoWindow(QMainWindow):
 
     def _on_file_selected(self, current: QListWidgetItem | None, _prev) -> None:
         if current is None:
+            self.btn_editor.setEnabled(False)
             return
         data = current.data(Qt.ItemDataRole.UserRole)
         if not isinstance(data, dict):
+            self.btn_editor.setEnabled(False)
             return
         rel = data.get("path") or ""
         kind = data.get("kind") or "change"
+        self.btn_editor.setEnabled(bool(rel))
         if not rel:
             return
         try:

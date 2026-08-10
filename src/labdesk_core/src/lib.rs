@@ -620,6 +620,128 @@ fn repo_branch(repo_path: String) -> PyResult<String> {
 }
 
 #[pyfunction]
+fn repo_list_branches(py: Python<'_>, repo_path: String) -> PyResult<PyObject> {
+    let listed = git_ops::list_branches(std::path::Path::new(&repo_path))?;
+    let d = PyDict::new(py);
+    d.set_item("current", listed.current)?;
+    d.set_item("branches", listed.branches)?;
+    Ok(d.into())
+}
+
+#[pyfunction]
+#[pyo3(signature = (repo_path, name, checkout=true))]
+fn repo_create_branch(repo_path: String, name: String, checkout: bool) -> PyResult<()> {
+    git_ops::create_branch(std::path::Path::new(&repo_path), &name, checkout)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn repo_checkout_branch(repo_path: String, name: String) -> PyResult<()> {
+    git_ops::checkout_branch(std::path::Path::new(&repo_path), &name)?;
+    Ok(())
+}
+
+/// Resolve a local repo path to a cached GitLab project (for MR creation).
+#[pyfunction]
+fn resolve_repo_project(py: Python<'_>, repo_path: String) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some(inst) = cfg.active_instance() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let conn = cache::open(&paths)?;
+
+    let mut project_id: Option<i64> = None;
+    let mut clone_url: Option<String> = None;
+
+    if let Some((_iid, pid, curl)) = cache::find_local_repo_by_path(&conn, &repo_path)? {
+        project_id = pid;
+        clone_url = curl;
+    }
+    if clone_url.is_none() {
+        clone_url = git_ops::remote_url(std::path::Path::new(&repo_path), "origin")?;
+    }
+
+    let project = if let Some(pid) = project_id {
+        cache::get_cached_project(&conn, &inst.id, pid)?
+    } else if let Some(ref url) = clone_url {
+        cache::find_project_by_clone_url(&conn, &inst.id, url)?
+    } else {
+        None
+    };
+
+    let Some(project) = project else {
+        return Err(LabDeskError::App(
+            ErrorInfo::new(
+                "LD-API-404",
+                "Not found or no access.",
+            )
+            .with_detail(
+                "Could not match this repository to a cached GitLab project. Refresh projects and open from the project list, or register the local path.",
+            ),
+        )
+        .into());
+    };
+
+    let current = git_ops::current_branch(std::path::Path::new(&repo_path)).unwrap_or_default();
+    let d = PyDict::new(py);
+    d.set_item("project_id", project.project_id)?;
+    d.set_item("name", project.name)?;
+    d.set_item("path_with_namespace", project.path_with_namespace)?;
+    d.set_item("default_branch", project.default_branch)?;
+    d.set_item("web_url", project.web_url)?;
+    d.set_item("current_branch", current)?;
+    Ok(d.into())
+}
+
+#[pyfunction]
+#[pyo3(signature = (project_id, source_branch, target_branch, title, description=None))]
+fn create_merge_request(
+    py: Python<'_>,
+    project_id: i64,
+    source_branch: String,
+    target_branch: String,
+    title: String,
+    description: Option<String>,
+) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some(inst) = cfg.active_instance() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let pat = secrets::load_pat(&inst.keyring_account).map_err(|_| {
+        LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+    })?;
+    let mr = api_client::create_merge_request(
+        &inst.base_url,
+        &pat,
+        &inst.ssl_mode,
+        project_id,
+        &source_branch,
+        &target_branch,
+        &title,
+        description.as_deref(),
+    )?;
+    let d = PyDict::new(py);
+    d.set_item("iid", mr.iid)?;
+    d.set_item("title", mr.title)?;
+    d.set_item("state", mr.state)?;
+    d.set_item("web_url", mr.web_url)?;
+    Ok(d.into())
+}
+
+#[pyfunction]
 fn repo_pull(repo_path: String) -> PyResult<String> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
@@ -772,6 +894,11 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(repo_commit_info, m)?)?;
     m.add_function(wrap_pyfunction!(repo_commit_diff, m)?)?;
     m.add_function(wrap_pyfunction!(repo_branch, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_list_branches, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_create_branch, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_checkout_branch, m)?)?;
+    m.add_function(wrap_pyfunction!(resolve_repo_project, m)?)?;
+    m.add_function(wrap_pyfunction!(create_merge_request, m)?)?;
     m.add_function(wrap_pyfunction!(repo_pull, m)?)?;
     m.add_function(wrap_pyfunction!(repo_push, m)?)?;
     m.add_function(wrap_pyfunction!(get_default_clone_dir, m)?)?;

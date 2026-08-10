@@ -155,6 +155,9 @@ Never put PAT, passwords, or raw `PRIVATE-TOKEN` values in any field.
 
 ## 4. Startup hang (`LD-CFG-010`)
 
+Timeout: **45 seconds** from process start until the main window marks
+ready (`labdesk_ui.startup`).
+
 Must include in the post-relaunch UI:
 
 1. Code `LD-CFG-010`

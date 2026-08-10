@@ -87,8 +87,11 @@ After install or a major update:
 1. Launch LabDesk; theme and shell layout load from config.
 2. Connect to self-hosted GitLab (PAT in keyring).
 3. Refresh projects; **Open local** or **Add existing…** for a clone.
-4. Repo window: Changes (stage / commit), History, Pull / Push.
-5. Run `flatpak update com.bigrangatech.LabDesk` after a new CI publish
+4. Repo window: Changes (stage / commit), History, Branches, Pull / Push,
+   Open in editor, Create merge request (when online).
+5. Confirm offline banner if the instance is unreachable (local git still
+   works; push/MR/refresh disabled).
+6. Run `flatpak update com.bigrangatech.LabDesk` after a new CI publish
    and confirm the app still launches.
 
 ---
@@ -123,8 +126,9 @@ After install or a major update:
   under Flatpak vs XDG — fill when writing this section).
 - Changes are saved whether made in the UI or in the file; Settings
   saves preserve keys they do not own.
-- If the app **hangs on startup**, it should reset to the last known
-  good config, relaunch, and explain that a reset happened.
+- If the app **hangs on startup** (no ready signal within **45 seconds**),
+  it reverts to the last known-good config, relaunches, and shows
+  **`LD-CFG-010`** (or **`LD-CFG-011`** if no snapshot existed).
 - Do not put PATs or passwords in the config file.
 
 ---
@@ -141,10 +145,12 @@ After install or a major update:
 
 ## 5. Daily git work
 
-- Changes, staging, commit.
-- Read-only diffs.
-- Open files in an **external** editor.
-- Branches; clean local merge; conflicts → resolve outside LabDesk.
+- **Changes:** stage / unstage / commit; read-only diffs.
+- **Open in editor:** opens the selected file with the desktop default
+  (`xdg-open` / portal).
+- **Branches** tab: list, switch, create (dirty-tree checkout may fail
+  with a clear git error — resolve or stash outside LabDesk).
+- Clean local merge / conflict UI: not in V1; resolve conflicts externally.
 
 → Journey C.
 
@@ -152,9 +158,10 @@ After install or a major update:
 
 ## 6. Push, force push & merge requests
 
-- Normal push.
-- Force push only with confirmation.
-- Creating an MR and opening it in the browser.
+- **Pull / Push** from the repo toolbar (disabled while offline).
+- **Force push…** only after confirming the branch name.
+- **Create merge request…:** title, description, source/target; on
+  success, optionally open the MR in the browser.
 
 → Journey D.
 
@@ -162,8 +169,12 @@ After install or a major update:
 
 ## 7. Working offline
 
-- What still works; what is disabled.
-- Stale project list indicators.
+- Status banner shows **Working offline** when the API is unreachable
+  (`LD-NET-001`).
+- Still works: local Changes / History / Branches / commit / open editor.
+- Disabled: project refresh from API, clone, pull/push/force push,
+  create MR.
+- Cached project list may show a staleness / offline hint.
 
 → Journey E.
 

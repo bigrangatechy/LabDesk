@@ -125,8 +125,9 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
   active uv venv (plain `maturin develop` needs `pip`).
 - Manual launch from **repo root**: `PYTHONPATH=src python -m labdesk_ui.main`
 - Current slice: instance connect, projects, clone / add existing,
-  repo Changes (stage/commit/diff) + History, push/pull, pluggable UI
-  shells, Settings for confirmed prefs only.
+  repo Changes (stage/commit/diff) + History + Branches, create MR,
+  open in external editor, offline banner, 45s startup hang recovery,
+  push/pull, pluggable UI shells, Settings for confirmed prefs only.
 
 ---
 
@@ -135,6 +136,11 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
 - Manifest: `flatpak/com.bigrangatech.LabDesk.yml`.
 - CI builds the Flatpak and **pushes** into
   `http://git.bigrangatech.com/Ranga/flatpaks.git` (see `.gitlab-ci.yml`).
+- **Docker runner requirements** for `flatpak_build_publish`:
+  `privileged = true` and `devices = ["/dev/fuse"]` under
+  `[runners.docker]`. Missing FUSE fails with
+  `Failure spawning rofiles-fuse`. openh264 `apply_extra` / bwrap
+  warnings are often non-fatal. See `flatpak-manifest-spec.md` §5.
 - Users add that Flatpak remote and install/update
   `com.bigrangatech.LabDesk` (user-guide).
 - Secrets portal / `org.freedesktop.secrets`; finish args in

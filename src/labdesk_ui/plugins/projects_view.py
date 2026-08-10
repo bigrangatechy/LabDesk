@@ -78,9 +78,25 @@ class ProjectsView(QWidget):
 
     def on_activated(self) -> None:
         self._load_cached_projects()
+        if hasattr(self._ctx, "is_network_available"):
+            self.set_network_available(self._ctx.is_network_available())
 
     def on_deactivated(self) -> None:
         return
+
+    def set_network_available(self, available: bool) -> None:
+        self.btn_refresh_projects.setEnabled(available)
+        self.btn_refresh_user.setEnabled(True)  # allow probe to come back online
+        self.btn_clone.setEnabled(available)
+        self.btn_clone_ssh.setEnabled(available)
+        tip = "Working offline — refresh disabled." if not available else ""
+        self.btn_refresh_projects.setToolTip(tip)
+        self.btn_clone.setToolTip(tip)
+        self.btn_clone_ssh.setToolTip(tip)
+        if not available:
+            text = self.projects_meta.text()
+            if "offline" not in text.lower():
+                self.projects_meta.setText(f"{text} · offline (cached)")
 
     def _selected_project(self) -> dict | None:
         row = self.table.currentRow()
@@ -132,12 +148,16 @@ class ProjectsView(QWidget):
             result = labdesk_core.refresh_projects()
             count = result.get("count", 0)
             self._ctx.set_detail(f"Refreshed {count} projects from API.")
+            if hasattr(self._ctx, "set_network_available"):
+                self._ctx.set_network_available(True)
             self._load_cached_projects()
         except Exception as exc:
             code, msg = format_error(exc)
             self._ctx.set_detail(f"[{code}] {msg} — showing cache if available.")
             self._load_cached_projects()
-            if code.startswith("LD-NET") or code.startswith("LD-API"):
+            if code == "LD-NET-001" or code.startswith("LD-NET"):
+                if hasattr(self._ctx, "set_network_available"):
+                    self._ctx.set_network_available(False, detail=str(exc))
                 return
             QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
 

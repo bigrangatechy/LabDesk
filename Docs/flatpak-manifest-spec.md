@@ -61,9 +61,21 @@ keep this table in sync when permissions change.
    (see `user-guide.md`). Updating `flatpaks` is what makes
    `flatpak update` / `check_for_updates` see new versions.
 
-The Docker runner often needs **`privileged = true`** (or equivalent
-user-namespace / fuse access) for `flatpak-builder` / bubblewrap. Without
-it, the next failure after missing runtimes is usually a namespace error.
+The Docker runner for `flatpak_build_publish` **must** allow bubblewrap
+and FUSE. Without this, jobs fail with `fuse: device not found` /
+`Failure spawning rofiles-fuse` (and often `bwrap: No permissions to
+creating new namespace` on openh264 `apply_extra` — that warning alone is
+usually non-fatal).
+
+In `/etc/gitlab-runner/config.toml` under `[runners.docker]`:
+
+```toml
+privileged = true
+devices = ["/dev/fuse"]
+```
+
+Restart the runner (`sudo systemctl restart gitlab-runner`). Ensure
+`/dev/fuse` exists on the host (`sudo modprobe fuse` if needed).
 
 CI variables (set in GitLab `labdesk` project settings, not in git):
 

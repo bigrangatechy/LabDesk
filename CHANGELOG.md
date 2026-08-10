@@ -20,6 +20,11 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **22:44:29  10/08/2026** — V1 journey gaps: Branches tab
+  (list/create/switch); Create merge request dialog + API; Open in
+  editor (`LD-SYS-010`); offline banner disables refresh/push/MR;
+  45s startup hang watchdog → known-good revert + `LD-CFG-010`/`011`.
+  Flatpak CI docs: Docker runner needs `privileged` + `/dev/fuse`.
 - **22:19:34  10/08/2026** — Flatpak CI: install Freedesktop Platform /
   Sdk / rust-stable 24.08 from Flathub before `flatpak-builder`
   (fixes `org.freedesktop.Platform/x86_64/24.08 not installed`).

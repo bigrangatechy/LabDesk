@@ -216,3 +216,73 @@ pub fn list_membership_projects(
 
     Ok(all)
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreatedMergeRequest {
+    pub iid: u64,
+    pub title: String,
+    pub state: Option<String>,
+    pub web_url: Option<String>,
+}
+
+/// `POST /projects/:id/merge_requests` (api-contract §5.4).
+pub fn create_merge_request(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    source_branch: &str,
+    target_branch: &str,
+    title: &str,
+    description: Option<&str>,
+) -> Result<CreatedMergeRequest> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-001", "Failed to create MR.")
+                .with_detail("Title is required."),
+        ));
+    }
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/projects/{}/merge_requests", api_root(base_url), project_id);
+    let mut body = serde_json::json!({
+        "source_branch": source_branch.trim(),
+        "target_branch": target_branch.trim(),
+        "title": title,
+    });
+    if let Some(desc) = description {
+        body["description"] = serde_json::Value::String(desc.to_string());
+    }
+
+    let resp = client
+        .post(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        if status.as_u16() == 422 {
+            return Err(LabDeskError::App(
+                ErrorInfo::new("LD-API-MR-001", "Failed to create MR.")
+                    .with_detail(truncate(&text, 200)),
+            ));
+        }
+        return Err(map_status(status, &text));
+    }
+    serde_json::from_str(&text).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode merge_request: {e}")),
+        )
+    })
+}

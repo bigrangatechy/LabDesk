@@ -34,8 +34,8 @@ python_import_smoke:
 flatpak_build_publish:
   stage: flatpak
   image: bilelmoussaoui/flatpak-github-actions:gnome-47
-  # flatpak-builder needs user namespaces / fuse; enable privileged on the
-  # Docker runner if this job fails with bwrap / namespace errors.
+  # Requires Docker runner: privileged = true and devices = ["/dev/fuse"].
+  # Otherwise: fuse/rofiles-fuse failure; openh264 bwrap warnings are often OK.
   rules:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

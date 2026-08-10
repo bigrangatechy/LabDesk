@@ -320,6 +320,60 @@ pub fn find_local_repo_by_project(
     Ok(first)
 }
 
+/// Look up a local_repos row by absolute path.
+pub fn find_local_repo_by_path(
+    conn: &Connection,
+    path: &str,
+) -> Result<Option<(Option<String>, Option<i64>, Option<String>)>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT instance_id, project_id, clone_url FROM local_repos WHERE path = ?1 LIMIT 1",
+        )
+        .map_err(cache_err)?;
+    let mut rows = stmt
+        .query_map(params![path], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .map_err(cache_err)?;
+    match rows.next() {
+        Some(Ok(v)) => Ok(Some(v)),
+        Some(Err(e)) => Err(cache_err(e)),
+        None => Ok(None),
+    }
+}
+
+fn normalize_git_url(url: &str) -> String {
+    let u = url.trim().trim_end_matches('/').trim_end_matches(".git");
+    u.to_lowercase()
+}
+
+/// Match a clone/remote URL against cached project http/ssh URLs.
+pub fn find_project_by_clone_url(
+    conn: &Connection,
+    instance_id: &str,
+    clone_url: &str,
+) -> Result<Option<CachedProject>> {
+    let needle = normalize_git_url(clone_url);
+    if needle.is_empty() {
+        return Ok(None);
+    }
+    let projects = list_projects(conn, instance_id)?;
+    for p in projects {
+        let http = p.http_url_to_repo.clone();
+        let ssh = p.ssh_url_to_repo.clone();
+        for cand in [http, ssh].into_iter().flatten() {
+            if normalize_git_url(&cand) == needle {
+                return Ok(Some(p));
+            }
+        }
+    }
+    Ok(None)
+}
+
 fn cache_err(e: rusqlite::Error) -> LabDeskError {
     LabDeskError::App(
         ErrorInfo::new("LD-CACHE-001", "Cache corrupted. Rebuilding.").with_detail(e.to_string()),

@@ -76,13 +76,16 @@ credential helper (ADR-008).
   `config.toml` (exact filename/location — implementation detail).
 - **Hang on open → recover:** if the app **hangs while opening /
   starting**, LabDesk (or a small launcher/watchdog) should:
-  1. Detect the hang (timeout — value chosen at implementation).
-  2. **Revert** `config.toml` to the last known good snapshot.
+  1. Detect the hang (**timeout: 45 seconds** from process start until
+     the main window signals ready).
+  2. **Revert** `config.toml` to the last known good snapshot
+     (`config.known-good.toml`).
   3. **Relaunch** the app.
   4. Show an **error** with code **`LD-CFG-010`**, explaining that
      startup hung, that the config was reset to the last known good
      state, and whatever diagnostic is available about what was
      happening when it hung (best-effort; see `error-codes.md`).
+     If no snapshot existed → **`LD-CFG-011`**.
 - Secrets still never go in this file (ADR-008 / security-credentials).
 
 Mark each preference as **UI-exposed** (Settings), **elsewhere in UI**

@@ -572,6 +572,84 @@ pub fn current_branch(repo_path: &Path) -> Result<String> {
     Ok(head.shorthand().unwrap_or("HEAD").to_string())
 }
 
+#[derive(Debug, Clone)]
+pub struct BranchList {
+    pub current: String,
+    pub branches: Vec<String>,
+}
+
+/// List local branches (sorted) and the current branch name.
+pub fn list_branches(repo_path: &Path) -> Result<BranchList> {
+    let repo = open_repo(repo_path)?;
+    let current = repo
+        .head()
+        .ok()
+        .and_then(|h| h.shorthand().map(|s| s.to_string()))
+        .unwrap_or_else(|| "HEAD".to_string());
+
+    let mut branches = Vec::new();
+    let iter = repo.branches(Some(git2::BranchType::Local)).map_err(|e| {
+        map_git_error(e, "LD-GIT-001", "Git operation failed.")
+    })?;
+    for item in iter {
+        let (branch, _) = item.map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+        if let Some(name) = branch.name().ok().flatten() {
+            branches.push(name.to_string());
+        }
+    }
+    branches.sort();
+    Ok(BranchList { current, branches })
+}
+
+/// Create a local branch from HEAD; optionally check it out.
+pub fn create_branch(repo_path: &Path, name: &str, checkout: bool) -> Result<()> {
+    let name = name.trim();
+    if name.is_empty() || name.contains([' ', '\t', '\n']) {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail("Branch name must be non-empty and without whitespace."),
+        ));
+    }
+    let repo = open_repo(repo_path)?;
+    let commit = repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    repo.branch(name, &commit, false)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    if checkout {
+        checkout_branch(repo_path, name)?;
+    }
+    Ok(())
+}
+
+/// Check out an existing local branch.
+pub fn checkout_branch(repo_path: &Path, name: &str) -> Result<()> {
+    let repo = open_repo(repo_path)?;
+    let branch = repo
+        .find_branch(name, git2::BranchType::Local)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let reference = branch
+        .get()
+        .name()
+        .ok_or_else(|| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                    .with_detail("Branch has no reference name."),
+            )
+        })?
+        .to_string();
+
+    let obj = repo
+        .revparse_single(&reference)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    repo.checkout_tree(&obj, None)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    repo.set_head(&reference)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    Ok(())
+}
+
 /// Short subject of HEAD commit (empty string if unavailable).
 pub fn head_commit_summary(repo_path: &Path) -> Result<String> {
     let repo = open_repo(repo_path)?;

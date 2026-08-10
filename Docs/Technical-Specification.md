@@ -22,7 +22,7 @@ rejected at instance setup (see ADR-001).
 │  UI Layer (Python + PySide6)                                │
 │  ├── MainWindow (menubar + stacked ViewPlugin host)         │
 │  ├── View plugins (Projects, Settings; more later)          │
-│  ├── RepoWindow (Changes, History; Branches later)          │
+│  ├── RepoWindow (Changes, History, Branches)                │
 │  ├── DiffViewer (read-only QTextEdit)                       │
 │  ├── InstanceConfigDialog (URL + PAT; git auth via helper)  │
 │  └── MRDialog (Merge request creation form)                 │
