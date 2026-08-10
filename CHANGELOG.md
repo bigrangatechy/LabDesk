@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **23:53:36  10/08/2026** — Flatpak module `labdesk-core`:
+  `build-args: --share=network` so crates.io / PyPI resolve inside
+  the build sandbox (fixes DNS failures during `cargo` / `pip`).
 - **23:41:51  10/08/2026** — Flatpak CI: fail-fast userns check + docs for
   `privileged` / `security_opt` / Ubuntu AppArmor (module build bwrap).
 - **23:28:19  10/08/2026** — Flatpak CI: `flatpak-builder

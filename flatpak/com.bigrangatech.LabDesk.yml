@@ -32,23 +32,39 @@ modules:
   - name: labdesk-core
     buildsystem: simple
     build-options:
+      # Allow crates.io / PyPI during beta builds (vendor later for Flathub).
+      build-args:
+        - --share=network
       append-path: /usr/lib/sdk/rust-stable/bin
       env:
         CARGO_HOME: /run/build/labdesk-core/cargo
     build-commands:
+      - |
+        set -euo pipefail
+        if [ -f /usr/lib/sdk/rust-stable/enable.sh ]; then
+          # shellcheck disable=SC1091
+          . /usr/lib/sdk/rust-stable/enable.sh
+        fi
       - pip3 install --prefix=/app --no-deps maturin || true
       - |
         set -euo pipefail
+        if [ -f /usr/lib/sdk/rust-stable/enable.sh ]; then
+          # shellcheck disable=SC1091
+          . /usr/lib/sdk/rust-stable/enable.sh
+        fi
         cd src/labdesk_core
-        # Prefer maturin if available in the SDK image; otherwise cargo build
-        # and install the cdylib next to the Python package in a follow-up.
+        # Prefer maturin if available; otherwise cargo build.
         if command -v maturin >/dev/null 2>&1; then
           maturin build --release -o /tmp/wheels
           pip3 install --prefix=/app /tmp/wheels/*.whl
         else
           cargo build --release
-          install -Dm755 target/release/liblabdesk_core.so \
-            /app/lib/python3.*/site-packages/ || true
+          # cdylib name from Cargo; install best-effort for beta skeleton
+          so=$(find target/release -maxdepth 1 -name 'liblabdesk_core.so' -o -name 'labdesk_core.so' | head -1 || true)
+          if [ -n "${so}" ]; then
+            mkdir -p /app/lib/labdesk
+            install -Dm755 "${so}" /app/lib/labdesk/
+          fi
         fi
       - |
         mkdir -p /app/lib/labdesk /app/bin

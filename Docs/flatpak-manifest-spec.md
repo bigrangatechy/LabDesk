@@ -29,8 +29,10 @@ checkouts (see root `.gitignore`).
 - Prefer **Freedesktop** or **KDE** Platform/Sdk with Qt 6 suitable for
   PySide6 (pin exact runtime versions in the manifest; bump only after
   testing).
-- Bundle / build: Rust `labdesk_core` (maturin), Python UI, PySide6,
-  libgit2 (via crates or system in module).
+- Bundle / build: Rust `labdesk_core` (maturin/cargo), Python UI, PySide6,
+  libgit2 (via crates or system in module). Beta builds use
+  `build-args: [--share=network]` so crates.io/PyPI work; vendor
+  crates for stricter/offline Flathub-style builds later.
 
 ## 4. Finish args (required for V1 behaviour)
 
