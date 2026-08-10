@@ -34,8 +34,9 @@ python_import_smoke:
 flatpak_build_publish:
   stage: flatpak
   image: bilelmoussaoui/flatpak-github-actions:gnome-47
-  # Requires Docker runner: privileged = true and devices = ["/dev/fuse"].
-  # Otherwise: fuse/rofiles-fuse failure; openh264 bwrap warnings are often OK.
+  # Prefer privileged = true on the Docker runner (helps bwrap). FUSE is
+  # optional when using --disable-rofiles-fuse below; openh264 bwrap
+  # warnings are usually non-fatal.
   rules:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -52,7 +53,9 @@ flatpak_build_publish:
     - |
       set -euo pipefail
       echo "Building ${FLATPAK_APP_ID}…"
-      flatpak-builder --user --force-clean --install-deps-from=flathub \
+      # --disable-rofiles-fuse: avoid /dev/fuse requirement in Docker CI
+      flatpak-builder --user --force-clean --disable-rofiles-fuse \
+        --install-deps-from=flathub \
         --repo=repo flatpak-build \
         flatpak/com.bigrangatech.LabDesk.yml
     - |

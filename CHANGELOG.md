@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **23:28:19  10/08/2026** — Flatpak CI: `flatpak-builder
+  --disable-rofiles-fuse` so Docker jobs do not need `/dev/fuse`
+  (fixes `Failure spawning rofiles-fuse`).
 - **22:44:29  10/08/2026** — V1 journey gaps: Branches tab
   (list/create/switch); Create merge request dialog + API; Open in
   editor (`LD-SYS-010`); offline banner disables refresh/push/MR;

@@ -61,21 +61,23 @@ keep this table in sync when permissions change.
    (see `user-guide.md`). Updating `flatpaks` is what makes
    `flatpak update` / `check_for_updates` see new versions.
 
-The Docker runner for `flatpak_build_publish` **must** allow bubblewrap
-and FUSE. Without this, jobs fail with `fuse: device not found` /
-`Failure spawning rofiles-fuse` (and often `bwrap: No permissions to
-creating new namespace` on openh264 `apply_extra` — that warning alone is
-usually non-fatal).
+The Docker runner for `flatpak_build_publish` should use
+**`privileged = true`** (helps bubblewrap / user namespaces). openh264
+`apply_extra` / bwrap warnings are often non-fatal.
 
-In `/etc/gitlab-runner/config.toml` under `[runners.docker]`:
+CI uses **`flatpak-builder --disable-rofiles-fuse`** so the job does not
+require `/dev/fuse` inside the container (avoids
+`Failure spawning rofiles-fuse` on typical Docker runners). Optionally
+still set `devices = ["/dev/fuse"]` if you drop that flag later.
 
 ```toml
 privileged = true
-devices = ["/dev/fuse"]
+# optional if not using --disable-rofiles-fuse:
+# devices = ["/dev/fuse"]
 ```
 
-Restart the runner (`sudo systemctl restart gitlab-runner`). Ensure
-`/dev/fuse` exists on the host (`sudo modprobe fuse` if needed).
+Restart the runner after config changes
+(`sudo systemctl restart gitlab-runner`).
 
 CI variables (set in GitLab `labdesk` project settings, not in git):
 

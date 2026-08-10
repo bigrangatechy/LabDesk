@@ -137,9 +137,8 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
 - CI builds the Flatpak and **pushes** into
   `http://git.bigrangatech.com/Ranga/flatpaks.git` (see `.gitlab-ci.yml`).
 - **Docker runner requirements** for `flatpak_build_publish`:
-  `privileged = true` and `devices = ["/dev/fuse"]` under
-  `[runners.docker]`. Missing FUSE fails with
-  `Failure spawning rofiles-fuse`. openh264 `apply_extra` / bwrap
+  prefer `privileged = true`. CI uses `--disable-rofiles-fuse` so
+  `/dev/fuse` is not required. openh264 `apply_extra` / bwrap
   warnings are often non-fatal. See `flatpak-manifest-spec.md` §5.
 - Users add that Flatpak remote and install/update
   `com.bigrangatech.LabDesk` (user-guide).
