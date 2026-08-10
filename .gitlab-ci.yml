@@ -88,7 +88,8 @@ flatpak_build_publish:
       rm -rf /tmp/flatpaks-publish
       git clone --depth 1 "${AUTH_DEST}" /tmp/flatpaks-publish
       mkdir -p /tmp/flatpaks-publish/labdesk
-      rsync -a --delete repo/ /tmp/flatpaks-publish/labdesk/repo/
+      rm -rf /tmp/flatpaks-publish/labdesk/repo
+      cp -a repo /tmp/flatpaks-publish/labdesk/repo
       cd /tmp/flatpaks-publish
       git config user.email "ci@labdesk.local"
       git config user.name "LabDesk CI"

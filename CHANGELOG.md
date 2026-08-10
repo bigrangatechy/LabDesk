@@ -20,6 +20,8 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:24:16  11/08/2026** — Flatpak CI publish: use `cp -a` instead of
+  `rsync` (image has no rsync).
 - **00:14:19  11/08/2026** — Flatpak: `maturin --skip-auditwheel` and
   `git2` `vendored-openssl` so the wheel does not need to bundle
   `libssl`/`libcrypto` (fixes maturin repair failure).
