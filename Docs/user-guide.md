@@ -43,6 +43,28 @@ the full API or SQLite schema here.
 
 ---
 
+## 3a. Settings & config file
+
+- **`config.toml` is the full preference surface** — as many options as
+  practical live there (including ones that are not in the UI yet).
+- **Settings → Preferences** only shows options that are **confirmed
+  working** for everyday use (today: clone folder, theme).
+- Switch main views via the **View** menu; last view is stored as
+  `general.active_ui_view` (not a Settings form field).
+- **Clone into:** folder where new clones go (e.g. `~/Documents/gitlab`).
+  Saved as `general.default_clone_dir`.
+- Other keys (e.g. `check_for_updates`) stay **config-only** until the
+  matching feature is ready, then may gain a Settings control.
+- Advanced / not-yet-in-UI options: edit `config.toml` directly (paths
+  under Flatpak vs XDG — fill when writing this section).
+- Changes are saved whether made in the UI or in the file; Settings
+  saves preserve keys they do not own.
+- If the app **hangs on startup**, it should reset to the last known
+  good config, relaunch, and explain that a reset happened.
+- Do not put PATs or passwords in the config file.
+
+---
+
 ## 4. Projects & cloning
 
 - Browsing projects (membership list).

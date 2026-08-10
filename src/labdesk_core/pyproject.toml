@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "labdesk_core"
+version = "0.1.0"
+description = "LabDesk Rust core"
+requires-python = ">=3.10"
+license = { text = "GPL-2.0-or-later" }
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "labdesk_core"

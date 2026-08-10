@@ -62,16 +62,55 @@ Point to ADRs rather than restating them.
 
 ## 4. Development environment
 
-- TBD: Rust toolchain, Python version, Maturin, system libs (libgit2,
-  Qt), keyring/Secret Service for local runs.
-- TBD: how to run unpackaged vs Flatpak nightlies.
+- **Python:** 3.10+ (developed against 3.14 with PyO3 0.25).
+- **Rust:** stable (1.97+ tested).
+- **Tooling:** [uv](https://github.com/astral-sh/uv) recommended for the
+  venv; `maturin` builds `labdesk_core`.
+- **UI:** PySide6.
+- **System:** Linux; Secret Service / keyring for API PATs.
+
+```bash
+# from repo root (preferred)
+./scripts/run-labdesk.sh
+```
+
+That script activates `.venv`, runs `maturin develop --uv`, then launches
+the UI with the correct `PYTHONPATH`.
+
+Manual equivalent:
+
+```bash
+# from repo root
+source .venv/bin/activate
+uv pip install maturin PySide6   # first time / when deps change
+cd src/labdesk_core && maturin develop --uv && cd ../..
+PYTHONPATH=src python -m labdesk_ui.main
+```
+
+Config (unpackaged): `~/.config/labdesk/config.toml`  
+Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
+
+**Notes:**
+- Prefer `./scripts/run-labdesk.sh` for day-to-day runs.
+- Use `maturin develop --uv` when the venv was created with uv (no
+  `pip` on PATH).
+- Always launch from the **repo root** so `PYTHONPATH=src` finds
+  `labdesk_ui` (the script does this for you).
 
 ---
 
 ## 5. Build & run
 
-- TBD: `maturin develop`, UI entrypoint, env vars.
-- TBD: lint/format commands.
+- **Preferred:** `./scripts/run-labdesk.sh` from the repo root.
+- `maturin develop --uv` — editable install of `labdesk_core` into the
+  active uv venv (plain `maturin develop` needs `pip`).
+- Manual launch from **repo root**: `PYTHONPATH=src python -m labdesk_ui.main`
+- First slice exposes: add instance (URL + PAT), `GET /user`, project
+  list refresh into SQLite cache, clone into configured folder (HTTPS or
+  SSH), status + project table in the main window, `LD-…` error codes.
+- Still placeholder: push/pull UI, diffs, hang watchdog (known-good
+  snapshot is written on successful connect; `revert_config_to_known_good`
+  is available for recovery).
 
 ---
 
@@ -87,7 +126,15 @@ Point to ADRs rather than restating them.
 ## 7. Data & API
 
 - Implement against `data-model.md` and `api-contract.md`.
+- Map failures to `error-codes.md` (`LD-…`) at the core → UI boundary.
 - No plaintext PAT in config; no Bearer API auth in V1.
+- **Config file first:** `config.toml` is authoritative and should
+  expose as many options as practical. **Settings** UI only for
+  confirmed-working / deliberately user-facing options. Config-only
+  keys are valid for testing before UI exists. Persist changes from
+  UI or file; Settings saves preserve unknown keys and only touch
+  fields they own. Startup hang → revert last known good config,
+  relaunch, show `LD-CFG-010` (data-model §3.0).
 
 ---
 

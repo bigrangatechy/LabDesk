@@ -83,17 +83,24 @@ avoid surprises.
   against documented target versions.
 - Prefer least privilege on shared / production instances.
 
-## 4. Git HTTPS via credential helper
+## 4. Git HTTP(S) via credential helper
 
 Per ADR-008:
 
 - libgit2 (or the git ops layer) must use the **Git credential helper**
-  for HTTPS clone / fetch / pull / push.
-- Supported when the instance allows it: **username + password**.
+  for HTTP(S) clone / fetch / pull / push.
+- Supported when the instance allows it: **username + password**
+  (common on self-hosted GitLab, including older `http://` remotes on
+  a LAN).
 - Also supported: **username + PAT as password** (common GitLab HTTPS
   pattern).
 - LabDesk must not write git passwords into `config.toml` or remote URLs
   on disk when the helper can supply them instead.
+- **Existing clones** from the same instance keep their remotes as-is
+  (e.g. `http://git.example/…` with helper-stored username/password).
+  Adopting them does not rewrite the remote to HTTPS or inject the API
+  PAT into the URL. Push/pull still asks the credential helper first;
+  the API PAT is only a fallback when the helper has nothing.
 
 ### 4.1 2FA
 

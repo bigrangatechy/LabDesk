@@ -260,16 +260,18 @@ Used for branch comparison / preflight before MR if implemented.
 
 ## 7. Errors & rate limits
 
-Map HTTP outcomes to Technical Specification §6 messages.
+Map HTTP outcomes to LabDesk **`LD-…` codes** ([`error-codes.md`](error-codes.md))
+and Technical Specification §6 messages.
 
-| HTTP | Meaning for LabDesk | Client action |
-|------|---------------------|---------------|
-| `401` | Bad/missing PAT | Clear keyring PAT; prompt re-entry |
-| `403` | Forbidden | Show message; do not wipe PAT unless also auth-shaped |
-| `404` | Missing resource or hidden by permissions | User-visible error |
-| `429` | Rate limited | Exponential backoff; surface “Retrying in N seconds” |
-| `5xx` | Server error | Retry with backoff (bounded); then fail visibly |
-| Network error | Unreachable | Offline / cached mode |
+| HTTP | LabDesk code | Meaning for LabDesk | Client action |
+|------|--------------|---------------------|---------------|
+| `401` | `LD-AUTH-001` (UI) / `LD-API-401` (wire) | Bad/missing PAT | Clear keyring PAT; prompt re-entry |
+| `403` | `LD-API-403` | Forbidden | Show message; do not wipe PAT unless also auth-shaped |
+| `404` | `LD-API-404` | Missing resource or hidden by permissions | User-visible error |
+| `422` | `LD-API-422` / `LD-API-MR-001` | Validation (e.g. MR) | Preserve form |
+| `429` | `LD-API-429` | Rate limited | Exponential backoff; surface “Retrying in N seconds” |
+| `5xx` | `LD-API-5XX` | Server error | Retry with backoff (bounded); then fail visibly |
+| Network error | `LD-NET-001` | Unreachable | Offline / cached mode |
 
 **Response body:** Prefer GitLab’s `message` (string or object). If
 object/array, flatten to a short user-visible string; keep raw body in

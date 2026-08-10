@@ -50,14 +50,60 @@ credential helper (ADR-008).
 
 ## 3. Config TOML
 
+### 3.0 Philosophy — file first, UI when ready
+
+`config.toml` is the **source of truth** for non-secret settings.
+
+- **Expose options in the file aggressively.** Prefer documenting and
+  shipping a key in `config.toml` as soon as the core can read it —
+  even if behaviour is incomplete, experimental, or tester-only. The
+  file is the wide surface; the Settings UI is the narrow one.
+- **Settings / Preferences UI is conservative.** Only put a control in
+  Settings when the option is **confirmed working** (or deliberately
+  ready for end users). Do not mirror every config key in the UI.
+- Options may exist in the file **before** a Settings control exists.
+  That lets developers and testers turn features on via the config
+  without shipping incomplete UI.
+- Hand-editing `config.toml` is a supported testing path (document
+  paths in the user/dev guides).
+- **Persistence:** if a setting has been changed — whether in the **UI**
+  or by editing the **config file** — it should be **saved**. The UI
+  must **preserve unknown keys and sections** it does not manage yet,
+  so hand-edited testing options are not wiped on Preferences save.
+  Settings saves update **only** the UI-exposed fields they own.
+- **Known-good snapshot:** after a successful launch reaches a stable
+  “running” state, LabDesk keeps a **last known good** copy of
+  `config.toml` (exact filename/location — implementation detail).
+- **Hang on open → recover:** if the app **hangs while opening /
+  starting**, LabDesk (or a small launcher/watchdog) should:
+  1. Detect the hang (timeout — value chosen at implementation).
+  2. **Revert** `config.toml` to the last known good snapshot.
+  3. **Relaunch** the app.
+  4. Show an **error** with code **`LD-CFG-010`**, explaining that
+     startup hung, that the config was reset to the last known good
+     state, and whatever diagnostic is available about what was
+     happening when it hung (best-effort; see `error-codes.md`).
+- Secrets still never go in this file (ADR-008 / security-credentials).
+
+Mark each preference as **UI-exposed** (Settings), **elsewhere in UI**
+(e.g. View menu), or **config-only (until ready)** as features land.
+V1 Settings stays small; the file may grow ahead of the UI.
+
+- Docs are **living**: behaviour refined here can be adjusted when coding
+  proves better mechanisms (ADR-007 does not require freezing every
+  timeout before the first line of real code). Documentation and code
+  advance together; empty stubs (Flatpak detail, full guides, tests)
+  must not block starting a vertical slice once architecture is clear.
+
 ### 3.1 `[general]` — AppPreferences
 
-| Key | Type | Required | Notes |
-|-----|------|----------|--------|
-| `theme` | string | yes | `"light"` \| `"dark"` \| `"system"` |
-| `default_clone_dir` | string | yes | Expanded path hint for clone dialog |
-| `check_for_updates` | bool | yes | Means check **Flatpak remote** |
-| `active_instance_id` | string | no | Stable id of the instance the UI uses; required once ≥1 instance exists |
+| Key | Type | Required | Exposure | Notes |
+|-----|------|----------|----------|--------|
+| `theme` | string | yes | **UI-exposed** | `"light"` \| `"dark"` \| `"system"` |
+| `default_clone_dir` | string | yes | **UI-exposed** | Clone destination folder |
+| `check_for_updates` | bool | yes | **config-only** | Flatpak remote check (ADR-004); UI when update flow works |
+| `active_instance_id` | string | no | **config / connect flow** | Stable id of active instance; required once ≥1 instance exists |
+| `active_ui_view` | string | no | **View menu** (+ config) | Pluggable main view id (`projects`, `settings`, …); default `projects` |
 
 ### 3.2 `[[instances]]` — Instance
 
@@ -86,6 +132,7 @@ theme = "system"
 default_clone_dir = "~/Projects"
 check_for_updates = true
 active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+active_ui_view = "projects"
 
 [[instances]]
 id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"

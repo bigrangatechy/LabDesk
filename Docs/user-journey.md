@@ -47,7 +47,18 @@ an `[[instances]]` array for a later multi-instance UI.
 3. User picks a project and clone destination (default clone dir from
    preferences).
 4. Clone via libgit2 (**HTTPS via credential helper**, or **SSH**).
-5. Open the repo in the main RepoView (Changes / History / Branches).
+5. Open the repo in the main RepoView (**Changes** / **History**;
+   Branches later). History lists local commits (newest first) with
+   patch vs parent.
+
+**Existing clones:** If the project is already checked out under the
+default clone folder (`{clone_dir}/{path_with_namespace}`), **Open
+local** / Clone will adopt it. Otherwise use **Add existing…** or
+**File → Open repository…** to point at any git working tree. Clones
+authenticated earlier with **username/password** (credential helper)
+on the same self-hosted server are first-class — LabDesk keeps the
+remote URL and uses the helper for git; the instance **PAT** is only
+for the API (project list, MRs, etc.).
 
 If HTTPS git auth fails (including 2FA blocking passwords), show guidance
 to fix credential-helper credentials, use a PAT-as-password, or switch
@@ -59,12 +70,14 @@ to SSH.
 
 **Goal:** See changes, commit, without needing GitLab up.
 
-1. Open an already cloned repo.
-2. **Changes:** view status; stage / unstage; read-only **diff** in
+1. Open an already cloned repo (**Open local**, **Add existing…**, or
+   **File → Open repository…**).
+2. **Changes:** view status; **stage / unstage**; read-only **diff** in
    `QTextEdit`.
 3. To edit files: open with an **external** editor (`xdg-open` /
    portal). No in-app editor in V1.
-4. Enter commit message → commit locally (libgit2).
+4. Enter commit message → **commit** locally (libgit2; uses git
+   `user.name` / `user.email`).
 5. Create / switch branches locally as needed.
 6. Optional: local **merge** when there are no conflicts. On conflict,
    LabDesk explains and sends the user to resolve externally — no

@@ -7,10 +7,59 @@ and this project will use [Semantic Versioning](https://semver.org/)
 once releases begin. Until the first tagged release, entries accumulate
 under **[Unreleased]**.
 
+**Timestamps:** each new bullet starts with local wall time
+`HH:MM:SS  DD/MM/YYYY` (24-hour clock, day/month/year), then an em dash
+and the note. Example:
+
+`- **19:12:00  10/08/2026** — Short description of what landed.`
+
+Use the machine’s local timezone when the change is recorded. Older
+bullets without a stamp predate this convention.
+
 ## [Unreleased]
 
-### Added
-
+- **19:36:41  10/08/2026** — Stage / unstage / commit in the repo
+  **Changes** tab (message box, staged vs changes lists). Codes
+  `LD-GIT-040`…`042` for identity, empty message, nothing staged.
+- **19:26:11  10/08/2026** — Docs: existing clones on the same instance
+  with username/password (credential helper), including `http://`
+  remotes, are supported; adopt keeps remotes; PAT stays API-only.
+- **19:24:17  10/08/2026** — Existing clones: auto-discover under the
+  clone folder on **Open local**; **Add existing…** to register any
+  folder; **File → Open repository…**; Clone adopts a repo already at
+  the destination. New code `LD-GIT-032`.
+- **19:21:57  10/08/2026** — Repo window **History** tab: commit list
+  (subject, author, local time), metadata, and coloured patch vs parent
+  (`repo_log` / `repo_commit_info` / `repo_commit_diff`).
+- **19:18:25  10/08/2026** — Repo window: clean clones looked empty because
+  only *changes* were listed. Now lists tracked files, shows file
+  contents (read-only), auto-opens README when clean, HEAD summary,
+  theme-aware diff colours; `find_local_repo` prefers an existing path.
+  Settings **← Back to Projects** and **Done** so that view is not a
+  dead end.
+- **19:07:00  10/08/2026** — Settings UI narrowed to confirmed options
+  (clone folder, theme); `check_for_updates` stays config-only until
+  Flatpak update UX works. Docs/AGENTS: config.toml is the wide
+  preference surface; Settings stays conservative.
+- **19:04:00  10/08/2026** — Pluggable main UI: `ViewPlugin` registry +
+  stacked host; built-in **Projects** and **Settings** views; **View** /
+  **Settings** menus; `general.active_ui_view` remembers the last view.
+- First coding slice: Rust `labdesk_core` (TOML config + unknown-key
+  preserve, OS keyring PAT, `PRIVATE-TOKEN` `GET /user`/`version`,
+  known-good config snapshot) and PySide6 connect/status shell with
+  `LD-…` error display.
+- Project list slice: paginated `GET /projects?membership=true`, SQLite
+  `projects` cache with per-row `fetched_at`, UI table + refresh /
+  open-in-browser.
+- Clone destination preference: UI **Clone into** field + Browse/Save
+  writes `general.default_clone_dir` (expands `~`). (Moved into
+  Settings view; same config key.)
+- Clone slice: libgit2 clone into `{clone_dir}/{path_with_namespace}`,
+  HTTPS (credential helper + PAT fallback) or SSH (agent),
+  `local_repos` cache rows, UI **Clone** / **Clone (SSH)**.
+- Repo window: **Open local** / double-click opens clone (not Firefox);
+  status list + colored diff; **Pull**, **Push**, confirmed **Force push**.
+  **Open in browser** remains separate.
 - Dedicated ADR files under `Docs/adr/` with
   `Docs/Architecture-Decision-Records.md` as an index only.
 - ADR-008: API PAT + `PRIVATE-TOKEN`; Git HTTPS via credential helper
@@ -28,8 +77,8 @@ under **[Unreleased]**.
   secrets layout; multi-instance-ready schema with V1 single active
   instance. Instance `id` / `active_instance_id` accepted; per-row
   `fetched_at` and `last_push_at`; MR cache table deferred.
-- `Docs/user-guide.md` / `Docs/dev-guide.md` — guide shells for
-  end-user (UI-embeddable) and contributor docs.
+- `Docs/error-codes.md` — stable `LD-<CATEGORY>-<NNN>` catalog for UI,
+  logs, and startup-hang recovery (`LD-CFG-010`).
 - `AGENTS.md` — rules for AI-assisted contributions.
 - `CONTRIBUTING.md` — human contributor expectations (GPLv2+,
   docs-first, changelog discipline).
@@ -37,6 +86,8 @@ under **[Unreleased]**.
 
 ### Changed
 
+- **19:12:30  10/08/2026** — Changelog bullets now carry local
+  `HH:MM:SS  DD/MM/YYYY` stamps (see header).
 - Technical specification rewritten for current decisions: `QTextEdit`
   diffs (no Riverbank QScintilla), system keyring for API PATs, git
   credential helper for HTTPS, active rejection of SaaS hosts,
@@ -48,6 +99,10 @@ under **[Unreleased]**.
 - ADR-007 now requires root `CHANGELOG.md` discipline.
 - Technical specification §4.2: instance `id` and
   `active_instance_id` added to match data model.
+- Config philosophy / hang recovery wording; `error-codes.md` wired into
+  tech spec and API contract.
+- Dev guide: minimal uv/maturin/PySide6 run instructions for the first
+  slice.
 
 ### Security
 

@@ -20,8 +20,9 @@ rejected at instance setup (see ADR-001).
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  UI Layer (Python + PySide6)                                │
-│  ├── MainWindow (sidebar + content area)                    │
-│  ├── RepoView (Changes, History, Branches tabs)             │
+│  ├── MainWindow (menubar + stacked ViewPlugin host)         │
+│  ├── View plugins (Projects, Settings; more later)          │
+│  ├── RepoWindow (Changes, History; Branches later)          │
 │  ├── DiffViewer (read-only QTextEdit)                       │
 │  ├── InstanceConfigDialog (URL + PAT; git auth via helper)  │
 │  └── MRDialog (Merge request creation form)                 │
@@ -166,14 +167,26 @@ V1 UX configures **one** GitLab instance. The on-disk schema uses an
 `[[instances]]` array so multiple instances can be added later without
 a storage redesign.
 
+**Config philosophy:** `config.toml` is the source of truth and the
+**wide** preference surface — document and ship keys there early
+(including experimental / tester-only). The **Settings** UI is
+**narrow**: only controls for options that are confirmed working or
+intentionally ready for end users. The UI writes those ready options
+into the same file; other options stay config-only until promoted.
+Changed settings are persisted (UI or file); Settings saves preserve
+unknown keys and only update the fields they own. On **startup hang**,
+revert to a **last known good** config, relaunch, and show an error
+(what was happening + that config was reset). See `data-model.md` §3.0.
+
 ```toml
 # Example (Flatpak path shown; XDG path equivalent in unpackaged runs)
 
 [general]
-theme = "system"                 # "light", "dark", "system"
-default_clone_dir = "~/Projects"
-check_for_updates = true         # Check Flatpak remote for updates
+theme = "system"                 # UI: Settings — "light", "dark", "system"
+default_clone_dir = "~/Projects" # UI: Settings
+check_for_updates = true         # config-only until Flatpak update UX works
 active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+active_ui_view = "projects"      # View menu (+ config); not Settings form
 
 [[instances]]
 id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
@@ -217,21 +230,25 @@ active instance in the UI. See `data-model.md`.
 
 ## 6. Error Handling Strategy
 
-| Scenario             | User-Facing Response                         | Internal Action                    |
-|----------------------|----------------------------------------------|------------------------------------|
-| SaaS URL rejected    | "LabDesk supports self-hosted GitLab only."  | Block save; do not store           |
-| Invalid PAT          | "Authentication failed. Check your token."   | Clear keyring entry; prompt re-entry |
-| Git auth failed      | "Git authentication failed. Check credentials or SSH keys." | Prompt helper / guide to SSH or PAT |
-| 2FA blocks password  | "Password git auth blocked. Use SSH or a PAT." | Point to ADR-008 options        |
-| Self-signed cert     | "Certificate not trusted. Import CA or allow." | Offer trust override             |
-| Network unreachable  | "Cannot reach instance. Working offline."    | Switch to cached mode              |
-| API rate limited     | "Rate limited. Retrying in N seconds."       | Exponential backoff                |
-| Git push rejected    | "Push rejected. Pull first?"                 | Offer pull; force push only via separate confirmed action |
-| Force push confirm   | "Force push to {branch}? This can overwrite remote history." | Proceed only on explicit yes |
-| Merge conflict       | "Conflicts detected. Resolve externally."    | Do not offer in-app resolve        |
-| MR creation fails    | "Failed to create MR: {error}"               | Preserve form data; allow retry    |
-| SQLite corruption    | "Cache corrupted. Rebuilding."               | Delete + recreate cache.db         |
-| Keyring unavailable  | "Cannot access system keyring."              | Block PAT save; explain            |
+Every user-visible failure should surface a stable **`LD-…` error code**
+plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
+
+| Scenario             | Code (primary) | User-Facing Response                         | Internal Action                    |
+|----------------------|----------------|----------------------------------------------|------------------------------------|
+| SaaS URL rejected    | `LD-CFG-004`   | "LabDesk supports self-hosted GitLab only."  | Block save; do not store           |
+| Invalid PAT          | `LD-AUTH-001`  | "Authentication failed. Check your token."   | Clear keyring entry; prompt re-entry |
+| Git auth failed      | `LD-GIT-002`   | "Git authentication failed. Check credentials or SSH keys." | Prompt helper / guide to SSH or PAT |
+| 2FA blocks password  | `LD-GIT-003`   | "Password git auth blocked. Use SSH or a PAT." | Point to ADR-008 options        |
+| Self-signed cert     | `LD-NET-010`   | "Certificate not trusted. Import CA or allow." | Offer trust override             |
+| Network unreachable  | `LD-NET-001`   | "Cannot reach instance. Working offline."    | Switch to cached mode              |
+| API rate limited     | `LD-API-429`   | "Rate limited. Retrying in N seconds."       | Exponential backoff                |
+| Git push rejected    | `LD-GIT-010`   | "Push rejected. Pull first?"                 | Offer pull; force push only via separate confirmed action |
+| Force push confirm   | `LD-UI-002`    | "Force push to {branch}? This can overwrite remote history." | Proceed only on explicit yes |
+| Merge conflict       | `LD-GIT-020`   | "Conflicts detected. Resolve externally."    | Do not offer in-app resolve        |
+| MR creation fails    | `LD-API-MR-001`| "Failed to create MR: {error}"               | Preserve form data; allow retry    |
+| SQLite corruption    | `LD-CACHE-001` | "Cache corrupted. Rebuilding."               | Delete + recreate cache.db         |
+| Keyring unavailable  | `LD-AUTH-002`  | "Cannot access system keyring."              | Block PAT save; explain            |
+| Startup hang         | `LD-CFG-010`   | "Startup hung; config reset to last known good. {detail}" | Revert config snapshot; relaunch |
 
 ## 7. Known Constraints (V1)
 

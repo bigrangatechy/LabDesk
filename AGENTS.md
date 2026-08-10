@@ -14,9 +14,10 @@ HTTPS via **credential helper**. License: **GPLv2+**.
 
 ## Current phase
 
-**Documentation-first** (ADR-007). The `src/` tree is **placeholder
-scaffolding**. Do not treat placeholder modules as finished behaviour.
-Prefer updating docs when behaviour is undecided.
+**Living docs + first implementation slice.** Architecture docs are in
+place; `src/` is no longer empty scaffolding for config/auth/API user.
+Update docs when behaviour changes. Empty stubs (Flatpak detail, full
+guides, git UI) must not block continuing the vertical slice.
 
 ## Before you change anything
 
@@ -43,6 +44,16 @@ Prefer updating docs when behaviour is undecided.
 - **Linux only** — no Windows/macOS targets.
 - **Flatpak-first** distribution for releases (ADR-004).
 - **One instance in V1 UI**; keep storage schema multi-instance-ready.
+- **Config file first:** `config.toml` is source of truth and should
+  **expose as many options as practical** (including tester-only /
+  not-yet-polished keys). The **Settings** UI is conservative: only
+  controls for options that are **confirmed working** (or deliberately
+  ready for end users). Persist changes; preserve unknown keys on
+  save. Startup hang → last known good config + relaunch + error
+  (data-model §3.0).
+- Every user-visible failure should use a catalogued **`LD-…` error
+  code** (`Docs/error-codes.md`); do not invent one-off codes in code
+  without updating that doc and the changelog.
 - **GPLv2+** — avoid dependencies that force GPLv3-only combined works
   when a GPLv2-friendly option exists (ADR-003).
 
@@ -55,6 +66,7 @@ Prefer updating docs when behaviour is undecided.
 | Credentials / TLS / keyring / git helper | `Docs/security-credentials.md` |
 | GitLab REST usage | `Docs/api-contract.md` |
 | Config / SQLite / entities | `Docs/data-model.md` |
+| Error codes (`LD-…`) | `Docs/error-codes.md` |
 | End-user help (shell) | `Docs/user-guide.md` |
 | Contributor guide (shell) | `Docs/dev-guide.md` |
 | UX flows | `Docs/user-journey.md` |
@@ -76,5 +88,6 @@ mean **not decided yet** — ask before filling gaps in code.
 
 Any meaningful docs or code change should add a short bullet under
 `CHANGELOG.md` → `[Unreleased]` (Added / Changed / Fixed /
-Security as appropriate). This is the project’s trace when something
-goes wrong later.
+Security as appropriate). Prefix each new bullet with local wall time
+`HH:MM:SS  DD/MM/YYYY` then an em dash (see `CHANGELOG.md` header).
+This is the project’s trace when something goes wrong later.

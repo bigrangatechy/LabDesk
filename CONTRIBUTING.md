@@ -57,7 +57,11 @@ Follow [Keep a Changelog](https://keepachangelog.com/) style:
 - `[Unreleased]` for work not yet tagged
 - Sections such as **Added**, **Changed**, **Fixed**, **Security**,
   **Removed**
-
+- **Timestamp every new bullet** with local wall time in the form
+  `HH:MM:SS  DD/MM/YYYY` (24-hour, day/month/year), then an em dash
+  and the description. Example:
+  `- **19:12:00  10/08/2026** — Short description.`
+  Older undated bullets predate this rule; do not invent times for them.
 ## Code of collaboration
 
 - Ask when requirements are ambiguous; do not silently invent product

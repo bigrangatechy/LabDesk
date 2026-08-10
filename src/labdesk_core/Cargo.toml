@@ -1,0 +1,29 @@
+[package]
+name = "labdesk_core"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-or-later"
+description = "LabDesk Rust core (git, API, config, secrets)"
+repository = "https://git.bigrangatech.com/Ranga/labdesk"
+
+[lib]
+name = "labdesk_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["extension-module"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+toml_edit = "0.22"
+uuid = { version = "1", features = ["v4"] }
+keyring = { version = "3", features = ["linux-native"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+thiserror = "2"
+url = "2"
+directories = "5"
+rusqlite = { version = "0.32", features = ["bundled"] }
+git2 = { version = "0.20", features = ["vendored-libgit2"] }
+
+[profile.release]
+lto = true
