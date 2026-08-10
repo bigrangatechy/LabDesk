@@ -34,17 +34,26 @@ python_import_smoke:
 flatpak_build_publish:
   stage: flatpak
   image: bilelmoussaoui/flatpak-github-actions:gnome-47
+  # flatpak-builder needs user namespaces / fuse; enable privileged on the
+  # Docker runner if this job fails with bwrap / namespace errors.
   rules:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual
   before_script:
-    - flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
+    - flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    # Manifest pins Freedesktop 24.08 + rust-stable; CI image does not ship them.
+    - |
+      flatpak install -y --noninteractive --user \
+        org.freedesktop.Platform//24.08 \
+        org.freedesktop.Sdk//24.08 \
+        org.freedesktop.Sdk.Extension.rust-stable//24.08
   script:
     - |
       set -euo pipefail
       echo "Building ${FLATPAK_APP_ID}…"
-      flatpak-builder --force-clean --repo=repo flatpak-build \
+      flatpak-builder --user --force-clean --install-deps-from=flathub \
+        --repo=repo flatpak-build \
         flatpak/com.bigrangatech.LabDesk.yml
     - |
       set -euo pipefail

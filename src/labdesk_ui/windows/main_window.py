@@ -104,27 +104,18 @@ class MainWindow(QMainWindow):
         self._body_layout.setSpacing(12)
         self._root_layout.addWidget(self._body, stretch=1)
 
-        self._nav_host = QWidget()
-        self._nav_layout = QVBoxLayout(self._nav_host)
-        self._nav_layout.setContentsMargins(0, 0, 0, 0)
-        self._nav_layout.setSpacing(6)
+        # Permanent hosts — never deleteLater these (shell switch only reparents).
+        self._nav_host = QFrame()
+        self._nav_host.setObjectName("NavHost")
+        self._nav_host.setFrameShape(QFrame.Shape.NoFrame)
+        self._column = QWidget()
+        self._column_layout = QVBoxLayout(self._column)
+        self._column_layout.setContentsMargins(0, 0, 0, 0)
+        self._column_layout.setSpacing(8)
 
         self._nav_group = QButtonGroup(self)
         self._nav_group.setExclusive(True)
-        for registered in list_views():
-            btn = QPushButton(registered.title)
-            btn.setCheckable(True)
-            btn.setProperty("class", "NavButton")
-            btn.setStyleSheet("")  # use QSS class via polish
-            btn.setObjectName("NavButton")
-            btn.setProperty("cssClass", "NavButton")
-            btn.setFlat(False)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(
-                lambda checked=False, vid=registered.id: self.switch_view(vid)
-            )
-            self._nav_group.addButton(btn)
-            self._nav_buttons[registered.id] = btn
+        self._rebuild_nav_buttons()
 
         self.stack = QStackedWidget()
         for registered in list_views():
@@ -132,7 +123,7 @@ class MainWindow(QMainWindow):
             self._view_widgets[registered.id] = widget
             self.stack.addWidget(widget)
 
-        self._apply_shell(self._saved_ui_shell(), rebuild_nav=True)
+        self._apply_shell(self._saved_ui_shell())
 
         self._build_menubar()
         self._apply_saved_theme()
@@ -143,70 +134,119 @@ class MainWindow(QMainWindow):
             initial = next(iter(self._view_widgets), "projects")
         self.switch_view(initial, persist=False)
 
-    def _clear_layout(self, layout) -> None:
+    def _permanent_widgets(self) -> set[QWidget]:
+        return {self.stack, self._nav_host, self._column}
+
+    def _take_layout_widgets(self, layout) -> None:
+        """Detach all items from a layout without deleting permanent widgets."""
         while layout.count():
             item = layout.takeAt(0)
             w = item.widget()
-            if w is not None:
+            if w is None:
+                child = item.layout()
+                if child is not None:
+                    self._take_layout_widgets(child)
+                continue
+            if w in self._permanent_widgets():
+                w.setParent(self)
+            else:
                 w.setParent(None)
+                w.deleteLater()
 
-    def _apply_shell(self, shell: str, *, rebuild_nav: bool = False) -> None:
-        name = (shell or "classic").strip().lower()
-        if name not in ("classic", "sidebar"):
-            name = "classic"
-        self._shell = name
-        self._clear_layout(self._body_layout)
-        self._clear_layout(self._nav_layout)
-
-        for btn in self._nav_buttons.values():
+    def _rebuild_nav_buttons(self) -> None:
+        for btn in list(self._nav_buttons.values()):
+            self._nav_group.removeButton(btn)
             btn.setParent(None)
-            # Qt StyleSheet class selector for QPushButton.NavButton needs
-            # the class property set via setProperty + polish — use objectName.
+            btn.deleteLater()
+        self._nav_buttons.clear()
+
+        for registered in list_views():
+            btn = QPushButton(registered.title)
+            btn.setCheckable(True)
             btn.setObjectName("NavBtn")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet(
                 "QPushButton#NavBtn { padding: 8px 14px; text-align: left; "
                 "border: 1px solid palette(mid); border-radius: 4px; }"
                 "QPushButton#NavBtn:checked { background: palette(highlight); "
                 "color: palette(highlighted-text); border-color: palette(highlight); }"
             )
+            btn.clicked.connect(
+                lambda checked=False, vid=registered.id: self.switch_view(vid)
+            )
+            self._nav_group.addButton(btn)
+            self._nav_buttons[registered.id] = btn
 
-        if name == "sidebar":
-            rail = QFrame()
-            rail.setObjectName("SideRail")
-            rail_layout = QVBoxLayout(rail)
-            rail_layout.setContentsMargins(0, 0, 8, 0)
-            rail_layout.setSpacing(6)
-            rail_label = QLabel("Views")
+    def _set_nav_orientation(self, *, vertical: bool) -> None:
+        # Replace layout safely: move the old one onto a throwaway widget.
+        old = self._nav_host.layout()
+        if old is not None:
+            while old.count():
+                item = old.takeAt(0)
+                w = item.widget()
+                if w is not None:
+                    w.setParent(self)
+            holder = QWidget()
+            holder.setLayout(old)
+            holder.deleteLater()
+
+        if vertical:
+            layout = QVBoxLayout(self._nav_host)
+            layout.setContentsMargins(0, 0, 8, 0)
+            layout.setSpacing(6)
+            label = QLabel("Views")
             f = QFont()
             f.setBold(True)
-            rail_label.setFont(f)
-            rail_layout.addWidget(rail_label)
+            label.setFont(f)
+            layout.addWidget(label)
             for registered in list_views():
                 btn = self._nav_buttons[registered.id]
-                btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                rail_layout.addWidget(btn)
-            rail_layout.addStretch(1)
-            self._body_layout.addWidget(rail)
+                btn.setSizePolicy(
+                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+                )
+                layout.addWidget(btn)
+            layout.addStretch(1)
+            self._nav_host.setObjectName("SideRail")
+            self._nav_host.setMinimumWidth(140)
+            self._nav_host.setMaximumWidth(200)
+        else:
+            layout = QHBoxLayout(self._nav_host)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(8)
+            for registered in list_views():
+                btn = self._nav_buttons[registered.id]
+                btn.setSizePolicy(
+                    QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
+                )
+                layout.addWidget(btn)
+            layout.addStretch(1)
+            self._nav_host.setObjectName("NavHost")
+            self._nav_host.setMinimumWidth(0)
+            self._nav_host.setMaximumWidth(16777215)
+
+    def _apply_shell(self, shell: str) -> None:
+        name = (shell or "classic").strip().lower()
+        if name not in ("classic", "sidebar"):
+            name = "classic"
+        self._shell = name
+
+        # Detach permanent hosts before rearranging — never destroy them.
+        self._take_layout_widgets(self._body_layout)
+        self._take_layout_widgets(self._column_layout)
+        self.stack.setParent(self)
+        self._nav_host.setParent(self)
+        self._column.setParent(self)
+
+        self._rebuild_nav_buttons()
+        self._set_nav_orientation(vertical=(name == "sidebar"))
+
+        if name == "sidebar":
+            self._body_layout.addWidget(self._nav_host)
             self._body_layout.addWidget(self.stack, stretch=1)
         else:
-            # classic — horizontal nav above content, stacked vertically in body
-            classic_col = QVBoxLayout()
-            classic_col.setContentsMargins(0, 0, 0, 0)
-            classic_col.setSpacing(8)
-            nav_row = QHBoxLayout()
-            nav_row.setSpacing(8)
-            for registered in list_views():
-                btn = self._nav_buttons[registered.id]
-                btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
-                nav_row.addWidget(btn)
-            nav_row.addStretch(1)
-            classic_col.addLayout(nav_row)
-            classic_col.addWidget(self.stack, stretch=1)
-            wrap = QWidget()
-            wrap.setLayout(classic_col)
-            self._body_layout.addWidget(wrap, stretch=1)
-
-        _ = rebuild_nav
+            self._column_layout.addWidget(self._nav_host)
+            self._column_layout.addWidget(self.stack, stretch=1)
+            self._body_layout.addWidget(self._column, stretch=1)
 
     # --- AppContext API for plugins ---------------------------------
 
@@ -326,7 +366,7 @@ class MainWindow(QMainWindow):
                 self.detail.setText(f"[{code}] {msg}")
 
     def set_ui_shell(self, shell: str, *, persist: bool = True) -> None:
-        self._apply_shell(shell, rebuild_nav=True)
+        self._apply_shell(shell)
         act = self._shell_actions.get(self._shell)
         if act is not None:
             act.setChecked(True)

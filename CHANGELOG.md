@@ -20,6 +20,16 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **22:19:34  10/08/2026** — Flatpak CI: install Freedesktop Platform /
+  Sdk / rust-stable 24.08 from Flathub before `flatpak-builder`
+  (fixes `org.freedesktop.Platform/x86_64/24.08 not installed`).
+- **21:35:31  10/08/2026** — Harden UI shell switching: permanent
+  nav/column/stack hosts (no deleteLater of parents that own shared
+  widgets); recreate nav buttons on switch. Addresses SIGSEGV after
+  classic ↔ sidebar (Python crash notification).
+- **21:30:56  10/08/2026** — Fix shell switch crash: reparent nav
+  buttons/stack before tearing down classic/sidebar layouts
+  (`RuntimeError: Internal C++ object already deleted`).
 - **20:29:05  10/08/2026** — Beta packaging prep: remotes policy (GitLab
   canonical, GitHub read-only mirror, CI publish to
   `Ranga/flatpaks`); Flatpak manifest skeleton; CI job to build/push;

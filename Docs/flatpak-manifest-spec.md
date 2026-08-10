@@ -49,8 +49,10 @@ keep this table in sync when permissions change.
 
 ## 5. CI publish path
 
-1. Job on `labdesk` runs `flatpak-builder` (or equivalent) against the
-   manifest.
+1. Job on `labdesk` adds Flathub (user install), installs
+   `org.freedesktop.Platform//24.08`, `Sdk//24.08`, and
+   `Sdk.Extension.rust-stable//24.08`, then runs `flatpak-builder`
+   (`--user --install-deps-from=flathub`).
 2. Job authenticates to GitLab (CI job token / deploy token / deploy key
    with **write** to `Ranga/flatpaks` only).
 3. Job **pushes** the Flatpak repository / ostree commit / `.flatpak`
@@ -58,6 +60,10 @@ keep this table in sync when permissions change.
 4. Users’ Flatpak remote points at the published remote from that repo
    (see `user-guide.md`). Updating `flatpaks` is what makes
    `flatpak update` / `check_for_updates` see new versions.
+
+The Docker runner often needs **`privileged = true`** (or equivalent
+user-namespace / fuse access) for `flatpak-builder` / bubblewrap. Without
+it, the next failure after missing runtimes is usually a namespace error.
 
 CI variables (set in GitLab `labdesk` project settings, not in git):
 
@@ -70,7 +76,14 @@ CI variables (set in GitLab `labdesk` project settings, not in git):
 
 ```bash
 # from labdesk repo root — outputs stay untracked
-flatpak-builder --force-clean --repo=repo flatpak-build \
+flatpak remote-add --if-not-exists --user flathub \
+  https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install -y --user \
+  org.freedesktop.Platform//24.08 \
+  org.freedesktop.Sdk//24.08 \
+  org.freedesktop.Sdk.Extension.rust-stable//24.08
+flatpak-builder --user --force-clean --install-deps-from=flathub \
+  --repo=repo flatpak-build \
   flatpak/com.bigrangatech.LabDesk.yml
 # do not git-add repo/ or flatpak-build/
 ```
