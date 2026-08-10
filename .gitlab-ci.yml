@@ -1,31 +1,83 @@
-# You can override the included template(s) by including variable overrides
-# SAST customization: https://docs.gitlab.com/user/application_security/sast/#available-cicd-variables
-# Secret Detection customization: https://docs.gitlab.com/user/application_security/secret_detection/pipeline/configure/
-# Dependency Scanning customization: https://docs.gitlab.com/user/application_security/dependency_scanning/dependency_scanning_sbom/#customizing-analyzer-behavior
-# Container Scanning customization: https://docs.gitlab.com/user/application_security/container_scanning/#customizing-analyzer-behavior
-# Note that environment variables can be set in several places
-# See https://docs.gitlab.com/ci/variables/#cicd-variable-precedence
+# LabDesk CI — build Flatpak and publish to Ranga/flatpaks (not into this repo).
+#
+# Required CI/CD variables (project settings → Variables), not committed:
+#   FLATPAKS_REPO_URL   default http://git.bigrangatech.com/Ranga/flatpaks.git
+#   FLATPAKS_DEPLOY_TOKEN  write access to Ranga/flatpaks
+#
+# See Docs/flatpak-manifest-spec.md and Docs/dev-guide.md §1.1.
+
 stages:
-- build
-- test
-- deploy
-- review
-- dast
-- staging
-- canary
-- production
-- incremental rollout 10%
-- incremental rollout 25%
-- incremental rollout 50%
-- incremental rollout 100%
-- performance
-- cleanup
-- secret-detection
-sast:
-  stage: test
-include:
-- template: Auto-DevOps.gitlab-ci.yml
+  - test
+  - flatpak
+
 variables:
-  SECRET_DETECTION_ENABLED: 'true'
-secret_detection:
-  stage: secret-detection
+  SECRET_DETECTION_ENABLED: "true"
+  FLATPAKS_REPO_URL: "http://git.bigrangatech.com/Ranga/flatpaks.git"
+  FLATPAK_APP_ID: "com.bigrangatech.LabDesk"
+
+include:
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+
+python_import_smoke:
+  stage: test
+  image: python:3.12-bookworm
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+  script:
+    - python -c "import ast; ast.parse(open('src/labdesk_ui/windows/main_window.py').read())"
+    - test -f flatpak/com.bigrangatech.LabDesk.yml
+    - test -f Docs/flatpak-manifest-spec.md
+
+# Build Flatpak and push the ostree repo into Ranga/flatpaks.
+# Tag pipelines auto-run; default branch is manual until runners are confirmed.
+flatpak_build_publish:
+  stage: flatpak
+  image: bilelmoussaoui/flatpak-github-actions:gnome-47
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  before_script:
+    - flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
+  script:
+    - |
+      set -euo pipefail
+      echo "Building ${FLATPAK_APP_ID}…"
+      flatpak-builder --force-clean --repo=repo flatpak-build \
+        flatpak/com.bigrangatech.LabDesk.yml
+    - |
+      set -euo pipefail
+      if [ -z "${FLATPAKS_DEPLOY_TOKEN:-}" ]; then
+        echo "FLATPAKS_DEPLOY_TOKEN not set — build OK, skip publish."
+        echo "Set the variable to push into Ranga/flatpaks."
+        exit 0
+      fi
+      DEST="${FLATPAKS_REPO_URL}"
+      case "${DEST}" in
+        http://*|https://*)
+          AUTH_DEST=$(echo "${DEST}" | sed "s#://#://oauth2:${FLATPAKS_DEPLOY_TOKEN}@#")
+          ;;
+        *)
+          AUTH_DEST="${DEST}"
+          ;;
+      esac
+      rm -rf /tmp/flatpaks-publish
+      git clone --depth 1 "${AUTH_DEST}" /tmp/flatpaks-publish
+      mkdir -p /tmp/flatpaks-publish/labdesk
+      rsync -a --delete repo/ /tmp/flatpaks-publish/labdesk/repo/
+      cd /tmp/flatpaks-publish
+      git config user.email "ci@labdesk.local"
+      git config user.name "LabDesk CI"
+      git add -A labdesk/
+      if git diff --cached --quiet; then
+        echo "No changes to publish."
+        exit 0
+      fi
+      git commit -m "labdesk: publish ${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
+      git push origin HEAD:main
+  artifacts:
+    when: on_success
+    paths:
+      - repo/
+    expire_in: 7 days

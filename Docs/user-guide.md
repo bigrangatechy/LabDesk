@@ -27,8 +27,69 @@ the full API or SQLite schema here.
 
 ## 2. Install & update
 
-- Install via Flatpak / Flathub (details TBD).
-- Updates: Flatpak remote (`check_for_updates` preference).
+LabDesk releases are Flatpaks from the self-hosted remote published out
+of [`Ranga/flatpaks`](http://git.bigrangatech.com/Ranga/flatpaks.git)
+(not required to use Flathub for beta).
+
+### 2.1 Add the remote (once)
+
+When CI has published the Flatpak remote layout, add it (remote name
+and URL may be refined in release notes — keep this section current):
+
+```bash
+# Example — adjust if your flatpaks repo serves a different remote URL
+flatpak remote-add --if-not-exists bigrangatech-flatpaks \
+  http://git.bigrangatech.com/Ranga/flatpaks/raw/main/labdesk/repo \
+  --no-gpg-verify
+```
+
+If the published layout uses GPG, drop `--no-gpg-verify` and import the
+key documented with the release. Prefer HTTPS remotes when TLS is set
+up for the GitLab host.
+
+### 2.2 Install
+
+```bash
+flatpak install bigrangatech-flatpaks com.bigrangatech.LabDesk
+flatpak run com.bigrangatech.LabDesk
+```
+
+### 2.3 Update
+
+```bash
+flatpak update com.bigrangatech.LabDesk
+```
+
+Or update everything from that remote:
+
+```bash
+flatpak update --appstream
+flatpak update
+```
+
+In-app **`check_for_updates`** (in `config.toml`) means “check this
+Flatpak remote for a newer LabDesk”, not a custom downloader. The
+Settings UI will expose it once the check is confirmed working; until
+then, use `flatpak update` as above. New builds appear only after CI on
+`labdesk` has pushed to `Ranga/flatpaks`.
+
+### 2.4 Config paths (Flatpak vs unpackaged)
+
+- Flatpak: under `~/.var/app/com.bigrangatech.LabDesk/`
+- Unpackaged / dev: `~/.config/labdesk/`, `~/.local/share/labdesk/`
+
+---
+
+## 2a. Beta smoke checklist
+
+After install or a major update:
+
+1. Launch LabDesk; theme and shell layout load from config.
+2. Connect to self-hosted GitLab (PAT in keyring).
+3. Refresh projects; **Open local** or **Add existing…** for a clone.
+4. Repo window: Changes (stage / commit), History, Pull / Push.
+5. Run `flatpak update com.bigrangatech.LabDesk` after a new CI publish
+   and confirm the app still launches.
 
 ---
 
@@ -51,6 +112,9 @@ the full API or SQLite schema here.
   working** for everyday use (today: clone folder, theme).
 - Switch main views via the **View** menu; last view is stored as
   `general.active_ui_view` (not a Settings form field).
+- Main window **layout** (`classic` / `sidebar`) is config-only for now:
+  set `general.ui_shell` in `config.toml`, or use **View → Classic /
+  Sidebar layout**. Settings stays limited to confirmed options.
 - **Clone into:** folder where new clones go (e.g. `~/Documents/gitlab`).
   Saved as `general.default_clone_dir`.
 - Other keys (e.g. `check_for_updates`) stay **config-only** until the

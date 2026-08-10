@@ -1,10 +1,10 @@
 # LabDesk Developer Guide
 
-**Status:** Shell (docs stage)  
+**Status:** Living  
 **Audience:** Human and AI contributors maintaining LabDesk  
 **Related:** `AGENTS.md`, `CONTRIBUTING.md`, `Docs/adr/`, Technical
 Specification, `data-model.md`, `api-contract.md`,
-`security-credentials.md`
+`security-credentials.md`, `flatpak-manifest-spec.md`
 
 This guide holds **build, layout, testing, Flatpak, and maintenance**
 detail. End-user how-tos belong in `user-guide.md`.
@@ -19,13 +19,32 @@ before inventing them (`AGENTS.md`).
 ```text
 Docs/           documentation (source of truth while docs-first)
 src/
-  labdesk_ui/   PySide6 UI (placeholder until docs for area are ready)
-  labdesk_core/ Rust / PyO3 core (placeholder)
-flatpak/        Flatpak manifest
+  labdesk_ui/   PySide6 UI
+  labdesk_core/ Rust / PyO3 core
+flatpak/        Flatpak manifest only (no build artifacts)
+scripts/        helper scripts (e.g. run-labdesk.sh)
 tests/          tests (placeholder)
 ```
 
-Expand with module responsibilities when implementation starts.
+### 1.1 Remotes and Flatpak hosting
+
+| Repo | Role | Mirrored to GitHub? | Large binaries / LFS |
+|------|------|---------------------|----------------------|
+| **labdesk** (this repo) | App source + Flatpak *manifest* + CI that *builds* | Yes (read-only visibility mirror) | **No** — keep lean |
+| **Ranga/flatpaks** (`http://git.bigrangatech.com/Ranga/flatpaks.git`) | Hosts Flatpak remote / ostree / published builds | **No** | **Yes** — LFS OK on the instance |
+| GitHub `labdesk` mirror | Visibility only; updated *from* GitLab | n/a | Same tree as GitLab `labdesk` (no LFS objects) |
+
+**Rules:**
+
+- All development happens on **GitLab `labdesk`**. Do not push feature
+  work to GitHub.
+- Do **not** commit `.flatpak`, ostree repos, or `.flatpak-builder/` into
+  `labdesk`. CI builds and **pushes** results into `Ranga/flatpaks`.
+- You cannot use a different `.gitignore` for GitHub vs GitLab on the
+  same commits; keeping binaries out of `labdesk` keeps the GitHub
+  mirror clean.
+- App id: `com.bigrangatech.LabDesk`. Details: `flatpak-manifest-spec.md`,
+  ADR-004.
 
 ---
 
@@ -52,8 +71,8 @@ Point to ADRs rather than restating them.
 | `api-contract.md` | GitLab REST usage |
 | `security-credentials.md` | PAT / helper / TLS |
 | `user-journey.md` | UX flows |
-| `user-guide.md` | End-user help |
-| `flatpak-manifest-spec.md` | Manifest details (stub) |
+| `user-guide.md` | End-user help (install / update) |
+| `flatpak-manifest-spec.md` | Manifest + CI publish into `flatpaks` |
 | `testing-strategy.md` | May fold into this guide |
 | `maintenance-guide.md` | May fold into this guide |
 | `CHANGELOG.md` | Trace of changes |
@@ -105,21 +124,24 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
 - `maturin develop --uv` — editable install of `labdesk_core` into the
   active uv venv (plain `maturin develop` needs `pip`).
 - Manual launch from **repo root**: `PYTHONPATH=src python -m labdesk_ui.main`
-- First slice exposes: add instance (URL + PAT), `GET /user`, project
-  list refresh into SQLite cache, clone into configured folder (HTTPS or
-  SSH), status + project table in the main window, `LD-…` error codes.
-- Still placeholder: push/pull UI, diffs, hang watchdog (known-good
-  snapshot is written on successful connect; `revert_config_to_known_good`
-  is available for recovery).
+- Current slice: instance connect, projects, clone / add existing,
+  repo Changes (stage/commit/diff) + History, push/pull, pluggable UI
+  shells, Settings for confirmed prefs only.
 
 ---
 
 ## 6. Flatpak
 
-- Manifest location: `flatpak/`.
-- Secrets portal / `org.freedesktop.secrets`.
-- Finish args and filesystem portals.
-- Full detail: `flatpak-manifest-spec.md` (to be filled).
+- Manifest: `flatpak/com.bigrangatech.LabDesk.yml`.
+- CI builds the Flatpak and **pushes** into
+  `http://git.bigrangatech.com/Ranga/flatpaks.git` (see `.gitlab-ci.yml`).
+- Users add that Flatpak remote and install/update
+  `com.bigrangatech.LabDesk` (user-guide).
+- Secrets portal / `org.freedesktop.secrets`; finish args in
+  `flatpak-manifest-spec.md`.
+- Preference `check_for_updates` means checking **this** Flatpak remote
+  (data-model / ADR-004) — still config-only until the in-app check
+  ships.
 
 ---
 
@@ -142,14 +164,15 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
 
 - TBD: unit (Rust), UI smoke, contract tests against a self-hosted
   fixture or recorded responses.
-- May absorb `testing-strategy.md`.
+- Beta smoke checklist: `user-guide.md` (install + update).
 
 ---
 
 ## 9. Release & maintenance
 
-- Versioning / changelog discipline.
-- Flatpak runtime upgrade path (ADR-004).
+- Versioning / changelog discipline (`HH:MM:SS  DD/MM/YYYY` stamps).
+- Flatpak runtime upgrades: test before publishing to `Ranga/flatpaks`
+  (ADR-004).
 - May absorb `maintenance-guide.md`.
 
 ---
@@ -163,4 +186,5 @@ Follow `AGENTS.md`: docs-first, ask when undecided, update
 
 ## Document history
 
-Shell created during documentation-first phase. Body content TBD.
+Shell created during documentation-first phase. Remotes / Flatpak host
+policy filled for beta packaging.

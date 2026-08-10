@@ -101,9 +101,10 @@ V1 Settings stays small; the file may grow ahead of the UI.
 |-----|------|----------|----------|--------|
 | `theme` | string | yes | **UI-exposed** | `"light"` \| `"dark"` \| `"system"` |
 | `default_clone_dir` | string | yes | **UI-exposed** | Clone destination folder |
-| `check_for_updates` | bool | yes | **config-only** | Flatpak remote check (ADR-004); UI when update flow works |
+| `check_for_updates` | bool | yes | **config-only** | Check the **LabDesk Flatpak remote** (from `Ranga/flatpaks`, ADR-004); UI when in-app check works |
 | `active_instance_id` | string | no | **config / connect flow** | Stable id of active instance; required once ≥1 instance exists |
 | `active_ui_view` | string | no | **View menu** (+ config) | Pluggable main view id (`projects`, `settings`, …); default `projects` |
+| `ui_shell` | string | no | **config-only** | Main-window shell layout: `"classic"` \| `"sidebar"`; default `classic` |
 
 ### 3.2 `[[instances]]` — Instance
 
@@ -133,6 +134,7 @@ default_clone_dir = "~/Projects"
 check_for_updates = true
 active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 active_ui_view = "projects"
+ui_shell = "classic"
 
 [[instances]]
 id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"

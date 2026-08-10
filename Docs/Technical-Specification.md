@@ -64,7 +64,7 @@ rejected at instance setup (see ADR-001).
 | Config       | TOML                    | MIT/Apache                     | Instance + preference storage |
 | Secrets      | OS keyring              | (platform)                     | API PAT at rest               |
 | Git HTTPS    | Git credential helper   | (helper-dependent)             | Username/password or PAT-as-password |
-| Distribution | Flatpak                 | (runtime/deps vary)            | Linux packaging               |
+| Distribution | Flatpak                 | (runtime/deps vary)            | Linux packaging; remote from `Ranga/flatpaks` |
 
 Riverbank QScintilla is **not** used (ADR-002, ADR-003).
 
@@ -184,10 +184,10 @@ revert to a **last known good** config, relaunch, and show an error
 [general]
 theme = "system"                 # UI: Settings — "light", "dark", "system"
 default_clone_dir = "~/Projects" # UI: Settings
-check_for_updates = true         # config-only until Flatpak update UX works
+check_for_updates = true         # config-only: check Ranga/flatpaks remote
 active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 active_ui_view = "projects"      # View menu (+ config); not Settings form
-
+ui_shell = "classic"             # config-only: "classic" | "sidebar"
 [[instances]]
 id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 name = "BigRanga Tech GitLab"

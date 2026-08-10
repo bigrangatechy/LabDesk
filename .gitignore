@@ -20,3 +20,11 @@ src/labdesk_core/target/
 *.log
 .env
 .env.*
+
+# Flatpak build outputs — never commit into labdesk (publish to Ranga/flatpaks via CI)
+.flatpak-builder/
+flatpak-build/
+repo/
+*.flatpak
+*.ostree
+*.tar.xz

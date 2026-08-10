@@ -51,6 +51,10 @@ guides, git UI) must not block continuing the vertical slice.
   ready for end users). Persist changes; preserve unknown keys on
   save. Startup hang → last known good config + relaunch + error
   (data-model §3.0).
+- **Remotes:** develop on GitLab `labdesk` only. GitHub is a read-only
+  mirror. Flatpak **builds** go to `Ranga/flatpaks` via CI — never
+  commit Flatpak artifacts into `labdesk` (keeps the GitHub mirror
+  LFS-free). See `dev-guide.md` §1.1.
 - Every user-visible failure should use a catalogued **`LD-…` error
   code** (`Docs/error-codes.md`); do not invent one-off codes in code
   without updating that doc and the changelog.

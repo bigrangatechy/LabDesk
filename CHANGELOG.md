@@ -18,6 +18,13 @@ bullets without a stamp predate this convention.
 
 ## [Unreleased]
 
+### Added
+
+- **20:29:05  10/08/2026** — Beta packaging prep: remotes policy (GitLab
+  canonical, GitHub read-only mirror, CI publish to
+  `Ranga/flatpaks`); Flatpak manifest skeleton; CI job to build/push;
+  docs sweep for install/update; `ui_shell` classic/sidebar layouts;
+  light main-window polish; `LD-SYS-021`.
 - **19:36:41  10/08/2026** — Stage / unstage / commit in the repo
   **Changes** tab (message box, staged vs changes lists). Codes
   `LD-GIT-040`…`042` for identity, empty message, nothing staged.

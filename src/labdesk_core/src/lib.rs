@@ -53,6 +53,7 @@ fn config_to_dict(py: Python<'_>, cfg: &config::AppConfig) -> PyResult<PyObject>
         cfg.general.active_instance_id.as_deref(),
     )?;
     general.set_item("active_ui_view", &cfg.general.active_ui_view)?;
+    general.set_item("ui_shell", &cfg.general.ui_shell)?;
     root.set_item("general", general)?;
 
     let instances = pyo3::types::PyList::empty(py);
@@ -739,6 +740,14 @@ fn set_active_ui_view(view_id: String) -> PyResult<()> {
     Ok(())
 }
 
+/// Persist `general.ui_shell` (`classic` | `sidebar`).
+#[pyfunction]
+fn set_ui_shell(shell: String) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    config::set_ui_shell(&paths, &shell)?;
+    Ok(())
+}
+
 #[pymodule]
 fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_paths, m)?)?;
@@ -769,6 +778,7 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_default_clone_dir, m)?)?;
     m.add_function(wrap_pyfunction!(set_theme, m)?)?;
     m.add_function(wrap_pyfunction!(set_active_ui_view, m)?)?;
+    m.add_function(wrap_pyfunction!(set_ui_shell, m)?)?;
     m.add_function(wrap_pyfunction!(revert_config_to_known_good, m)?)?;
     m.add_function(wrap_pyfunction!(parse_error_message, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

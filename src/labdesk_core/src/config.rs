@@ -24,6 +24,8 @@ pub struct GeneralConfig {
     pub active_instance_id: Option<String>,
     /// Registered UI view id (e.g. `projects`, `settings`).
     pub active_ui_view: String,
+    /// Main window shell: `classic` (top nav) or `sidebar`.
+    pub ui_shell: String,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +60,7 @@ impl Default for GeneralConfig {
             check_for_updates: true,
             active_instance_id: None,
             active_ui_view: "projects".into(),
+            ui_shell: "classic".into(),
         }
     }
 }
@@ -158,6 +161,7 @@ fn default_config() -> AppConfig {
     general["default_clone_dir"] = value("~/Projects");
     general["check_for_updates"] = Item::Value(Value::from(true));
     general["active_ui_view"] = value("projects");
+    general["ui_shell"] = value("classic");
     document["general"] = Item::Table(general);
     document["instances"] = Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
 
@@ -196,6 +200,11 @@ fn read_general(doc: &DocumentMut) -> Result<GeneralConfig> {
             .get("active_ui_view")
             .and_then(|v| v.as_str())
             .unwrap_or("projects")
+            .to_string(),
+        ui_shell: table
+            .get("ui_shell")
+            .and_then(|v| v.as_str())
+            .unwrap_or("classic")
             .to_string(),
     })
 }
@@ -345,6 +354,7 @@ fn sync_document(cfg: &mut AppConfig) {
         }
     }
     general["active_ui_view"] = value(&cfg.general.active_ui_view);
+    general["ui_shell"] = value(&cfg.general.ui_shell);
 
     let mut array = toml_edit::ArrayOfTables::new();
     for inst in &cfg.instances {
@@ -549,6 +559,22 @@ pub fn set_active_ui_view(paths: &AppPaths, view_id: &str) -> Result<()> {
     }
     let mut cfg = load_or_default(paths)?;
     cfg.general.active_ui_view = view_id.to_string();
+    save(paths, &mut cfg)?;
+    let _ = save_known_good(paths);
+    Ok(())
+}
+
+/// Persist main-window shell layout (`classic` | `sidebar`).
+pub fn set_ui_shell(paths: &AppPaths, shell: &str) -> Result<()> {
+    let shell = shell.trim();
+    if !matches!(shell, "classic" | "sidebar") {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-CFG-003",
+            "Config value invalid: ui_shell",
+        )));
+    }
+    let mut cfg = load_or_default(paths)?;
+    cfg.general.ui_shell = shell.to_string();
     save(paths, &mut cfg)?;
     let _ = save_known_good(paths);
     Ok(())

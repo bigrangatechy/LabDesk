@@ -133,6 +133,7 @@ main signal; use `LD-AUTH-001` for auth UX even if the wire code was 401.
 | `LD-SYS-001` | Unexpected internal error | "Something went wrong ({code})." | Log stack; offer report path later |
 | `LD-SYS-010` | External open failed (`xdg-open` / portal) | "Could not open external application." | Show path/URL |
 | `LD-SYS-020` | Flatpak / portal permission issue | "Permission denied by the desktop sandbox." | Doc hint |
+| `LD-SYS-021` | Flatpak update check failed | "Could not check for Flatpak updates." | Fall back to `flatpak update`; see user-guide |
 
 ---
 

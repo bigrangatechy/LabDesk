@@ -1,0 +1,70 @@
+# LabDesk Flatpak manifest (beta)
+#
+# Build artifacts must NOT be committed to labdesk. CI publishes into
+# http://git.bigrangatech.com/Ranga/flatpaks.git
+# See Docs/flatpak-manifest-spec.md and ADR-004.
+#
+# Local trial:
+#   flatpak-builder --force-clean --repo=repo flatpak-build \
+#     flatpak/com.bigrangatech.LabDesk.yml
+
+app-id: com.bigrangatech.LabDesk
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: labdesk
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --talk-name=org.freedesktop.secrets
+  - --filesystem=xdg-documents
+  - --filesystem=home
+  - --env=PYTHONUNBUFFERED=1
+modules:
+  # Python + PySide6 from Freedesktop SDK python; PySide may need a
+  # dedicated module or pip in a later iteration. Beta skeleton builds
+  # the Rust core and installs a launcher that expects the UI tree.
+  - name: labdesk-core
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/labdesk-core/cargo
+    build-commands:
+      - pip3 install --prefix=/app --no-deps maturin || true
+      - |
+        set -euo pipefail
+        cd src/labdesk_core
+        # Prefer maturin if available in the SDK image; otherwise cargo build
+        # and install the cdylib next to the Python package in a follow-up.
+        if command -v maturin >/dev/null 2>&1; then
+          maturin build --release -o /tmp/wheels
+          pip3 install --prefix=/app /tmp/wheels/*.whl
+        else
+          cargo build --release
+          install -Dm755 target/release/liblabdesk_core.so \
+            /app/lib/python3.*/site-packages/ || true
+        fi
+      - |
+        mkdir -p /app/lib/labdesk /app/bin
+        cp -a src/labdesk_ui /app/lib/labdesk/
+        printf '%s\n' '#!/bin/sh' \
+          'export PYTHONPATH=/app/lib/labdesk:${PYTHONPATH:-}' \
+          'exec python3 -m labdesk_ui.main "$@"' \
+          > /app/bin/labdesk
+        chmod 755 /app/bin/labdesk
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - .git
+          - .venv
+          - src/labdesk_core/target
+          - flatpak-build
+          - repo
+          - .flatpak-builder

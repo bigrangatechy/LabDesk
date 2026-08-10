@@ -122,12 +122,17 @@ with a clear reason.
 
 ## Journey F — Update LabDesk
 
-**Goal:** Get a newer Flatpak build.
+**Goal:** Get a newer Flatpak build from the self-hosted remote.
 
-1. Preference `check_for_updates` is about the **Flatpak remote**, not
-   a custom sideloaded updater.
-2. User is pointed at Flatpak update flow (in-app check and/or
-   documented `flatpak update` — exact UI TBD in user guide).
+1. Preference `check_for_updates` means checking the **LabDesk Flatpak
+   remote** backed by `Ranga/flatpaks` (ADR-004) — not a custom
+   sideloaded updater and not “any Flathub package”.
+2. Until the in-app check is UI-wired, use
+   `flatpak update com.bigrangatech.LabDesk` (see `user-guide.md` §2).
+3. New versions appear only after **labdesk CI** has pushed a build into
+   `http://git.bigrangatech.com/Ranga/flatpaks.git`.
+4. After update, relaunch and confirm connect / projects / repo still
+   work (beta smoke checklist in the user guide).
 
 ---
 
