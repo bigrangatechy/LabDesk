@@ -23,7 +23,7 @@ thiserror = "2"
 url = "2"
 directories = "5"
 rusqlite = { version = "0.32", features = ["bundled"] }
-git2 = { version = "0.20", features = ["vendored-libgit2"] }
+git2 = { version = "0.20", features = ["vendored-libgit2", "vendored-openssl"] }
 
 [profile.release]
 lto = true

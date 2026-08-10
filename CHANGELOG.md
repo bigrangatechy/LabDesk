@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:14:19  11/08/2026** — Flatpak: `maturin --skip-auditwheel` and
+  `git2` `vendored-openssl` so the wheel does not need to bundle
+  `libssl`/`libcrypto` (fixes maturin repair failure).
 - **23:53:36  10/08/2026** — Flatpak module `labdesk-core`:
   `build-args: --share=network` so crates.io / PyPI resolve inside
   the build sandbox (fixes DNS failures during `cargo` / `pip`).

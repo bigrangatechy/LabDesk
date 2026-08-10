@@ -54,13 +54,15 @@ modules:
         fi
         cd src/labdesk_core
         # Prefer maturin if available; otherwise cargo build.
+        # --skip-auditwheel: Flatpak runtime already provides system libs;
+        # do not try to bundle libssl into the wheel.
         if command -v maturin >/dev/null 2>&1; then
-          maturin build --release -o /tmp/wheels
+          maturin build --release --skip-auditwheel -o /tmp/wheels
           pip3 install --prefix=/app /tmp/wheels/*.whl
         else
           cargo build --release
           # cdylib name from Cargo; install best-effort for beta skeleton
-          so=$(find target/release -maxdepth 1 -name 'liblabdesk_core.so' -o -name 'labdesk_core.so' | head -1 || true)
+          so=$(find target/release -maxdepth 1 \( -name 'liblabdesk_core.so' -o -name 'labdesk_core.so' \) | head -1 || true)
           if [ -n "${so}" ]; then
             mkdir -p /app/lib/labdesk
             install -Dm755 "${so}" /app/lib/labdesk/
