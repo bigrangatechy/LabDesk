@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **13:04:04  11/08/2026** — Default `FLATPAKS_REPO_URL` to LAN GitLab
+  (`http://192.168.0.214:8929/...`); warn in job log when publish host
+  is still Cloudflare; add `scripts/setup-runner-lan.sh` for system
+  runner `url`/`clone_url`.
 - **12:43:08  11/08/2026** — Flatpak publish: keep LAN `http://192.168.x`
   `FLATPAKS_REPO_URL` as HTTP (do not force HTTPS); document Cloudflare
   Tunnel + runner `clone_url` LAN bypass for 413 / clone failures.
