@@ -20,6 +20,12 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **13:59:35  11/08/2026** — Flatpak start-menu `.desktop` + AppStream
+  metainfo; Anvil icon asset for menu / window / tray; StatusNotifier
+  talk-name. Drop final logo over
+  `src/labdesk_ui/assets/com.bigrangatech.LabDesk.svg` (optional PNGs
+  in `flatpak/icons/`).
+
 - **13:43:35  11/08/2026** — Trim API PAT / base URL on connect (password
   paste often includes a trailing newline that breaks auth or headers).
 - **13:27:15  11/08/2026** — Flatpak CI: stop uploading `repo/` as job

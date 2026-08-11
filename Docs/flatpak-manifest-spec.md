@@ -18,7 +18,9 @@
 | Path | Role |
 |------|------|
 | `flatpak/com.bigrangatech.LabDesk.yml` | Manifest |
-| `flatpak/icons/` | App icons (placeholder until artwork lands) |
+| `flatpak/com.bigrangatech.LabDesk.desktop` | Start-menu / launcher entry |
+| `flatpak/com.bigrangatech.LabDesk.metainfo.xml` | AppStream metadata |
+| `flatpak/icons/` | Optional PNG sizes; SVG lives in `src/labdesk_ui/assets/` |
 | `.gitlab-ci.yml` | Build + push job into `Ranga/flatpaks` |
 
 **Never commit:** `.flatpak-builder/`, `repo/`, `*.flatpak`, ostree
@@ -45,6 +47,7 @@ checkouts (see root `.gitignore`).
 | `--filesystem=xdg-documents` (and/or home) | Default clone dirs under Documents |
 | `--filesystem=xdg-download:ro` | Optional |
 | `--talk-name=org.freedesktop.Flatpak` | In-app update checks via `flatpak-spawn --host` |
+| `--talk-name=org.kde.StatusNotifierWatcher` | System tray icon |
 
 Exact YAML lives in `flatpak/com.bigrangatech.LabDesk.yml` and may grow;
 keep this table in sync when permissions change.

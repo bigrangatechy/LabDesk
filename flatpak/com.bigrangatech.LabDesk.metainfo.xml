@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo for LabDesk.
+  Icon: replace src/labdesk_ui/assets/com.bigrangatech.LabDesk.svg with the
+  official Anvil artwork (ADR-005) when ready; PNGs optional under flatpak/icons/.
+-->
+<component type="desktop-application">
+  <id>com.bigrangatech.LabDesk</id>
+  <name>LabDesk</name>
+  <summary>Desktop client for self-hosted GitLab</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <developer_name>BigRanga Tech</developer_name>
+  <description>
+    <p>
+      LabDesk is a Linux desktop client for self-hosted GitLab instances.
+      Browse projects, work with local git repositories, and create merge
+      requests without using gitlab.com.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.bigrangatech.LabDesk.desktop</launchable>
+  <url type="homepage">https://git.bigrangatech.com/Ranga/labdesk</url>
+  <provides>
+    <binary>labdesk</binary>
+  </provides>
+  <categories>
+    <category>Development</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+</component>

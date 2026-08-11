@@ -23,6 +23,8 @@ finish-args:
   - --device=dri
   - --talk-name=org.freedesktop.secrets
   - --talk-name=org.freedesktop.Flatpak
+  # System tray (StatusNotifier) when the host provides one.
+  - --talk-name=org.kde.StatusNotifierWatcher
   - --filesystem=xdg-documents
   - --filesystem=home
   - --env=PYTHONUNBUFFERED=1
@@ -77,6 +79,23 @@ modules:
           'exec python3 -m labdesk_ui.main "$@"' \
           > /app/bin/labdesk
         chmod 755 /app/bin/labdesk
+        # Start-menu entry + AppStream + icons (hicolor).
+        install -Dm644 flatpak/com.bigrangatech.LabDesk.desktop \
+          /app/share/applications/com.bigrangatech.LabDesk.desktop
+        install -Dm644 flatpak/com.bigrangatech.LabDesk.metainfo.xml \
+          /app/share/metainfo/com.bigrangatech.LabDesk.metainfo.xml
+        ICON_SVG=src/labdesk_ui/assets/com.bigrangatech.LabDesk.svg
+        if [ -f "${ICON_SVG}" ]; then
+          install -Dm644 "${ICON_SVG}" \
+            /app/share/icons/hicolor/scalable/apps/com.bigrangatech.LabDesk.svg
+        fi
+        for sz in 64 128 256 512; do
+          png="flatpak/icons/com.bigrangatech.LabDesk-${sz}.png"
+          if [ -f "${png}" ]; then
+            install -Dm644 "${png}" \
+              "/app/share/icons/hicolor/${sz}x${sz}/apps/com.bigrangatech.LabDesk.png"
+          fi
+        done
     sources:
       - type: dir
         path: ..

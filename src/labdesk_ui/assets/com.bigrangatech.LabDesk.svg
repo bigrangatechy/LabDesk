@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="LabDesk">
+  <!-- Placeholder Anvil mark (ADR-005). Replace with final logo artwork. -->
+  <rect width="128" height="128" rx="24" fill="#1c2430"/>
+  <g fill="#e8eef5">
+    <!-- horn + face -->
+    <path d="M28 52h72l-6 14H34z"/>
+    <path d="M40 66h48v10H40z"/>
+    <!-- waist -->
+    <path d="M52 76h24v12H52z"/>
+    <!-- base -->
+    <path d="M36 88h56l8 16H28z"/>
+  </g>
+  <circle cx="96" cy="40" r="8" fill="#5b9fd4"/>
+</svg>

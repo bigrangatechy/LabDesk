@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LabDesk
+GenericName=GitLab desktop client
+Comment=Desktop client for self-hosted GitLab
+Exec=labdesk
+Icon=com.bigrangatech.LabDesk
+Terminal=false
+Categories=Development;RevisionControl;
+Keywords=git;gitlab;forge;vcs;
+StartupWMClass=LabDesk
+StartupNotify=true
+X-Flatpak=com.bigrangatech.LabDesk
