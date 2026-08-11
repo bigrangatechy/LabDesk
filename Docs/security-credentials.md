@@ -57,6 +57,10 @@ Example: `labdesk:https://gitlab.bigrangatech.com`
 Service/application name in the keyring should be `LabDesk` (or the
 Flatpak app id `com.bigrangatech.LabDesk` where the portal requires it).
 
+On Linux, LabDesk uses the **FreeDesktop Secret Service** backend (not
+the kernel keyutils store) so the same path works unpackaged and under
+Flatpak (`--talk-name=org.freedesktop.secrets`).
+
 ### 3.3 API header
 
 All GitLab API v4 requests use:

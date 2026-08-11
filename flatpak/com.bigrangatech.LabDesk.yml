@@ -21,6 +21,8 @@ finish-args:
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
+  # Session bus + Secret Service (API PAT keyring; ADR-008 / Flatpak).
+  - --socket=session-bus
   - --talk-name=org.freedesktop.secrets
   - --talk-name=org.freedesktop.Flatpak
   # System tray (StatusNotifier) when the host provides one.

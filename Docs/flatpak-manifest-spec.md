@@ -43,7 +43,8 @@ checkouts (see root `.gitignore`).
 | `--share=network` | GitLab API + git HTTPS/SSH |
 | `--socket=wayland` / `--socket=fallback-x11` | UI |
 | `--device=dri` | Qt rendering |
-| `--talk-name=org.freedesktop.secrets` | API PAT keyring |
+| `--socket=session-bus` | D-Bus for Secret Service / tray |
+| `--talk-name=org.freedesktop.secrets` | API PAT keyring (Secret Service) |
 | `--filesystem=xdg-documents` (and/or home) | Default clone dirs under Documents |
 | `--filesystem=xdg-download:ro` | Optional |
 | `--talk-name=org.freedesktop.Flatpak` | In-app update checks via `flatpak-spawn --host` |

@@ -20,6 +20,11 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **14:32:04  11/08/2026** — Store API PATs via FreeDesktop **Secret
+  Service** (`keyring` async-secret-service) instead of linux-native
+  keyutils, and grant Flatpak `--socket=session-bus` so Flatpak can
+  save tokens (`LD-AUTH-002`). Git credential helper remains for git
+  HTTPS only (ADR-008) — not a substitute for the API PAT.
 - **14:11:33  11/08/2026** — Wire official PNG app icons
   (`com.bigrangatech.LabDesk-{64,128,256,512}x….png` in UI assets) into
   branding, Flatpak hicolor install, and start-menu entry.

@@ -17,7 +17,9 @@ serde_json = "1"
 toml = "0.8"
 toml_edit = "0.22"
 uuid = { version = "1", features = ["v4"] }
-keyring = { version = "3", features = ["linux-native"] }
+# FreeDesktop Secret Service (works under Flatpak). Prefer zbus + crypto-rust
+# so local builds do not require libdbus-1-dev (sync-secret-service does).
+keyring = { version = "3", default-features = false, features = ["async-secret-service", "tokio", "crypto-rust"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 thiserror = "2"
 url = "2"
