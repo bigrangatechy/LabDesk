@@ -134,14 +134,17 @@ flatpak_build_publish:
         exit 0
       fi
       DEST="${FLATPAKS_REPO_URL}"
-      # Prefer https — http→https redirects strip Basic credentials.
+      # Public http→https redirects strip Basic credentials. Keep plain http
+      # for direct LAN/origin URLs (e.g. http://192.168.0.214:8929/...).
       case "${DEST}" in
+        http://127.*|http://localhost*|http://10.*|http://192.168.*|http://172.1[6-9].*|http://172.2[0-9].*|http://172.3[0-1].*)
+          ;;
         http://*)
           DEST="https://${DEST#http://}"
           ;;
       esac
       case "${DEST}" in
-        https://*)
+        https://*|http://*)
           # Project/group access tokens: username oauth2 + token as password.
           # Deploy tokens: set FLATPAKS_DEPLOY_USER to the deploy-token username.
           USERNAME="${FLATPAKS_DEPLOY_USER:-oauth2}"
@@ -174,8 +177,27 @@ flatpak_build_publish:
       fi
       git commit -m "labdesk: publish ${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
       # Push to the credentialed URL directly (clone remotes often drop auth).
+      echo "Publish payload size (approx):"
+      du -sh labdesk/repo labdesk 2>/dev/null || true
       echo "Pushing to flatpaks (credentials redacted)…"
-      if ! git push "${AUTH_DEST}" HEAD:main; then
+      # Larger buffer helps some proxies; 413 itself is still a server body-size limit.
+      git config http.postBuffer 524288000
+      PUSH_LOG="$(mktemp)"
+      if ! git push "${AUTH_DEST}" HEAD:main 2>&1 | tee "${PUSH_LOG}"; then
+        if grep -qE 'HTTP 413|413 Request Entity Too Large|requested URL returned error: 413' "${PUSH_LOG}"; then
+          echo "Push failed with HTTP 413 (request entity too large)."
+          echo "The Flatpak ostree repo is bigger than something on the path will accept."
+          echo "This is NOT a deploy-token issue. Check, in order:"
+          echo "  1. Cloudflare: Free/Pro ~100MB body limit. Grey-cloud the GitLab"
+          echo "     DNS record, or push via a non-proxied host / SSH to origin."
+          echo "     (Set FLATPAKS_REPO_URL to the direct hostname if needed.)"
+          echo "  2. Omnibus: nginx['client_max_body_size'] = '0' then gitlab-ctl reconfigure"
+          echo "  3. Any other reverse proxy: raise client_max_body_size"
+          echo "  4. Admin → Settings → General → Account and limit: max push size"
+          echo "Do not put ostree objects in Git LFS when serving via /-/raw/ —"
+          echo "Flatpak would download LFS pointer files instead of content."
+          exit 1
+        fi
         echo "Push failed. Check FLATPAKS_DEPLOY_TOKEN on labdesk:"
         echo "  - Token is from Ranga/flatpaks (not labdesk)"
         echo "  - Scope includes write_repository (read-only is enough for clone, not push)"

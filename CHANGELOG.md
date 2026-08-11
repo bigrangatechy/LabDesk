@@ -20,6 +20,15 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **12:43:08  11/08/2026** — Flatpak publish: keep LAN `http://192.168.x`
+  `FLATPAKS_REPO_URL` as HTTP (do not force HTTPS); document Cloudflare
+  Tunnel + runner `clone_url` LAN bypass for 413 / clone failures.
+- **12:01:24  11/08/2026** — Flatpak publish **413** docs: Cloudflare
+  Free/Pro ~100 MB body limit is the usual cause when orange-clouding
+  GitLab; prefer grey-cloud / direct host / SSH for ostree pushes.
+- **11:59:59  11/08/2026** — Flatpak publish: detect HTTP **413** (ostree
+  too large for GitLab/nginx) with host-side `client_max_body_size` /
+  push-size guidance; do not treat it as a deploy-token failure.
 - **01:48:36  11/08/2026** — Flatpak GPG CI var: accept single-line
   **base64** secrets so GitLab **Masked** works (armored keys have
   newlines and are rejected).

@@ -99,7 +99,7 @@ CI variables (set in GitLab `labdesk` project settings, not in git):
 
 | Variable | Purpose |
 |----------|---------|
-| `FLATPAKS_REPO_URL` | Default `https://git.bigrangatech.com/Ranga/flatpaks.git` (use **https**, not http — redirects drop credentials) |
+| `FLATPAKS_REPO_URL` | Git remote for publish. Prefer **HTTPS** on the public hostname. For CI behind Cloudflare Tunnel / 100 MB limits, use the **direct LAN** origin (e.g. `http://192.168.0.214:8929/Ranga/flatpaks.git`) so the ostree push bypasses Cloudflare. |
 | `FLATPAKS_DEPLOY_TOKEN` | Project/group access token on **`flatpaks`** with `write_repository` (password). Username defaults to `oauth2`. |
 | `FLATPAKS_DEPLOY_USER` | Optional. Set if using a **deploy token** (its username) instead of `oauth2`. |
 | `FLATPAK_GPG_PRIVATE_KEY` | **Recommended.** Signing secret for the ostree repo. For **Masked** GitLab variables use **single-line base64** of the armored secret (`*.gpg.b64` from `./scripts/flatpak-gpg-create.sh`) — Masked values cannot contain whitespace/newlines. Or Type **File** with the armored key and leave Masked off. Never commit. |
@@ -113,6 +113,37 @@ Token CI variable flags: **Masked**; uncheck **Protected** unless the job only r
 `--user --no-gpg-verify` only as a temporary workaround
 (`user-guide.md` §2.1). With the key set, CI also publishes
 `labdesk/labdesk.flatpakrepo` and `labdesk/bigrangatech-flatpak.gpg`.
+
+**HTTP 413 on publish:** the ostree tree (especially with PySide6) often
+exceeds upload limits on the path to GitLab. Common causes, in order:
+
+1. **Cloudflare proxy / Tunnel** — Free/Pro allow only ~**100 MB**
+   request bodies; Tunnel hostnames must stay **orange (proxied)**
+   (grey-cloud breaks them). For CI, bypass Cloudflare:
+   - Runner `clone_url = "http://192.168.0.214:8929"` (LAN GitLab)
+   - CI variable `FLATPAKS_REPO_URL=http://192.168.0.214:8929/Ranga/flatpaks.git`
+   - Keep public `git.bigrangatech.com` on the tunnel for humans
+2. **GitLab Omnibus nginx** — raise body size if pushing to the
+   public URL without Cloudflare:
+
+```ruby
+# /etc/gitlab/gitlab.rb (Omnibus)
+nginx['client_max_body_size'] = '0'   # unlimited
+```
+
+```bash
+sudo gitlab-ctl reconfigure
+```
+
+3. **Any other reverse proxy** in front of GitLab — raise its
+   `client_max_body_size` (or equivalent) too.
+4. **GitLab Admin → Settings → General → Account and limit** —
+   raise Maximum push size (and attachment size if needed).
+
+Do **not** store ostree objects in Git LFS while serving the Flatpak
+remote via `/-/raw/…` — clients would get LFS pointer files, not
+content. LFS remains fine for unrelated large binaries in `flatpaks`
+if they are not part of the HTTP Flatpak remote path.
 
 ## 6. Local build (optional)
 
