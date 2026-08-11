@@ -94,6 +94,15 @@ fn connect_instance(
     let paths = paths::AppPaths::detect();
     let mut cfg = config::load_or_default(&paths)?;
 
+    let pat = pat.trim().to_string();
+    if pat.is_empty() {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-001",
+            "Authentication failed. Check your token.",
+        ))
+        .into());
+    }
+
     let inst = config::upsert_instance(&mut cfg, name, base_url, ssl_mode.to_string())?;
 
     let user = match api_client::get_user(&inst.base_url, &pat, ssl_mode) {

@@ -52,7 +52,7 @@ class InstanceConfigDialog(QDialog):
     def values(self) -> tuple[str, str, str, str]:
         return (
             self.name.text().strip() or "GitLab",
-            self.base_url.text().strip(),
-            self.pat.text(),
+            self.base_url.text().strip().rstrip("/"),
+            self.pat.text().strip(),
             str(self.ssl_mode.currentData()),
         )
