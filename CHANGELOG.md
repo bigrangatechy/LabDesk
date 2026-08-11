@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **13:27:15  11/08/2026** — Flatpak CI: stop uploading `repo/` as job
+  artifacts (258 MB+ causes coordinator **413**); ostree already lives
+  in `Ranga/flatpaks` after publish.
 - **13:04:04  11/08/2026** — Default `FLATPAKS_REPO_URL` to LAN GitLab
   (`http://192.168.0.214:8929/...`); warn in job log when publish host
   is still Cloudflare; add `scripts/setup-runner-lan.sh` for system

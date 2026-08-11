@@ -224,7 +224,8 @@ flatpak_build_publish:
       fi
   artifacts:
     when: on_success
+    # Do not archive repo/ — ostree is already pushed to Ranga/flatpaks and
+    # is hundreds of MB (CI artifact upload 413s via coordinator / Cloudflare).
     paths:
-      - repo/
       - ci-flatpak-meta/
     expire_in: 7 days
