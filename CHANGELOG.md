@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **14:11:33  11/08/2026** — Wire official PNG app icons
+  (`com.bigrangatech.LabDesk-{64,128,256,512}x….png` in UI assets) into
+  branding, Flatpak hicolor install, and start-menu entry.
 - **13:59:35  11/08/2026** — Flatpak start-menu `.desktop` + AppStream
   metainfo; Anvil icon asset for menu / window / tray; StatusNotifier
   talk-name. Drop final logo over
