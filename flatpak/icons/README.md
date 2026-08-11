@@ -1,15 +1,16 @@
 # LabDesk icons
 
-Canonical app icon (window, tray, Flatpak start-menu):
+Canonical PNGs (window, tray, Flatpak start-menu) live in:
 
-- `../src/labdesk_ui/assets/com.bigrangatech.LabDesk.svg`
+- `src/labdesk_ui/assets/com.bigrangatech.LabDesk-64x64.png`
+- `src/labdesk_ui/assets/com.bigrangatech.LabDesk-128x128.png`
+- `src/labdesk_ui/assets/com.bigrangatech.LabDesk-256x256.png`
+- `src/labdesk_ui/assets/com.bigrangatech.LabDesk-512x512.png`
 
-Optional raster sizes for desktops that prefer PNG (same basename):
+Optional scalable:
 
-- `com.bigrangatech.LabDesk-64.png`
-- `com.bigrangatech.LabDesk-128.png`
-- `com.bigrangatech.LabDesk-256.png`
-- `com.bigrangatech.LabDesk-512.png`
+- `src/labdesk_ui/assets/com.bigrangatech.LabDesk.svg`
 
-Drop final Anvil artwork over the SVG (ADR-005). Keep the app id filename
-so the `.desktop` `Icon=` key resolves.
+The Flatpak build installs these into
+`/app/share/icons/hicolor/{size}/apps/com.bigrangatech.LabDesk.png`
+so the `.desktop` `Icon=com.bigrangatech.LabDesk` key resolves.

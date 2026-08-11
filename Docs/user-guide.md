@@ -84,9 +84,8 @@ flatpak run com.bigrangatech.LabDesk
 ```
 
 After install, **LabDesk** also appears in the desktop application menu
-(start menu). Window / tray icons use the Anvil mark under
-`src/labdesk_ui/assets/com.bigrangatech.LabDesk.svg` (replace with final
-artwork when ready).
+(start menu). Icons are the PNGs under
+`src/labdesk_ui/assets/com.bigrangatech.LabDesk-*.png`.
 
 ### 2.3 Update
 

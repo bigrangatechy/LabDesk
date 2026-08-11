@@ -84,13 +84,14 @@ modules:
           /app/share/applications/com.bigrangatech.LabDesk.desktop
         install -Dm644 flatpak/com.bigrangatech.LabDesk.metainfo.xml \
           /app/share/metainfo/com.bigrangatech.LabDesk.metainfo.xml
+        # Icons from UI assets (PNG sizes) + optional SVG.
         ICON_SVG=src/labdesk_ui/assets/com.bigrangatech.LabDesk.svg
         if [ -f "${ICON_SVG}" ]; then
           install -Dm644 "${ICON_SVG}" \
             /app/share/icons/hicolor/scalable/apps/com.bigrangatech.LabDesk.svg
         fi
         for sz in 64 128 256 512; do
-          png="flatpak/icons/com.bigrangatech.LabDesk-${sz}.png"
+          png="src/labdesk_ui/assets/com.bigrangatech.LabDesk-${sz}x${sz}.png"
           if [ -f "${png}" ]; then
             install -Dm644 "${png}" \
               "/app/share/icons/hicolor/${sz}x${sz}/apps/com.bigrangatech.LabDesk.png"

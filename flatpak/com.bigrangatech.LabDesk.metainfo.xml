@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   AppStream metainfo for LabDesk.
-  Icon: replace src/labdesk_ui/assets/com.bigrangatech.LabDesk.svg with the
-  official Anvil artwork (ADR-005) when ready; PNGs optional under flatpak/icons/.
+  Icons: src/labdesk_ui/assets/com.bigrangatech.LabDesk-{64,128,256,512}x….png
 -->
 <component type="desktop-application">
   <id>com.bigrangatech.LabDesk</id>
