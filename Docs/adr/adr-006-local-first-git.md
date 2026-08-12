@@ -42,8 +42,8 @@ resolve externally.
 
 ### Pipeline status
 
-Viewing GitLab CI **pipeline** status is a **nice-to-have**, not a V1
-requirement.
+**Post-V1:** show latest pipeline status for the **current branch** and
+allow **Play** on manual jobs (API contract §6). Not a full CI browser.
 
 ## Consequences
 

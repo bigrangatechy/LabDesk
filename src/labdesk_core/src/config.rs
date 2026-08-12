@@ -77,7 +77,7 @@ impl AppConfig {
     }
 }
 
-pub fn reject_saas_url(base_url: &str) -> Result<()> {
+pub fn validate_base_url(base_url: &str) -> Result<()> {
     let parsed = url::Url::parse(base_url).map_err(|e| {
         LabDeskError::App(
             ErrorInfo::new("LD-CFG-003", "Config value invalid: base_url").with_detail(e.to_string()),
@@ -90,13 +90,41 @@ pub fn reject_saas_url(base_url: &str) -> Result<()> {
             "LabDesk supports self-hosted GitLab only.",
         )));
     }
-    if parsed.scheme() != "https" {
-        return Err(LabDeskError::App(
+    let scheme = parsed.scheme();
+    match scheme {
+        "https" => Ok(()),
+        "http" => {
+            if host_allows_plain_http(&host) {
+                Ok(())
+            } else {
+                Err(LabDeskError::App(
+                    ErrorInfo::new("LD-CFG-003", "Config value invalid: base_url").with_detail(
+                        "http:// is only allowed for loopback or RFC1918 private hosts; use https for public names",
+                    ),
+                ))
+            }
+        }
+        _ => Err(LabDeskError::App(
             ErrorInfo::new("LD-CFG-003", "Config value invalid: base_url")
-                .with_detail("API base URL must use https"),
-        ));
+                .with_detail("API base URL must use https (or http for LAN/loopback)"),
+        )),
     }
-    Ok(())
+}
+
+/// Back-compat alias — prefer [`validate_base_url`].
+pub fn reject_saas_url(base_url: &str) -> Result<()> {
+    validate_base_url(base_url)
+}
+
+fn host_allows_plain_http(host: &str) -> bool {
+    if host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(v4)) => v4.is_loopback() || v4.is_private(),
+        Ok(std::net::IpAddr::V6(v6)) => v6.is_loopback(),
+        Err(_) => false,
+    }
 }
 
 pub fn normalize_base_url(base_url: &str) -> String {
@@ -583,4 +611,33 @@ pub fn set_ui_shell(paths: &AppPaths, shell: &str) -> Result<()> {
 #[allow(dead_code)]
 pub fn path_exists(path: &Path) -> bool {
     path.exists()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn https_public_ok() {
+        assert!(validate_base_url("https://gitlab.example.com").is_ok());
+    }
+
+    #[test]
+    fn http_rfc1918_ok() {
+        assert!(validate_base_url("http://192.168.0.214:8929").is_ok());
+        assert!(validate_base_url("http://10.1.2.3").is_ok());
+        assert!(validate_base_url("http://172.16.0.1").is_ok());
+        assert!(validate_base_url("http://127.0.0.1").is_ok());
+        assert!(validate_base_url("http://localhost:8080").is_ok());
+    }
+
+    #[test]
+    fn http_public_rejected() {
+        assert!(validate_base_url("http://gitlab.example.com").is_err());
+    }
+
+    #[test]
+    fn saas_rejected() {
+        assert!(validate_base_url("https://gitlab.com").is_err());
+    }
 }

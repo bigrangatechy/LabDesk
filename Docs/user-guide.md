@@ -18,8 +18,10 @@ the full API or SQLite schema here.
 
 - Linux desktop client for **self-hosted GitLab** only (not GitLab.com).
 - Local git (commit, branch, diff) plus forge features (project list,
-  merge requests).
+  merge requests, pipeline status).
 - Distributed as **Flatpak** for releases.
+- **V1 is complete** (connect → git → MR → Flatpak). Help → About shows
+  the build-date version (`YYYY.MM.DD`).
 
 See also the project `README.md`.
 
@@ -123,7 +125,8 @@ After install or a major update:
 2. Connect to self-hosted GitLab (PAT in keyring).
 3. Refresh projects; **Open local** or **Add existing…** for a clone.
 4. Repo window: Changes (stage / commit), History, Branches (create /
-   switch / merge), Fetch / Pull / Push, ahead/behind vs upstream,
+   switch / merge), Pipelines (status + play manual jobs when online),
+   Fetch / Pull / Push, ahead/behind vs upstream,
    Open in editor, Create merge request (when online; offered after push).
    Re-opening the same repo focuses the existing window; **Window** menu
    lists open repos.
@@ -138,6 +141,12 @@ After install or a major update:
 
 - On first launch with no instances, LabDesk offers **Add / connect**.
 - Add instance (URL + API personal access token).
+  - Prefer **`https://…`**. On a LAN you may use
+    **`http://192.168.x.x:port`** (or other RFC1918 / loopback hosts);
+    public DNS names still require HTTPS.
+  - Warning: over plain HTTP on the LAN, the API PAT travels in
+    cleartext — use only on trusted networks.
+- SaaS hosts (`gitlab.com`, etc.) are rejected.
 - Why SaaS URLs are rejected.
 - TLS / self-signed / imported CA (short, practical).
 - Where the token is stored (system keyring — not a file you edit).
@@ -204,6 +213,16 @@ After install or a major update:
   success, optionally open the MR in the browser.
 
 → Journey D.
+
+---
+
+## 6a. Pipelines
+
+- Repo window **Pipelines** tab shows the latest pipeline for the
+  **current branch**, with status and an **Open in GitLab** link.
+- Manual jobs list a **Play** action (confirm first).
+- Offline: network play/refresh disabled; last-known status may still
+  show in the header chip when available.
 
 ---
 

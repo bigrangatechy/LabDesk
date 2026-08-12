@@ -2,10 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/),
-and this project will use [Semantic Versioning](https://semver.org/)
-once releases begin. Until the first tagged release, entries accumulate
-under **[Unreleased]**.
+The format is based on [Keep a Changelog](https://keepachangelog.com/).
+User-visible Flatpak builds use a **build-date** version (`YYYY.MM.DD`);
+changelog section labels may still use semantic milestones (e.g. `1.0.0`
+for the V1 feature freeze).
 
 **Timestamps:** each new bullet starts with local wall time
 `HH:MM:SS  DD/MM/YYYY` (24-hour clock, day/month/year), then an em dash
@@ -17,6 +17,17 @@ Use the machine’s local timezone when the change is recorded. Older
 bullets without a stamp predate this convention.
 
 ## [Unreleased]
+
+### Added
+
+- **15:52:29  12/08/2026** — Post-V1: LAN `http://` for loopback/RFC1918
+  GitLab URLs; build-date versioning (`YYYY.MM.DD`); background Qt workers
+  for clone/refresh/fetch/push/API; pipeline status + play manual jobs.
+
+## [1.0.0] - 2026-08-12
+
+V1 complete — connect → projects → local git → MR → Flatpak. Feature set
+frozen; further work is post-V1 (LAN HTTP, versioning, threads, pipelines).
 
 ### Added
 

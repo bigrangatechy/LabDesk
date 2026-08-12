@@ -178,15 +178,21 @@ fn fetch_current_user(py: Python<'_>) -> PyResult<PyObject> {
         ))
         .into());
     };
-    let pat = secrets::load_pat(&inst.keyring_account)?;
-    let user = api_client::get_user(&inst.base_url, &pat, &inst.ssl_mode)?;
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let keyring = inst.keyring_account.clone();
+    let instance_name = inst.name.clone();
+    let user = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        api_client::get_user(&base_url, &pat, &ssl_mode)
+    })?;
     let u = PyDict::new(py);
     u.set_item("id", user.id)?;
     u.set_item("username", user.username)?;
     u.set_item("name", user.name)?;
     u.set_item("web_url", user.web_url)?;
-    u.set_item("instance_name", &inst.name)?;
-    u.set_item("base_url", &inst.base_url)?;
+    u.set_item("instance_name", instance_name)?;
+    u.set_item("base_url", base_url)?;
     Ok(u.into())
 }
 
@@ -202,9 +208,14 @@ fn refresh_projects(py: Python<'_>) -> PyResult<PyObject> {
         ))
         .into());
     };
-    let pat = secrets::load_pat(&inst.keyring_account)?;
-    let count =
-        refresh_projects_inner(&paths, &inst.id, &inst.base_url, &pat, &inst.ssl_mode)?;
+    let instance_id = inst.id.clone();
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let keyring = inst.keyring_account.clone();
+    let count = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        refresh_projects_inner(&paths, &instance_id, &base_url, &pat, &ssl_mode)
+    })?;
     let d = PyDict::new(py);
     d.set_item("count", count)?;
     d.set_item("source", "api")?;
@@ -329,12 +340,16 @@ fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<P
     };
 
     let ssl_insecure = inst.ssl_mode == "allow_self_signed";
-    git_ops::clone_repository(&git_ops::CloneRequest {
-        url: &url,
-        destination: &dest,
-        transport: tr,
-        pat_fallback: pat.as_deref(),
-        ssl_insecure,
+    let dest_owned = dest.clone();
+    let url_owned = url.clone();
+    py.allow_threads(|| {
+        git_ops::clone_repository(&git_ops::CloneRequest {
+            url: &url_owned,
+            destination: &dest_owned,
+            transport: tr,
+            pat_fallback: pat.as_deref(),
+            ssl_insecure,
+        })
     })?;
 
     let local_id = cache::upsert_local_repo(
@@ -732,16 +747,20 @@ fn create_merge_request(
             "No access token configured.",
         ))
     })?;
-    let mr = api_client::create_merge_request(
-        &inst.base_url,
-        &pat,
-        &inst.ssl_mode,
-        project_id,
-        &source_branch,
-        &target_branch,
-        &title,
-        description.as_deref(),
-    )?;
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let mr = py.allow_threads(|| {
+        api_client::create_merge_request(
+            &base_url,
+            &pat,
+            &ssl_mode,
+            project_id,
+            &source_branch,
+            &target_branch,
+            &title,
+            description.as_deref(),
+        )
+    })?;
     let d = PyDict::new(py);
     d.set_item("iid", mr.iid)?;
     d.set_item("title", mr.title)?;
@@ -751,7 +770,7 @@ fn create_merge_request(
 }
 
 #[pyfunction]
-fn repo_pull(repo_path: String) -> PyResult<String> {
+fn repo_pull(py: Python<'_>, repo_path: String) -> PyResult<String> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
     let Some(inst) = cfg.active_instance() else {
@@ -762,20 +781,20 @@ fn repo_pull(repo_path: String) -> PyResult<String> {
         .into());
     };
     let pat = secrets::load_pat(&inst.keyring_account).ok();
-    let auth = git_ops::AuthOptions {
-        pat_fallback: pat.as_deref(),
-        ssl_insecure: inst.ssl_mode == "allow_self_signed",
-        prefer_ssh: false,
-    };
-    Ok(git_ops::pull(
-        std::path::Path::new(&repo_path),
-        "origin",
-        &auth,
-    )?)
+    let ssl_insecure = inst.ssl_mode == "allow_self_signed";
+    py.allow_threads(|| {
+        let auth = git_ops::AuthOptions {
+            pat_fallback: pat.as_deref(),
+            ssl_insecure,
+            prefer_ssh: false,
+        };
+        git_ops::pull(std::path::Path::new(&repo_path), "origin", &auth)
+    })
+    .map_err(Into::into)
 }
 
 #[pyfunction]
-fn repo_fetch(repo_path: String) -> PyResult<()> {
+fn repo_fetch(py: Python<'_>, repo_path: String) -> PyResult<()> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
     let Some(inst) = cfg.active_instance() else {
@@ -786,12 +805,15 @@ fn repo_fetch(repo_path: String) -> PyResult<()> {
         .into());
     };
     let pat = secrets::load_pat(&inst.keyring_account).ok();
-    let auth = git_ops::AuthOptions {
-        pat_fallback: pat.as_deref(),
-        ssl_insecure: inst.ssl_mode == "allow_self_signed",
-        prefer_ssh: false,
-    };
-    git_ops::fetch(std::path::Path::new(&repo_path), "origin", &auth)?;
+    let ssl_insecure = inst.ssl_mode == "allow_self_signed";
+    py.allow_threads(|| {
+        let auth = git_ops::AuthOptions {
+            pat_fallback: pat.as_deref(),
+            ssl_insecure,
+            prefer_ssh: false,
+        };
+        git_ops::fetch(std::path::Path::new(&repo_path), "origin", &auth)
+    })?;
     Ok(())
 }
 
@@ -816,7 +838,7 @@ fn repo_merge_branch(repo_path: String, their_branch: String) -> PyResult<String
 
 #[pyfunction]
 #[pyo3(signature = (repo_path, force=false))]
-fn repo_push(repo_path: String, force: bool) -> PyResult<()> {
+fn repo_push(py: Python<'_>, repo_path: String, force: bool) -> PyResult<()> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
     let Some(inst) = cfg.active_instance() else {
@@ -827,12 +849,15 @@ fn repo_push(repo_path: String, force: bool) -> PyResult<()> {
         .into());
     };
     let pat = secrets::load_pat(&inst.keyring_account).ok();
-    let auth = git_ops::AuthOptions {
-        pat_fallback: pat.as_deref(),
-        ssl_insecure: inst.ssl_mode == "allow_self_signed",
-        prefer_ssh: false,
-    };
-    git_ops::push(std::path::Path::new(&repo_path), "origin", force, &auth)?;
+    let ssl_insecure = inst.ssl_mode == "allow_self_signed";
+    py.allow_threads(|| {
+        let auth = git_ops::AuthOptions {
+            pat_fallback: pat.as_deref(),
+            ssl_insecure,
+            prefer_ssh: false,
+        };
+        git_ops::push(std::path::Path::new(&repo_path), "origin", force, &auth)
+    })?;
 
     // Update last_push_at when we can match the path.
     if let Ok(conn) = cache::open(&paths) {
@@ -843,6 +868,102 @@ fn repo_push(repo_path: String, force: bool) -> PyResult<()> {
         );
     }
     Ok(())
+}
+
+/// Latest pipeline for the given project ref (current branch).
+#[pyfunction]
+fn latest_pipeline(py: Python<'_>, project_id: i64, ref_name: String) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some(inst) = cfg.active_instance() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let keyring = inst.keyring_account.clone();
+    let pipe = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        api_client::latest_pipeline(&base_url, &pat, &ssl_mode, project_id, &ref_name)
+    })?;
+    match pipe {
+        None => Ok(py.None()),
+        Some(p) => {
+            let d = PyDict::new(py);
+            d.set_item("id", p.id)?;
+            d.set_item("status", p.status)?;
+            d.set_item("ref", p.ref_)?;
+            d.set_item("web_url", p.web_url)?;
+            d.set_item("updated_at", p.updated_at)?;
+            d.set_item("created_at", p.created_at)?;
+            Ok(d.into())
+        }
+    }
+}
+
+/// Jobs for a pipeline (includes `when` for manual detection).
+#[pyfunction]
+fn list_pipeline_jobs(py: Python<'_>, project_id: i64, pipeline_id: u64) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some(inst) = cfg.active_instance() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let keyring = inst.keyring_account.clone();
+    let jobs = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        api_client::list_pipeline_jobs(&base_url, &pat, &ssl_mode, project_id, pipeline_id)
+    })?;
+    let list = pyo3::types::PyList::empty(py);
+    for j in jobs {
+        let d = PyDict::new(py);
+        d.set_item("id", j.id)?;
+        d.set_item("name", j.name)?;
+        d.set_item("status", j.status)?;
+        d.set_item("stage", j.stage)?;
+        d.set_item("when", j.when)?;
+        d.set_item("web_url", j.web_url)?;
+        list.append(d)?;
+    }
+    Ok(list.into())
+}
+
+/// Play a manual CI job.
+#[pyfunction]
+fn play_job(py: Python<'_>, project_id: i64, job_id: u64) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some(inst) = cfg.active_instance() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let keyring = inst.keyring_account.clone();
+    let j = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        api_client::play_job(&base_url, &pat, &ssl_mode, project_id, job_id)
+    })?;
+    let d = PyDict::new(py);
+    d.set_item("id", j.id)?;
+    d.set_item("name", j.name)?;
+    d.set_item("status", j.status)?;
+    d.set_item("stage", j.stage)?;
+    d.set_item("when", j.when)?;
+    d.set_item("web_url", j.web_url)?;
+    Ok(d.into())
 }
 
 /// Restore config.known-good.toml over config.toml (startup recovery helper).
@@ -964,6 +1085,9 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(repo_ahead_behind, m)?)?;
     m.add_function(wrap_pyfunction!(repo_merge_branch, m)?)?;
     m.add_function(wrap_pyfunction!(repo_push, m)?)?;
+    m.add_function(wrap_pyfunction!(latest_pipeline, m)?)?;
+    m.add_function(wrap_pyfunction!(list_pipeline_jobs, m)?)?;
+    m.add_function(wrap_pyfunction!(play_job, m)?)?;
     m.add_function(wrap_pyfunction!(get_default_clone_dir, m)?)?;
     m.add_function(wrap_pyfunction!(set_default_clone_dir, m)?)?;
     m.add_function(wrap_pyfunction!(set_theme, m)?)?;

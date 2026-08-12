@@ -29,6 +29,7 @@ Examples:
 |------------|------------|
 | `https://gitlab.example.com` | `https://gitlab.example.com/api/v4` |
 | `https://git.lan:8443` | `https://git.lan:8443/api/v4` |
+| `http://192.168.0.214:8929` | `http://192.168.0.214:8929/api/v4` |
 
 - V1 targets **API v4** only (`api_version = "v4"`).
 - Do not hardcode `gitlab.com`. Reject SaaS hosts at setup (ADR-001)
@@ -38,12 +39,20 @@ Examples:
 
 ## 2. Transport & TLS
 
-- Scheme: **HTTPS** only for API calls in V1.
+- Scheme: **HTTPS** required for public DNS names.
+- **`http://`** allowed only when the host is **loopback**
+  (`localhost`, `127.0.0.1`, `::1`) or **RFC1918** private
+  (`10/8`, `172.16–31/12`, `192.168/16`). SaaS reject unchanged
+  (ADR-001).
+- Flatpak already uses `--share=network` (covers LAN); no extra
+  finish-arg is required for local-network GitLab.
 - TLS verification follows per-instance `ssl_mode`
   (`strict` | `allow_self_signed` | `imported_ca`) — see
   `security-credentials.md`.
 - Timeouts and retry policy: implementation detail for the dev guide;
   rate-limit behaviour is specified in §7.
+- **User-Agent:** `LabDesk/<build-date-or-dev>` (see versioning in the
+  tech spec / Flatpak CI).
 
 ---
 
@@ -232,21 +241,38 @@ Content-Type: application/json
 
 ---
 
-## 6. Nice-to-have endpoints (not V1 blockers)
+## 6. Pipelines (post-V1)
 
-Documented so a later drop-in does not invent a second style.
-
-### 6.1 Pipeline status — `GET /projects/:id/pipelines`
+### 6.1 Latest pipeline — `GET /projects/:id/pipelines`
 
 ```http
 GET {api_root}/projects/{id}/pipelines?ref=<branch>&per_page=1
 PRIVATE-TOKEN: <pat>
 ```
 
-Use latest pipeline `status`, `web_url`, `updated_at` for UI / cache.
-Offline: show last cached value with timestamp.
+Use latest pipeline `id`, `status`, `web_url`, `updated_at` /
+`created_at` for UI. Scope: **current branch only**.
 
-### 6.2 Verify remote branch — `GET /projects/:id/repository/branches/:branch`
+### 6.2 Pipeline jobs — `GET /projects/:id/pipelines/:pipeline_id/jobs`
+
+```http
+GET {api_root}/projects/{id}/pipelines/{pipeline_id}/jobs
+PRIVATE-TOKEN: <pat>
+```
+
+LabDesk lists jobs with `when == "manual"` (and status that allows play)
+for the **Play** action.
+
+### 6.3 Play manual job — `POST /projects/:id/jobs/:job_id/play`
+
+```http
+POST {api_root}/projects/{id}/jobs/{job_id}/play
+PRIVATE-TOKEN: <pat>
+```
+
+Map failures to `LD-API-JOB-001` / `LD-API-*` as appropriate.
+
+### 6.4 Verify remote branch — `GET /projects/:id/repository/branches/:branch`
 
 ```http
 GET {api_root}/projects/{id}/repository/branches/{branch}

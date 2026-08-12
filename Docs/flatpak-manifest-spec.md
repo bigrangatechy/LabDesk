@@ -40,7 +40,7 @@ checkouts (see root `.gitignore`).
 
 | Finish arg / permission | Why |
 |-------------------------|-----|
-| `--share=network` | GitLab API + git HTTPS/SSH |
+| `--share=network` | GitLab API + git HTTPS/SSH **and LAN** (no extra finish-arg for private IPs) |
 | `--socket=wayland` / `--socket=fallback-x11` | UI |
 | `--device=dri` | Qt rendering |
 | `--socket=session-bus` | D-Bus for Secret Service / tray |
@@ -52,6 +52,13 @@ checkouts (see root `.gitignore`).
 
 Exact YAML lives in `flatpak/com.bigrangatech.LabDesk.yml` and may grow;
 keep this table in sync when permissions change.
+
+### Build-date version
+
+CI sets `LABDESK_VERSION=$(date -u +%Y.%m.%d)`, passes it into
+`flatpak-builder --env=…`, writes `labdesk_ui/_build_version.py`, and
+adds an AppStream `<release version="…">` in metainfo. Unpackaged
+dev builds fall back to `dev`.
 
 ## 5. CI publish path
 

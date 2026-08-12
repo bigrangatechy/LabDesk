@@ -90,6 +90,11 @@ class RepoWindow(QMainWindow):
         self.header.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(self.header)
 
+        self.pipeline_chip = QLabel("")
+        self.pipeline_chip.setWordWrap(True)
+        self.pipeline_chip.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(self.pipeline_chip)
+
         row = QHBoxLayout()
         self.btn_refresh = QPushButton("Refresh")
         self.btn_refresh.clicked.connect(self.refresh)
@@ -126,28 +131,89 @@ class RepoWindow(QMainWindow):
         self.tabs.addTab(self._build_changes_tab(), "Changes")
         self.tabs.addTab(self._build_history_tab(), "History")
         self.tabs.addTab(self._build_branches_tab(), "Branches")
+        self.tabs.addTab(self._build_pipelines_tab(), "Pipelines")
         layout.addWidget(self.tabs, stretch=1)
 
         self.footer = QLabel("")
         self.footer.setWordWrap(True)
         layout.addWidget(self.footer)
 
+        self._pipeline_project_id: int | None = None
+        self._pipeline_web_url: str | None = None
+        self._busy = False
+
         self.refresh()
         self.set_network_available(True)
 
     def set_network_available(self, available: bool) -> None:
         self._network_available = available
-        self.btn_push.setEnabled(available)
-        self.btn_force.setEnabled(available)
-        self.btn_pull.setEnabled(available)
-        self.btn_fetch.setEnabled(available)
-        self.btn_mr.setEnabled(available)
+        if not getattr(self, "_busy", False):
+            self.btn_push.setEnabled(available)
+            self.btn_force.setEnabled(available)
+            self.btn_pull.setEnabled(available)
+            self.btn_fetch.setEnabled(available)
+            self.btn_mr.setEnabled(available)
+            if hasattr(self, "btn_pipeline_refresh"):
+                self.btn_pipeline_refresh.setEnabled(available)
+                self.btn_pipeline_open.setEnabled(available and bool(self._pipeline_web_url))
+                self.btn_play_job.setEnabled(available)
         tip = "Working offline — network git actions disabled." if not available else ""
         self.btn_push.setToolTip(tip)
         self.btn_force.setToolTip(tip)
         self.btn_pull.setToolTip(tip)
         self.btn_fetch.setToolTip(tip)
         self.btn_mr.setToolTip(tip)
+
+    def _network_busy_widgets(self) -> list:
+        widgets = [
+            self.btn_pull,
+            self.btn_fetch,
+            self.btn_push,
+            self.btn_force,
+            self.btn_mr,
+        ]
+        if hasattr(self, "btn_pipeline_refresh"):
+            widgets.extend(
+                [self.btn_pipeline_refresh, self.btn_pipeline_open, self.btn_play_job]
+            )
+        return widgets
+
+    def _build_pipelines_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        self.pipeline_summary = QLabel("No pipeline loaded yet.")
+        self.pipeline_summary.setWordWrap(True)
+        layout.addWidget(self.pipeline_summary)
+        self.pipeline_jobs = QListWidget()
+        layout.addWidget(self.pipeline_jobs, stretch=1)
+        row = QHBoxLayout()
+        self.btn_pipeline_refresh = QPushButton("Refresh pipeline")
+        self.btn_pipeline_refresh.clicked.connect(self._refresh_pipelines)
+        row.addWidget(self.btn_pipeline_refresh)
+        self.btn_pipeline_open = QPushButton("Open in GitLab")
+        self.btn_pipeline_open.clicked.connect(self._open_pipeline)
+        self.btn_pipeline_open.setEnabled(False)
+        row.addWidget(self.btn_pipeline_open)
+        self.btn_play_job = QPushButton("Play manual job…")
+        self.btn_play_job.clicked.connect(self._play_selected_job)
+        row.addWidget(self.btn_play_job)
+        row.addStretch(1)
+        layout.addLayout(row)
+        return page
+
+    def refresh(self) -> None:
+        self._refresh_header()
+        self._refresh_changes()
+        self._refresh_history()
+        self._refresh_branches()
+        if self._network_available:
+            self._refresh_pipelines()
+        else:
+            self.pipeline_chip.setText("Pipeline: (offline)")
+            if hasattr(self, "pipeline_summary"):
+                self.pipeline_summary.setText("Offline — cannot refresh pipelines.")
+                self.btn_pipeline_refresh.setEnabled(False)
+                self.btn_play_job.setEnabled(False)
 
     def _build_changes_tab(self) -> QWidget:
         page = QWidget()
@@ -253,12 +319,6 @@ class RepoWindow(QMainWindow):
         layout.addLayout(row)
         return page
 
-    def refresh(self) -> None:
-        self._refresh_header()
-        self._refresh_changes()
-        self._refresh_history()
-        self._refresh_branches()
-
     def _refresh_header(self) -> None:
         try:
             import labdesk_core
@@ -328,16 +388,36 @@ class RepoWindow(QMainWindow):
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
 
     def _fetch(self) -> None:
-        try:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+
+        def work():
             import labdesk_core
 
-            labdesk_core.repo_fetch(self.repo_path)
+            labdesk_core.repo_fetch(path)
+            return True
+
+        def on_ok(_result) -> None:
+            self._busy = False
             self.footer.setText("Fetch OK.")
             self._refresh_header()
             QMessageBox.information(self, "Fetch", "Fetched from origin.")
-        except Exception as exc:
-            code, msg = format_error(exc)
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self._busy = False
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        self._busy = True
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=self._network_busy_widgets(),
+            status=self.footer.setText,
+            working_message="Working…",
+        )
 
     def _refresh_branches(self) -> None:
         try:
@@ -450,20 +530,32 @@ class RepoWindow(QMainWindow):
                     "Source and target branches are required.",
                 )
                 return
-            mr = labdesk_core.create_merge_request(
-                int(info["project_id"]),
-                source,
-                target,
-                title,
-                description or None,
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+            return
+
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        project_id = int(info["project_id"])
+        desc = description or None
+
+        def work():
+            import labdesk_core
+
+            return labdesk_core.create_merge_request(
+                project_id, source, target, title, desc
             )
-            web = mr.get("web_url") or ""
-            iid = mr.get("iid")
+
+        def on_ok(mr) -> None:
+            self._busy = False
+            web = (mr or {}).get("web_url") or ""
+            iid = (mr or {}).get("iid")
             self.footer.setText(f"Created !{iid}")
             reply = QMessageBox.information(
                 self,
                 "Merge request created",
-                f"Created !{iid}: {mr.get('title') or title}\n\nOpen in GitLab?",
+                f"Created !{iid}: {(mr or {}).get('title') or title}\n\nOpen in GitLab?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes,
             )
@@ -473,9 +565,21 @@ class RepoWindow(QMainWindow):
                 except Exception as exc:
                     code, msg = format_error(exc)
                     QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
-        except Exception as exc:
-            code, msg = format_error(exc)
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self._busy = False
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        self._busy = True
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=self._network_busy_widgets(),
+            status=self.footer.setText,
+            working_message="Creating merge request…",
+        )
 
     def _refresh_changes(self) -> None:
         try:
@@ -759,16 +863,35 @@ class RepoWindow(QMainWindow):
             self.commit_diff.setPlainText(str(exc))
 
     def _pull(self) -> None:
-        try:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+
+        def work():
             import labdesk_core
 
-            msg = labdesk_core.repo_pull(self.repo_path)
-            self.footer.setText(msg)
+            return labdesk_core.repo_pull(path)
+
+        def on_ok(msg) -> None:
+            self._busy = False
+            self.footer.setText(str(msg))
             self.refresh()
-            QMessageBox.information(self, "Pull", msg)
-        except Exception as exc:
-            code, msg = format_error(exc)
+            QMessageBox.information(self, "Pull", str(msg))
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self._busy = False
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        self._busy = True
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=self._network_busy_widgets(),
+            status=self.footer.setText,
+            working_message="Working…",
+        )
 
     def _push(self) -> None:
         self._do_push(False)
@@ -792,10 +915,18 @@ class RepoWindow(QMainWindow):
         self._do_push(True)
 
     def _do_push(self, force: bool) -> None:
-        try:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+
+        def work():
             import labdesk_core
 
-            labdesk_core.repo_push(self.repo_path, force)
+            labdesk_core.repo_push(path, force)
+            return True
+
+        def on_ok(_result) -> None:
+            self._busy = False
             self.footer.setText("Force push OK." if force else "Push OK.")
             QMessageBox.information(
                 self,
@@ -812,6 +943,150 @@ class RepoWindow(QMainWindow):
                 )
                 if reply == QMessageBox.StandardButton.Yes:
                     self._create_mr()
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self._busy = False
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        self._busy = True
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=self._network_busy_widgets(),
+            status=self.footer.setText,
+            working_message="Working…",
+        )
+
+    def _refresh_pipelines(self) -> None:
+        if not self._network_available:
+            self.pipeline_chip.setText("Pipeline: (offline)")
+            return
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+
+        def work():
+            import labdesk_core
+
+            info = labdesk_core.resolve_repo_project(path)
+            project_id = int(info["project_id"])
+            branch = info.get("current_branch") or labdesk_core.repo_branch(path)
+            pipe = labdesk_core.latest_pipeline(project_id, branch)
+            jobs = []
+            if pipe and pipe.get("id") is not None:
+                jobs = labdesk_core.list_pipeline_jobs(project_id, int(pipe["id"]))
+            return {"project_id": project_id, "branch": branch, "pipeline": pipe, "jobs": jobs}
+
+        def on_ok(data) -> None:
+            pipe = (data or {}).get("pipeline")
+            jobs = (data or {}).get("jobs") or []
+            self._pipeline_project_id = (data or {}).get("project_id")
+            if not pipe:
+                self._pipeline_web_url = None
+                self.pipeline_chip.setText("Pipeline: none for current branch")
+                self.pipeline_summary.setText("No pipeline found for the current branch.")
+                self.pipeline_jobs.clear()
+                self.btn_pipeline_open.setEnabled(False)
+                return
+            status = pipe.get("status") or "unknown"
+            self._pipeline_web_url = pipe.get("web_url")
+            self.pipeline_chip.setText(f"Pipeline: {status}")
+            self.pipeline_summary.setText(
+                f"#{pipe.get('id')}  {status}  ref={pipe.get('ref') or data.get('branch')}\n"
+                f"Updated: {pipe.get('updated_at') or pipe.get('created_at') or '—'}"
+            )
+            self.btn_pipeline_open.setEnabled(bool(self._pipeline_web_url))
+            self.pipeline_jobs.clear()
+            for job in jobs:
+                when = (job.get("when") or "").lower()
+                name = job.get("name") or f"job {job.get('id')}"
+                jstatus = job.get("status") or ""
+                label = f"{name}  [{jstatus}]"
+                if when == "manual":
+                    label = f"▶ {label} (manual)"
+                item = QListWidgetItem(label)
+                item.setData(Qt.ItemDataRole.UserRole, job)
+                self.pipeline_jobs.addItem(item)
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self.pipeline_chip.setText(f"Pipeline: [{code}]")
+            self.pipeline_summary.setText(f"[{code}] {msg}")
+            if code.startswith("LD-NET"):
+                self.set_network_available(False)
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_pipeline_refresh] if hasattr(self, "btn_pipeline_refresh") else None,
+            status=self.footer.setText,
+            working_message="Loading pipeline…",
+        )
+
+    def _open_pipeline(self) -> None:
+        if not self._pipeline_web_url:
+            return
+        try:
+            open_url(self._pipeline_web_url)
         except Exception as exc:
             code, msg = format_error(exc)
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
+
+    def _play_selected_job(self) -> None:
+        if not self._network_available:
+            QMessageBox.information(self, "Play job", "Working offline.")
+            return
+        item = self.pipeline_jobs.currentItem()
+        if item is None:
+            QMessageBox.information(self, "Play job", "Select a manual job first.")
+            return
+        job = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(job, dict):
+            return
+        when = (job.get("when") or "").lower()
+        if when != "manual":
+            QMessageBox.information(
+                self, "Play job", "Only manual jobs can be played from LabDesk."
+            )
+            return
+        name = job.get("name") or job.get("id")
+        reply = QMessageBox.question(
+            self,
+            "Play job",
+            f"Start manual job '{name}'?",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        if self._pipeline_project_id is None:
+            QMessageBox.warning(self, "Play job", "Project id unknown; refresh pipeline.")
+            return
+
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        project_id = int(self._pipeline_project_id)
+        job_id = int(job["id"])
+
+        def work():
+            import labdesk_core
+
+            return labdesk_core.play_job(project_id, job_id)
+
+        def on_ok(result) -> None:
+            self.footer.setText(f"Started job {result.get('name') or job_id}")
+            self._refresh_pipelines()
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=self._network_busy_widgets(),
+            status=self.footer.setText,
+            working_message="Starting job…",
+        )

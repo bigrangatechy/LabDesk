@@ -118,7 +118,15 @@ password store for SSH.
 
 ## 5. TLS / certificates
 
-Per-instance `ssl_mode`:
+### 5.0 Base URL scheme
+
+- **HTTPS** required for public hostnames.
+- **`http://`** only for **loopback** and **RFC1918** private addresses
+  (LAN GitLab). Flatpak already has `--share=network`.
+- Over plain HTTP, the API **PAT is sent in cleartext** — warn the user;
+  only use on trusted networks.
+
+Per-instance `ssl_mode` (HTTPS):
 
 | Mode | Behaviour |
 |------|-----------|

@@ -26,7 +26,14 @@ class InstanceConfigDialog(QDialog):
         form.addRow("Display name", self.name)
 
         self.base_url = QLineEdit()
-        self.base_url.setPlaceholderText("https://gitlab.example.com")
+        self.base_url.setPlaceholderText(
+            "https://gitlab.example.com  or  http://192.168.x.x:port (LAN)"
+        )
+        self.base_url.setToolTip(
+            "HTTPS required for public DNS names.\n"
+            "http:// is allowed only for localhost / RFC1918 private IPs.\n"
+            "On plain HTTP the API PAT is sent in cleartext — trusted LAN only."
+        )
         form.addRow("Base URL", self.base_url)
 
         self.pat = QLineEdit()

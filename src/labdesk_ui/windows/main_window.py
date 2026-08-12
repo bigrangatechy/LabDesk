@@ -442,16 +442,30 @@ class MainWindow(QMainWindow):
                 self.detail.setText("")
                 self.set_network_available(True)
                 return
+        except Exception as exc:
+            code, msg = format_error(exc)
+            self.status.setText(f"[{code}] {msg}")
+            self.detail.setText(str(exc))
+            return
 
-            user = labdesk_core.fetch_current_user()
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        self.set_detail("Working…")
+
+        def work():
+            import labdesk_core
+
+            return labdesk_core.fetch_current_user()
+
+        def on_ok(user) -> None:
             self.status.setText(
                 f"Connected as {user.get('name')} (@{user.get('username')})\n"
                 f"Instance: {user.get('instance_name')} — {user.get('base_url')}"
             )
             self.detail.setText("")
             self.set_network_available(True)
-        except Exception as exc:
-            code, msg = format_error(exc)
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
             if code == "LD-NET-001":
                 self.status.setText(
                     f"Working offline — [{code}] {msg}\n"
@@ -465,8 +479,15 @@ class MainWindow(QMainWindow):
                 if code.startswith("LD-NET"):
                     self.set_network_available(False, detail=str(exc))
                 else:
-                    # Auth/config errors: keep network actions, user must reconnect.
                     self.set_network_available(True)
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            status=self.set_detail,
+        )
 
     def show_startup_recovery_if_needed(self) -> None:
         info = self._startup_recovery
@@ -635,11 +656,22 @@ class MainWindow(QMainWindow):
         help_menu.addAction(act_about)
 
     def _about(self) -> None:
+        from labdesk_ui.version import APP_VERSION
+
+        core_ver = ""
+        try:
+            import labdesk_core
+
+            core_ver = getattr(labdesk_core, "__version__", "") or ""
+        except Exception:
+            core_ver = ""
+        core_line = f"\nlabdesk_core {core_ver}" if core_ver else ""
         QMessageBox.about(
             self,
             "About LabDesk",
-            "LabDesk — desktop client for self-hosted GitLab.\n"
-            "Linux / Flatpak · GPLv2+\n"
+            f"LabDesk {APP_VERSION}\n"
+            "Desktop client for self-hosted GitLab.\n"
+            f"Linux / Flatpak · GPLv2+{core_line}\n"
             "Updates: Flatpak remote from Ranga/flatpaks",
         )
 

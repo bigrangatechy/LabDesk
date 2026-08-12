@@ -36,9 +36,14 @@ fn api_root(base_url: &str) -> String {
     format!("{}/api/v4", base_url.trim_end_matches('/'))
 }
 
+fn labdesk_user_agent() -> String {
+    let ver = option_env!("LABDESK_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    format!("LabDesk/{ver}")
+}
+
 fn client_for(ssl_mode: &str) -> Result<reqwest::blocking::Client> {
     let mut b = reqwest::blocking::Client::builder()
-        .user_agent(format!("LabDesk/{}", env!("CARGO_PKG_VERSION")))
+        .user_agent(labdesk_user_agent())
         .timeout(std::time::Duration::from_secs(30));
 
     match ssl_mode {
@@ -285,4 +290,165 @@ pub fn create_merge_request(
                 .with_detail(format!("decode merge_request: {e}")),
         )
     })
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GitLabPipeline {
+    pub id: u64,
+    pub status: Option<String>,
+    #[serde(rename = "ref")]
+    pub ref_: Option<String>,
+    pub web_url: Option<String>,
+    pub updated_at: Option<String>,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GitLabJob {
+    pub id: u64,
+    pub name: Option<String>,
+    pub status: Option<String>,
+    pub stage: Option<String>,
+    pub when: Option<String>,
+    pub web_url: Option<String>,
+}
+
+/// Latest pipeline for a ref (`api-contract` §6.1).
+pub fn latest_pipeline(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    ref_name: &str,
+) -> Result<Option<GitLabPipeline>> {
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/projects/{}/pipelines?ref={}&per_page=1",
+        api_root(base_url),
+        project_id,
+        urlencoding_ref(ref_name)
+    );
+    let resp = client
+        .get(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(map_status(status, &body));
+    }
+
+    let batch: Vec<GitLabPipeline> = serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode pipelines: {e}")),
+        )
+    })?;
+    Ok(batch.into_iter().next())
+}
+
+/// Jobs for a pipeline (`api-contract` §6.2).
+pub fn list_pipeline_jobs(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    pipeline_id: u64,
+) -> Result<Vec<GitLabJob>> {
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/projects/{}/pipelines/{}/jobs",
+        api_root(base_url),
+        project_id,
+        pipeline_id
+    );
+    let resp = client
+        .get(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(map_status(status, &body));
+    }
+    serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode jobs: {e}")),
+        )
+    })
+}
+
+/// Play a manual job (`api-contract` §6.3).
+pub fn play_job(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    job_id: u64,
+) -> Result<GitLabJob> {
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/projects/{}/jobs/{}/play",
+        api_root(base_url),
+        project_id,
+        job_id
+    );
+    let resp = client
+        .post(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-JOB-001", "Failed to run CI job.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    serde_json::from_str(&text).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode played job: {e}")),
+        )
+    })
+}
+
+fn urlencoding_ref(s: &str) -> String {
+    // Minimal query encoding for branch names.
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            b'/' => out.push_str("%2F"),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }

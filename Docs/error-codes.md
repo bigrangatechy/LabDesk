@@ -100,6 +100,7 @@ Examples: `LD-AUTH-001`, `LD-CFG-010`, `LD-API-429`.
 | `LD-API-429` | HTTP 429 | "Rate limited. Retrying in N seconds." | Backoff |
 | `LD-API-5XX` | HTTP 5xx | "GitLab server error ({status})." | Bounded retry then fail |
 | `LD-API-MR-001` | Create MR failed (mapped) | "Failed to create MR: {error}" | Preserve form |
+| `LD-API-JOB-001` | Play / pipeline job failed | "Failed to run CI job: {summary}" | Preserve UI; allow retry |
 
 Prefer mapping HTTP failures to `LD-API-<status>` when the status is the
 main signal; use `LD-AUTH-001` for auth UX even if the wire code was 401.

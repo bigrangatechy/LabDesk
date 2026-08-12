@@ -2,6 +2,7 @@
 <!--
   AppStream metainfo for LabDesk.
   Icons: src/labdesk_ui/assets/com.bigrangatech.LabDesk-{64,128,256,512}x….png
+  CI injects <releases> with the build-date version (YYYY.MM.DD).
 -->
 <component type="desktop-application">
   <id>com.bigrangatech.LabDesk</id>
@@ -26,4 +27,7 @@
     <category>Development</category>
   </categories>
   <content_rating type="oars-1.1"/>
+  <releases>
+    <!-- LABDESK_RELEASE_PLACEHOLDER -->
+  </releases>
 </component>

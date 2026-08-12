@@ -142,17 +142,21 @@ class ProjectsView(QWidget):
             self.table.setItem(row, 3, QTableWidgetItem(p.get("last_activity_at") or ""))
 
     def _refresh_projects(self) -> None:
-        try:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        def work():
             import labdesk_core
 
-            result = labdesk_core.refresh_projects()
-            count = result.get("count", 0)
+            return labdesk_core.refresh_projects()
+
+        def on_ok(result) -> None:
+            count = result.get("count", 0) if isinstance(result, dict) else 0
             self._ctx.set_detail(f"Refreshed {count} projects from API.")
             if hasattr(self._ctx, "set_network_available"):
                 self._ctx.set_network_available(True)
             self._load_cached_projects()
-        except Exception as exc:
-            code, msg = format_error(exc)
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
             self._ctx.set_detail(f"[{code}] {msg} — showing cache if available.")
             self._load_cached_projects()
             if code == "LD-NET-001" or code.startswith("LD-NET"):
@@ -160,6 +164,16 @@ class ProjectsView(QWidget):
                     self._ctx.set_network_available(False, detail=str(exc))
                 return
             QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_refresh_projects, self.btn_clone, self.btn_clone_ssh],
+            status=self._ctx.set_detail,
+            working_message="Refreshing projects…",
+        )
 
     def _open_in_browser(self) -> None:
         project = self._selected_project()
@@ -269,14 +283,19 @@ class ProjectsView(QWidget):
         self.btn_clone.setEnabled(False)
         self.btn_clone_ssh.setEnabled(False)
         self._ctx.set_detail(f"Cloning {name} ({transport})…")
-        try:
-            import labdesk_core
-            from PySide6.QtWidgets import QApplication
 
-            QApplication.processEvents()
-            result = labdesk_core.clone_project(int(project_id), transport)
-            path = result.get("path")
-            if result.get("adopted_existing"):
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        pid = int(project_id)
+
+        def work():
+            import labdesk_core
+
+            return labdesk_core.clone_project(pid, transport)
+
+        def on_ok(result) -> None:
+            path = result.get("path") if isinstance(result, dict) else None
+            if isinstance(result, dict) and result.get("adopted_existing"):
                 self._ctx.set_detail(f"Using existing clone at {path}")
                 QMessageBox.information(
                     self,
@@ -287,13 +306,20 @@ class ProjectsView(QWidget):
             else:
                 self._ctx.set_detail(f"Cloned to {path}")
                 QMessageBox.information(self, "Clone", f"Cloned to:\n{path}")
-        except Exception as exc:
-            code, msg = format_error(exc)
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
             self._ctx.set_detail(f"[{code}] {msg}")
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
-        finally:
-            self.btn_clone.setEnabled(True)
-            self.btn_clone_ssh.setEnabled(True)
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_clone, self.btn_clone_ssh, self.btn_refresh_projects],
+            status=self._ctx.set_detail,
+            working_message=f"Cloning {name} ({transport})…",
+        )
 
 
 def _factory(parent: QWidget, ctx: AppContext) -> QWidget:

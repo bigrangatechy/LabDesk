@@ -137,11 +137,11 @@ with a clear reason.
 
 ---
 
-## Journey G — Pipeline status (nice-to-have)
+## Journey G — Pipeline status (post-V1)
 
-**Not required for V1.** If added later: show pipeline status for the
-current branch/project from the GitLab API, with cached last-known
-status when offline.
+Show latest pipeline status for the current branch and play manual jobs
+(see `api-contract.md` §6). Offline: disable play/refresh; header may
+still show last-known status when available.
 
 ---
 
@@ -155,4 +155,4 @@ status when offline.
 | D Push / force push + create MR | Yes | Required |
 | E Offline local work | No | Required |
 | F Flatpak updates | Yes | Required (mechanism) |
-| G Pipelines | Yes | Nice-to-have |
+| G Pipelines | Yes | Post-V1 |

@@ -56,6 +56,7 @@ modules:
           # shellcheck disable=SC1091
           . /usr/lib/sdk/rust-stable/enable.sh
         fi
+        export LABDESK_VERSION="${LABDESK_VERSION:-$(date -u +%Y.%m.%d)}"
         cd src/labdesk_core
         # Prefer maturin if available; otherwise cargo build.
         # --skip-auditwheel: Flatpak runtime already provides system libs;
@@ -74,6 +75,13 @@ modules:
         fi
       - |
         mkdir -p /app/lib/labdesk /app/bin
+        # Build-date version (CI/local: LABDESK_VERSION=YYYY.MM.DD).
+        VER="${LABDESK_VERSION:-$(date -u +%Y.%m.%d)}"
+        printf 'VERSION = "%s"\n' "${VER}" > src/labdesk_ui/_build_version.py
+        if [ -f flatpak/com.bigrangatech.LabDesk.metainfo.xml ]; then
+          sed -i "s|<!-- LABDESK_RELEASE_PLACEHOLDER -->|<release version=\"${VER}\" date=\"$(date -u +%Y-%m-%d)\"/>|" \
+            flatpak/com.bigrangatech.LabDesk.metainfo.xml || true
+        fi
         cp -a src/labdesk_ui /app/lib/labdesk/
         printf '%s\n' '#!/bin/sh' \
           'SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path(\"purelib\"))" 2>/dev/null || true)' \

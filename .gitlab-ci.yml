@@ -118,9 +118,23 @@ flatpak_build_publish:
         echo "System Flatpak installs will refuse it (need --user --no-gpg-verify)."
       fi
       # --disable-rofiles-fuse: avoid /dev/fuse requirement in Docker CI
+      export LABDESK_VERSION="${LABDESK_VERSION:-$(date -u +%Y.%m.%d)}"
+      echo "LABDESK_VERSION=${LABDESK_VERSION}"
+      printf 'VERSION = "%s"\n' "${LABDESK_VERSION}" > src/labdesk_ui/_build_version.py
+      python3 - <<PY
+from pathlib import Path
+import os
+p = Path("flatpak/com.bigrangatech.LabDesk.metainfo.xml")
+ver = os.environ["LABDESK_VERSION"]
+text = p.read_text()
+release = f'<release version="{ver}" date="{ver.replace(".", "-")}"/>'
+text = text.replace("<!-- LABDESK_RELEASE_PLACEHOLDER -->", release)
+p.write_text(text)
+PY
       flatpak-builder --user --force-clean --disable-rofiles-fuse \
         --install-deps-from=flathub \
         --repo=repo \
+        --env=LABDESK_VERSION="${LABDESK_VERSION}" \
         ${GPG_ARGS[@]+"${GPG_ARGS[@]}"} \
         flatpak-build \
         flatpak/com.bigrangatech.LabDesk.yml

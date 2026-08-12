@@ -115,7 +115,7 @@ V1 Settings stays small; the file may grow ahead of the UI.
 |-----|------|----------|--------|
 | `id` | string | yes | Stable id (e.g. UUID). Used as FK into SQLite and `active_instance_id` |
 | `name` | string | yes | Display name |
-| `base_url` | string | yes | Origin only; no `/api/v4`. SaaS hosts rejected at write time |
+| `base_url` | string | yes | Origin only; no `/api/v4`. SaaS hosts rejected. HTTPS required except loopback/RFC1918 may use `http://` |
 | `api_version` | string | yes | `"v4"` for V1 |
 | `api_auth` | string | yes | `"PAT"` |
 | `keyring_account` | string | yes | Keyring lookup id, e.g. `labdesk:https://…` |

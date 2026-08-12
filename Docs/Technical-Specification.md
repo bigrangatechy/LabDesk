@@ -7,6 +7,11 @@ instances. It provides GitHub Desktop-style functionality (clone,
 branch, commit, push/pull, diff view, merge request creation) targeted
 exclusively at users who run their own GitLab infrastructure.
 
+**V1 (1.0.0) is complete** — connect → projects → local git → MR →
+Flatpak. That feature set is frozen. Post-V1 work includes LAN
+`http://` base URLs, build-date versioning, background UI workers, and
+pipeline status / manual job play.
+
 Public SaaS hosts such as `gitlab.com` are **not supported** and must be
 rejected at instance setup (see ADR-001).
 
@@ -22,7 +27,7 @@ rejected at instance setup (see ADR-001).
 │  UI Layer (Python + PySide6)                                │
 │  ├── MainWindow (menubar + stacked ViewPlugin host)         │
 │  ├── View plugins (Projects, Settings; more later)          │
-│  ├── RepoWindow (Changes, History, Branches)                │
+│  ├── RepoWindow (Changes, History, Branches, Pipelines)     │
 │  ├── DiffViewer (read-only QTextEdit)                       │
 │  ├── InstanceConfigDialog (URL + PAT; git auth via helper)  │
 │  └── MRDialog (Merge request creation form)                 │
@@ -126,7 +131,7 @@ API calls use header **`PRIVATE-TOKEN`** (ADR-008). Git HTTPS uses the
 | Force push             | Yes               | Disabled offline; confirm dialog when used     |
 | List remote projects   | Yes               | Show cached list with staleness indicator      |
 | Create MR              | Yes               | Disable, show "requires connection"            |
-| View pipeline status   | Yes               | Nice-to-have (post-V1); if present, show cache |
+| View pipeline status   | Yes               | Post-V1: latest for current branch; play manual jobs |
 
 ## 4. Configuration Model
 
@@ -204,7 +209,9 @@ last_connected = "2026-07-01T15:30:00Z"
 ```
 
 SaaS base URLs such as `https://gitlab.com` must be rejected when adding
-an instance. Instance `id` and `active_instance_id` are required for
+an instance. **HTTPS** is required for public DNS names; **`http://`**
+is allowed only for loopback and RFC1918 hosts (LAN / offline-domain
+GitLab). Instance `id` and `active_instance_id` are required for
 cache foreign keys and a future multi-instance UI; V1 still exposes one
 active instance in the UI. See `data-model.md`.
 
@@ -225,8 +232,11 @@ active instance in the UI. See `data-model.md`.
 | Local merge (clean)  | merge               | —                                    | P0       |
 | Create MR            | —                   | `POST /merge_requests`               | P0       |
 | Open in GitLab       | —                   | `xdg-open` / portal                  | P0       |
-| Pipeline status      | —                   | `GET /pipelines`                     | Nice-to-have |
+| Pipeline status + play manual jobs | —          | `GET /pipelines`, jobs, `POST …/play` | Post-V1 |
 | Branch comparison    | compare             | remote branch verify                 | Nice-to-have |
+| LAN HTTP base URL    | —                   | loopback + RFC1918 only              | Post-V1 |
+| Build-date version   | —                   | `YYYY.MM.DD` in About / User-Agent   | Post-V1 |
+| Background UI work   | —                   | Qt workers for clone/push/API        | Post-V1 |
 
 ## 6. Error Handling Strategy
 
@@ -275,5 +285,6 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
 - **No repository search** in V1 (may change if SQLite caching makes it
   trivial).
 - **Linux only.** No Windows or macOS.
-- **Pipeline status** and richer branch comparison are nice-to-have,
-  not V1 blockers.
+- **Richer branch comparison** remains nice-to-have (not a V1 blocker).
+- **Post-V1 shipped/planned:** LAN HTTP allowlist, build-date version,
+  background workers, pipeline status + play manual jobs.
