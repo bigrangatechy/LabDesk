@@ -18,6 +18,12 @@ bullets without a stamp predate this convention.
 
 ## [Unreleased]
 
+### Fixed
+
+- **22:25:10  12/08/2026** — Flatpak CI: replace column-0 Python heredoc in
+  `.gitlab-ci.yml` with indented `sed` so GitLab can parse the YAML
+  (metainfo release injection still works).
+
 ### Added
 
 - **15:52:29  12/08/2026** — Post-V1: LAN `http://` for loopback/RFC1918

@@ -121,16 +121,9 @@ flatpak_build_publish:
       export LABDESK_VERSION="${LABDESK_VERSION:-$(date -u +%Y.%m.%d)}"
       echo "LABDESK_VERSION=${LABDESK_VERSION}"
       printf 'VERSION = "%s"\n' "${LABDESK_VERSION}" > src/labdesk_ui/_build_version.py
-      python3 - <<PY
-from pathlib import Path
-import os
-p = Path("flatpak/com.bigrangatech.LabDesk.metainfo.xml")
-ver = os.environ["LABDESK_VERSION"]
-text = p.read_text()
-release = f'<release version="{ver}" date="{ver.replace(".", "-")}"/>'
-text = text.replace("<!-- LABDESK_RELEASE_PLACEHOLDER -->", release)
-p.write_text(text)
-PY
+      # Keep this as sed (not a column-0 heredoc) so GitLab YAML stays valid.
+      sed -i "s|<!-- LABDESK_RELEASE_PLACEHOLDER -->|<release version=\"${LABDESK_VERSION}\" date=\"$(date -u +%Y-%m-%d)\"/>|" \
+        flatpak/com.bigrangatech.LabDesk.metainfo.xml
       flatpak-builder --user --force-clean --disable-rofiles-fuse \
         --install-deps-from=flathub \
         --repo=repo \
