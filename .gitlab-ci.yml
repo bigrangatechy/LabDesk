@@ -124,10 +124,13 @@ flatpak_build_publish:
       # Keep this as sed (not a column-0 heredoc) so GitLab YAML stays valid.
       sed -i "s|<!-- LABDESK_RELEASE_PLACEHOLDER -->|<release version=\"${LABDESK_VERSION}\" date=\"$(date -u +%Y-%m-%d)\"/>|" \
         flatpak/com.bigrangatech.LabDesk.metainfo.xml
+      # flatpak-builder has no --env CLI flag on this image; inject into the
+      # manifest build-options.env so maturin/cargo see LABDESK_VERSION.
+      sed -i "s|LABDESK_VERSION: \"dev\"|LABDESK_VERSION: \"${LABDESK_VERSION}\"|" \
+        flatpak/com.bigrangatech.LabDesk.yml
       flatpak-builder --user --force-clean --disable-rofiles-fuse \
         --install-deps-from=flathub \
         --repo=repo \
-        --env=LABDESK_VERSION="${LABDESK_VERSION}" \
         ${GPG_ARGS[@]+"${GPG_ARGS[@]}"} \
         flatpak-build \
         flatpak/com.bigrangatech.LabDesk.yml

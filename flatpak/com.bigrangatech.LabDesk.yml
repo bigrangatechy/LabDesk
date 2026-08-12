@@ -41,6 +41,8 @@ modules:
       append-path: /usr/lib/sdk/rust-stable/bin
       env:
         CARGO_HOME: /run/build/labdesk-core/cargo
+        # Overwritten by CI sed to YYYY.MM.DD; local builds use date fallback in scripts.
+        LABDESK_VERSION: "dev"
     build-commands:
       - |
         set -euo pipefail

@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **22:35:22  12/08/2026** — Flatpak CI: drop unsupported
+  `flatpak-builder --env=…`; sed-inject `LABDESK_VERSION` into the
+  manifest `build-options.env` instead.
 - **22:25:10  12/08/2026** — Flatpak CI: replace column-0 Python heredoc in
   `.gitlab-ci.yml` with indented `sed` so GitLab can parse the YAML
   (metainfo release injection still works).

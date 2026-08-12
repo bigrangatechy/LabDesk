@@ -55,10 +55,11 @@ keep this table in sync when permissions change.
 
 ### Build-date version
 
-CI sets `LABDESK_VERSION=$(date -u +%Y.%m.%d)`, passes it into
-`flatpak-builder --env=…`, writes `labdesk_ui/_build_version.py`, and
-adds an AppStream `<release version="…">` in metainfo. Unpackaged
-dev builds fall back to `dev`.
+CI sets `LABDESK_VERSION=$(date -u +%Y.%m.%d)`, writes
+`labdesk_ui/_build_version.py`, sed-injects that value into the
+manifest `build-options.env` (this image’s `flatpak-builder` has no
+`--env` CLI flag), and adds an AppStream `<release version="…">` in
+metainfo. Unpackaged dev builds fall back to `dev`.
 
 ## 5. CI publish path
 
