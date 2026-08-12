@@ -60,17 +60,32 @@ def _set_colored_diff(widget: QTextEdit, text: str) -> None:
 
 class RepoWindow(QMainWindow):
     def __init__(self, repo_path: str, title: str | None = None, parent=None) -> None:
-        super().__init__(parent)
-        self.repo_path = repo_path
+        # No QWidget parent: owned windows must be true top-levels so the
+        # compositor/taskbar lists them (Wayland/Flatpak). Lifetime is held by
+        # MainWindow._repo_windows + WA_DeleteOnClose.
+        super().__init__(None)
+        self.setWindowFlags(Qt.WindowType.Window)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        # Closing a repo must not quit the whole app while main is open.
+        self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
+        self.repo_path = str(Path(repo_path).resolve())
         self._network_available = True
-        self.setWindowTitle(title or f"LabDesk — {repo_path}")
+        self.setWindowTitle(title or f"LabDesk — {self.repo_path}")
         self.resize(1100, 700)
+        try:
+            from labdesk_ui.utils.branding import app_icon
+
+            icon = app_icon()
+            if not icon.isNull():
+                self.setWindowIcon(icon)
+        except Exception:
+            pass
 
         root = QWidget()
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
 
-        self.header = QLabel(repo_path)
+        self.header = QLabel(self.repo_path)
         self.header.setWordWrap(True)
         self.header.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(self.header)

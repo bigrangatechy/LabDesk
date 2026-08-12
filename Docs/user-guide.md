@@ -125,6 +125,8 @@ After install or a major update:
 4. Repo window: Changes (stage / commit), History, Branches (create /
    switch / merge), Fetch / Pull / Push, ahead/behind vs upstream,
    Open in editor, Create merge request (when online; offered after push).
+   Re-opening the same repo focuses the existing window; **Window** menu
+   lists open repos.
 5. Confirm offline banner if the instance is unreachable (local git still
    works; push/MR/refresh disabled).
 6. Run `flatpak update com.bigrangatech.LabDesk` after a new CI publish

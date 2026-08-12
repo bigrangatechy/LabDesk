@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtGui import QAction, QActionGroup, QFont, QKeySequence
+from pathlib import Path
+
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QFont, QKeySequence
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -259,10 +261,102 @@ class MainWindow(QMainWindow):
         self.detail.setText(text)
 
     def open_repo_window(self, path: str, title: str | None = None) -> None:
-        win = RepoWindow(path, title=title or f"LabDesk — {path}", parent=self)
+        try:
+            resolved = str(Path(path).resolve())
+        except OSError:
+            resolved = path
+        existing = self._find_repo_window(resolved)
+        if existing is not None:
+            existing.raise_()
+            existing.activateWindow()
+            existing.showNormal()
+            return
+        win = RepoWindow(resolved, title=title or f"LabDesk — {resolved}", parent=None)
         win.set_network_available(self._online)
-        win.show()
+        win.destroyed.connect(self._prune_repo_windows)
         self._repo_windows.append(win)
+        win.show()
+        win.raise_()
+        win.activateWindow()
+        self._rebuild_window_menu()
+
+    def _find_repo_window(self, resolved_path: str) -> RepoWindow | None:
+        self._prune_repo_windows()
+        for win in self._repo_windows:
+            try:
+                if win.repo_path == resolved_path:
+                    return win
+            except RuntimeError:
+                continue
+        return None
+
+    def _prune_repo_windows(self, *_args) -> None:
+        alive: list[RepoWindow] = []
+        for win in self._repo_windows:
+            try:
+                # Accessing a C++-deleted QObject raises RuntimeError.
+                _ = win.repo_path
+                alive.append(win)
+            except RuntimeError:
+                continue
+        self._repo_windows = alive
+        self._rebuild_window_menu()
+
+    def _focus_repo_window(self, win: RepoWindow) -> None:
+        try:
+            win.raise_()
+            win.activateWindow()
+            win.showNormal()
+        except RuntimeError:
+            self._prune_repo_windows()
+
+    def _rebuild_window_menu(self) -> None:
+        menu = getattr(self, "_window_menu", None)
+        if menu is None:
+            return
+        menu.clear()
+        act_main = QAction("Main window", self)
+        act_main.triggered.connect(self._focus_main_window)
+        menu.addAction(act_main)
+        self._prune_repo_windows_silent()
+        if not self._repo_windows:
+            return
+        menu.addSeparator()
+        for win in self._repo_windows:
+            try:
+                label = win.windowTitle() or win.repo_path
+                act = QAction(label, self)
+                act.triggered.connect(
+                    lambda checked=False, w=win: self._focus_repo_window(w)
+                )
+                menu.addAction(act)
+            except RuntimeError:
+                continue
+
+    def _prune_repo_windows_silent(self) -> None:
+        alive: list[RepoWindow] = []
+        for win in self._repo_windows:
+            try:
+                _ = win.repo_path
+                alive.append(win)
+            except RuntimeError:
+                continue
+        self._repo_windows = alive
+
+    def _focus_main_window(self) -> None:
+        self.raise_()
+        self.activateWindow()
+        self.showNormal()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        # Closing the main window closes owned repo windows (WA_DeleteOnClose).
+        for win in list(self._repo_windows):
+            try:
+                win.close()
+            except RuntimeError:
+                continue
+        self._repo_windows.clear()
+        super().closeEvent(event)
 
     def is_network_available(self) -> bool:
         return self._online
@@ -272,14 +366,13 @@ class MainWindow(QMainWindow):
         projects = self._view_widgets.get("projects")
         if projects is not None and hasattr(projects, "set_network_available"):
             projects.set_network_available(available)
-        alive: list[RepoWindow] = []
+        self._prune_repo_windows_silent()
         for win in self._repo_windows:
             try:
                 win.set_network_available(available)
-                alive.append(win)
             except RuntimeError:
                 continue
-        self._repo_windows = alive
+        self._prune_repo_windows()
         if not available and detail:
             self.detail.setText(detail)
 
@@ -526,6 +619,9 @@ class MainWindow(QMainWindow):
             view_menu.addAction(act)
             self._shell_actions[shell_id] = act
         self._shell_group = shell_group
+
+        self._window_menu = menu.addMenu("&Window")
+        self._rebuild_window_menu()
 
         settings_menu = menu.addMenu("&Settings")
         act_prefs = QAction("&Preferences…", self)

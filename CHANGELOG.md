@@ -20,6 +20,11 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **15:35:14  12/08/2026** — Proper repo window handling: independent
+  top-level windows (no transient parent, so the taskbar can switch to
+  them), reuse/focus if the same repo is already open, prune on close,
+  Window menu, close repo windows with the main window.
+
 - **14:32:04  11/08/2026** — Store API PATs via FreeDesktop **Secret
   Service** (`keyring` async-secret-service) instead of linux-native
   keyutils, and grant Flatpak `--socket=session-bus` so Flatpak can
