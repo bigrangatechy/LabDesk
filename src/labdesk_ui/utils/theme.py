@@ -71,7 +71,8 @@ def _propagate_palette(app: QApplication, palette: QPalette) -> None:
         if style is not None:
             style.unpolish(widget)
             style.polish(widget)
-        widget.update()
+        # Call QWidget.update explicitly — QListView.update(QModelIndex) shadows it.
+        QWidget.update(widget)
 
 
 def apply_theme(theme: str) -> None:

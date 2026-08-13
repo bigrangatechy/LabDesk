@@ -41,6 +41,9 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **20:38:11  13/08/2026** — Theme switch: call `QWidget.update` explicitly when
+  re-polishing widgets so PySide does not bind `QListView.update(QModelIndex)`
+  (CI `TypeError` on dark/light theme tests).
 - **20:31:32  13/08/2026** — Dark theme: fill out Fusion palette roles used by
   stylesheets (`Mid` / `Light` / disabled text, etc.) and re-polish existing
   widgets so secondary labels and borders update when switching theme.
