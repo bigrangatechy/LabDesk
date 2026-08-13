@@ -18,6 +18,12 @@ bullets without a stamp predate this convention.
 
 ## [Unreleased]
 
+### Added
+
+- **17:55:36  13/08/2026** — Pipeline offline cache (latest per branch +
+  jobs JSON); richer Pipelines job list; Help → User Guide… (bundled
+  `user-guide.md`).
+
 ### Fixed
 
 - **14:35:42  13/08/2026** — Pipelines: treat GitLab jobs with

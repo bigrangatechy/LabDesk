@@ -246,9 +246,10 @@ Revisit a local MR cache if a “recent MRs” UI is added later.
 
 **Primary key (future):** `(instance_id, project_id, mr_iid)`
 
-### 4.6 `pipelines` (nice-to-have)
+### 4.6 `pipelines` (shipped — latest per ref)
 
-Only if pipeline UI ships.
+Caches the **latest** pipeline for a branch/tag so the repo Pipelines
+tab can show status offline. **No history** — one row per ref.
 
 | Column | Type | Notes |
 |--------|------|--------|
@@ -259,10 +260,12 @@ Only if pipeline UI ships.
 | `status` | TEXT | |
 | `web_url` | TEXT | |
 | `updated_at` | TEXT | From API |
-| `fetched_at` | TEXT | |
+| `jobs_json` | TEXT | JSON array of last jobs list (for offline UI) |
+| `fetched_at` | TEXT | When LabDesk wrote the row |
 
-**Primary key:** `(instance_id, project_id, ref)` or include `pipeline_id`
-if keeping history — decide when implementing the nice-to-have.
+**Primary key:** `(instance_id, project_id, ref)`.
+
+Play remains **online-only**; cached jobs are display-only when offline.
 
 ---
 
@@ -316,8 +319,8 @@ proves what libgit2 / the UI can reliably provide.
    time since last successful push to remote). Recording vs deriving
    from git: decide while implementing.
 4. ~~**`merge_requests` table in V1**~~ — **Deferred** (not V1).
-5. **Pipeline primary key / history depth** — defer until nice-to-have
-   is scheduled.
+5. ~~**Pipeline primary key / history depth**~~ — **Accepted:** latest
+   only per `(instance_id, project_id, ref)` + `jobs_json`; no history.
 
 ---
 

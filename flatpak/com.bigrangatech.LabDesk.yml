@@ -85,6 +85,13 @@ modules:
             flatpak/com.bigrangatech.LabDesk.metainfo.xml || true
         fi
         cp -a src/labdesk_ui /app/lib/labdesk/
+        # End-user guide (Help → User Guide); also under share for Flatpak path.
+        if [ -f Docs/user-guide.md ]; then
+          install -Dm644 Docs/user-guide.md /app/share/labdesk/user-guide.md
+          install -Dm644 Docs/user-guide.md /app/lib/labdesk/labdesk_ui/docs/user-guide.md
+        elif [ -f src/labdesk_ui/docs/user-guide.md ]; then
+          install -Dm644 src/labdesk_ui/docs/user-guide.md /app/share/labdesk/user-guide.md
+        fi
         printf '%s\n' '#!/bin/sh' \
           'SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path(\"purelib\"))" 2>/dev/null || true)' \
           'export PYTHONPATH=/app/lib/labdesk:${SITE:+$SITE:}${PYTHONPATH:-}' \

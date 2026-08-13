@@ -687,9 +687,18 @@ class MainWindow(QMainWindow):
         settings_menu.addAction(act_prefs)
 
         help_menu = menu.addMenu("&Help")
+        act_guide = QAction("&User Guide…", self)
+        act_guide.triggered.connect(self._user_guide)
+        help_menu.addAction(act_guide)
         act_about = QAction("&About LabDesk", self)
         act_about.triggered.connect(self._about)
         help_menu.addAction(act_about)
+
+    def _user_guide(self) -> None:
+        from labdesk_ui.windows.help_dialog import UserGuideDialog
+
+        dlg = UserGuideDialog(self)
+        dlg.exec()
 
     def _about(self) -> None:
         from labdesk_ui.version import APP_VERSION

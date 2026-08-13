@@ -186,6 +186,11 @@ when needed, then runs `tests/python/`.
 | LAN / SaaS URLs | `test_config_urls.py` | HTTP allowlist + gitlab.com reject |
 | Version / errors | `test_version_and_helpers.py` | `APP_VERSION`, `format_error` |
 | Packaging | `test_packaging_sanity.py` | CI YAML / Flatpak manifest basics |
+| Pipeline jobs UI | `test_pipeline_jobs.py` | Playable heuristics + sort / row format |
+| In-app Help | `test_help_dialog.py` | Bundled `user-guide.md` path resolution |
+
+Keep `src/labdesk_ui/docs/user-guide.md` in sync with `Docs/user-guide.md`
+when editing the guide (Help dialog reads the packaged copy first).
 
 CI job `python_pytest` runs the UI suite (no Rust toolchain in that
 image). Full suite including `labdesk_core` URL tests: local

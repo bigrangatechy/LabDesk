@@ -12,7 +12,7 @@ mod paths;
 mod secrets;
 
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyAny, PyDict};
 
 use crate::error::{ErrorInfo, LabDeskError};
 
@@ -937,6 +937,174 @@ fn list_pipeline_jobs(py: Python<'_>, project_id: i64, pipeline_id: u64) -> PyRe
     Ok(list.into())
 }
 
+/// Persist latest pipeline + jobs for offline Pipelines tab (one row per ref).
+#[pyfunction]
+fn cache_pipeline(
+    py: Python<'_>,
+    project_id: i64,
+    ref_name: String,
+    pipeline: Bound<'_, PyAny>,
+    jobs: Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some(inst) = cfg.active_instance() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    if pipeline.is_none() {
+        return Ok(());
+    }
+    let pipe = pipeline.downcast::<PyDict>()?;
+    let pipeline_id: i64 = pipe
+        .get_item("id")?
+        .ok_or_else(|| {
+            LabDeskError::App(ErrorInfo::new(
+                "LD-SYS-001",
+                "Pipeline cache requires an id.",
+            ))
+        })?
+        .extract()?;
+    let status: Option<String> = pipe
+        .get_item("status")?
+        .map(|v| v.extract())
+        .transpose()?;
+    let web_url: Option<String> = pipe
+        .get_item("web_url")?
+        .map(|v| v.extract())
+        .transpose()?;
+    let updated_at: Option<String> = pipe
+        .get_item("updated_at")?
+        .or(pipe.get_item("created_at")?)
+        .map(|v| v.extract())
+        .transpose()?;
+    let jobs_val: serde_json::Value = pythonize_jobs(py, &jobs)?;
+    let jobs_json = serde_json::to_string(&jobs_val).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-SYS-001", "Failed to serialize pipeline jobs.")
+                .with_detail(e.to_string()),
+        )
+    })?;
+    let instance_id = inst.id.clone();
+    let ref_owned = ref_name.clone();
+    py.allow_threads(|| {
+        let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
+        cache::upsert_pipeline(
+            &conn,
+            &instance_id,
+            project_id,
+            &ref_owned,
+            pipeline_id,
+            status.as_deref(),
+            web_url.as_deref(),
+            updated_at.as_deref(),
+            Some(&jobs_json),
+        )
+    })?;
+    Ok(())
+}
+
+/// Cached latest pipeline + jobs for a ref, or None.
+#[pyfunction]
+fn cached_pipeline(py: Python<'_>, project_id: i64, ref_name: String) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some(inst) = cfg.active_instance() else {
+        return Ok(py.None());
+    };
+    let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
+    let Some(row) = cache::get_pipeline(&conn, &inst.id, project_id, &ref_name)? else {
+        return Ok(py.None());
+    };
+    let pipe = PyDict::new(py);
+    pipe.set_item("id", row.pipeline_id)?;
+    pipe.set_item("status", row.status)?;
+    pipe.set_item("ref", &row.ref_name)?;
+    pipe.set_item("web_url", row.web_url)?;
+    pipe.set_item("updated_at", row.updated_at)?;
+    let jobs_list = pyo3::types::PyList::empty(py);
+    if let Some(raw) = row.jobs_json.as_deref() {
+        if let Ok(serde_json::Value::Array(arr)) = serde_json::from_str::<serde_json::Value>(raw) {
+            for item in arr {
+                if let Some(obj) = item.as_object() {
+                    let d = PyDict::new(py);
+                    for (k, v) in obj {
+                        set_json_item(py, &d, k, v)?;
+                    }
+                    jobs_list.append(d)?;
+                }
+            }
+        }
+    }
+    let out = PyDict::new(py);
+    out.set_item("pipeline", pipe)?;
+    out.set_item("jobs", jobs_list)?;
+    out.set_item("fetched_at", row.fetched_at)?;
+    Ok(out.into())
+}
+
+fn pythonize_jobs(py: Python<'_>, jobs: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
+    let list = jobs.downcast::<pyo3::types::PyList>()?;
+    let mut arr = Vec::with_capacity(list.len());
+    for item in list.iter() {
+        let d = item.downcast::<PyDict>()?;
+        let mut map = serde_json::Map::new();
+        for (k, v) in d.iter() {
+            let key: String = k.extract()?;
+            map.insert(key, py_any_to_json(py, &v)?);
+        }
+        arr.push(serde_json::Value::Object(map));
+    }
+    Ok(serde_json::Value::Array(arr))
+}
+
+fn py_any_to_json(py: Python<'_>, v: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
+    if v.is_none() {
+        return Ok(serde_json::Value::Null);
+    }
+    if let Ok(b) = v.extract::<bool>() {
+        return Ok(serde_json::Value::Bool(b));
+    }
+    if let Ok(i) = v.extract::<i64>() {
+        return Ok(serde_json::json!(i));
+    }
+    if let Ok(f) = v.extract::<f64>() {
+        return Ok(serde_json::json!(f));
+    }
+    if let Ok(s) = v.extract::<String>() {
+        return Ok(serde_json::Value::String(s));
+    }
+    let _ = py;
+    Ok(serde_json::Value::String(v.str()?.to_string()))
+}
+
+fn set_json_item(
+    py: Python<'_>,
+    d: &Bound<'_, PyDict>,
+    key: &str,
+    v: &serde_json::Value,
+) -> PyResult<()> {
+    match v {
+        serde_json::Value::Null => d.set_item(key, py.None())?,
+        serde_json::Value::Bool(b) => d.set_item(key, *b)?,
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                d.set_item(key, i)?;
+            } else if let Some(u) = n.as_u64() {
+                d.set_item(key, u)?;
+            } else if let Some(f) = n.as_f64() {
+                d.set_item(key, f)?;
+            }
+        }
+        serde_json::Value::String(s) => d.set_item(key, s)?,
+        _ => d.set_item(key, v.to_string())?,
+    }
+    Ok(())
+}
+
 /// Play a manual CI job.
 #[pyfunction]
 fn play_job(py: Python<'_>, project_id: i64, job_id: u64) -> PyResult<PyObject> {
@@ -1094,6 +1262,8 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(repo_push, m)?)?;
     m.add_function(wrap_pyfunction!(latest_pipeline, m)?)?;
     m.add_function(wrap_pyfunction!(list_pipeline_jobs, m)?)?;
+    m.add_function(wrap_pyfunction!(cache_pipeline, m)?)?;
+    m.add_function(wrap_pyfunction!(cached_pipeline, m)?)?;
     m.add_function(wrap_pyfunction!(play_job, m)?)?;
     m.add_function(wrap_pyfunction!(get_default_clone_dir, m)?)?;
     m.add_function(wrap_pyfunction!(set_default_clone_dir, m)?)?;

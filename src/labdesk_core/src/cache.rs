@@ -6,7 +6,7 @@ use crate::api_client::GitLabProject;
 use crate::error::{ErrorInfo, LabDeskError, Result};
 use crate::paths::AppPaths;
 
-const SCHEMA_VERSION: &str = "2";
+const SCHEMA_VERSION: &str = "3";
 
 pub fn open(paths: &AppPaths) -> Result<Connection> {
     paths.ensure_dirs().map_err(|e| {
@@ -57,6 +57,18 @@ fn init_schema(conn: &Connection) -> Result<()> {
             added_at TEXT NOT NULL,
             last_opened_at TEXT,
             last_push_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS pipelines (
+            instance_id TEXT NOT NULL,
+            project_id INTEGER NOT NULL,
+            ref TEXT NOT NULL,
+            pipeline_id INTEGER NOT NULL,
+            status TEXT,
+            web_url TEXT,
+            updated_at TEXT,
+            jobs_json TEXT,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (instance_id, project_id, ref)
         );
         "#,
     )
@@ -374,8 +386,150 @@ pub fn find_project_by_clone_url(
     Ok(None)
 }
 
+#[derive(Debug, Clone)]
+pub struct CachedPipeline {
+    pub pipeline_id: i64,
+    pub status: Option<String>,
+    pub ref_name: String,
+    pub web_url: Option<String>,
+    pub updated_at: Option<String>,
+    pub jobs_json: Option<String>,
+    pub fetched_at: String,
+}
+
+pub fn upsert_pipeline(
+    conn: &Connection,
+    instance_id: &str,
+    project_id: i64,
+    ref_name: &str,
+    pipeline_id: i64,
+    status: Option<&str>,
+    web_url: Option<&str>,
+    updated_at: Option<&str>,
+    jobs_json: Option<&str>,
+) -> Result<()> {
+    let stamp = fetched_stamp();
+    conn.execute(
+        r#"
+        INSERT INTO pipelines (
+            instance_id, project_id, ref, pipeline_id, status, web_url,
+            updated_at, jobs_json, fetched_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        ON CONFLICT(instance_id, project_id, ref) DO UPDATE SET
+            pipeline_id = excluded.pipeline_id,
+            status = excluded.status,
+            web_url = excluded.web_url,
+            updated_at = excluded.updated_at,
+            jobs_json = excluded.jobs_json,
+            fetched_at = excluded.fetched_at
+        "#,
+        params![
+            instance_id,
+            project_id,
+            ref_name,
+            pipeline_id,
+            status,
+            web_url,
+            updated_at,
+            jobs_json,
+            stamp,
+        ],
+    )
+    .map_err(cache_err)?;
+    Ok(())
+}
+
+pub fn get_pipeline(
+    conn: &Connection,
+    instance_id: &str,
+    project_id: i64,
+    ref_name: &str,
+) -> Result<Option<CachedPipeline>> {
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT pipeline_id, status, ref, web_url, updated_at, jobs_json, fetched_at
+            FROM pipelines
+            WHERE instance_id = ?1 AND project_id = ?2 AND ref = ?3
+            LIMIT 1
+            "#,
+        )
+        .map_err(cache_err)?;
+    let mut rows = stmt
+        .query_map(params![instance_id, project_id, ref_name], |row| {
+            Ok(CachedPipeline {
+                pipeline_id: row.get(0)?,
+                status: row.get(1)?,
+                ref_name: row.get(2)?,
+                web_url: row.get(3)?,
+                updated_at: row.get(4)?,
+                jobs_json: row.get(5)?,
+                fetched_at: row.get(6)?,
+            })
+        })
+        .map_err(cache_err)?;
+    match rows.next() {
+        Some(Ok(v)) => Ok(Some(v)),
+        Some(Err(e)) => Err(cache_err(e)),
+        None => Ok(None),
+    }
+}
+
 fn cache_err(e: rusqlite::Error) -> LabDeskError {
     LabDeskError::App(
         ErrorInfo::new("LD-CACHE-001", "Cache corrupted. Rebuilding.").with_detail(e.to_string()),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::paths::AppPaths;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_paths() -> (PathBuf, AppPaths) {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("labdesk-cache-test-{stamp}"));
+        let config_dir = root.join("config");
+        let data_dir = root.join("data");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::create_dir_all(&data_dir).unwrap();
+        let paths = AppPaths {
+            config_dir,
+            data_dir,
+        };
+        (root, paths)
+    }
+
+    #[test]
+    fn upsert_and_get_pipeline_roundtrip() {
+        let (root, paths) = temp_paths();
+        let conn = open(&paths).expect("open cache");
+        upsert_pipeline(
+            &conn,
+            "inst-1",
+            42,
+            "main",
+            1001,
+            Some("success"),
+            Some("https://git.example/p/-/pipelines/1001"),
+            Some("2026-08-13T00:00:00Z"),
+            Some(r#"[{"id":7,"name":"build","status":"success","stage":"build"}]"#),
+        )
+        .expect("upsert");
+        let row = get_pipeline(&conn, "inst-1", 42, "main")
+            .expect("get")
+            .expect("present");
+        assert_eq!(row.pipeline_id, 1001);
+        assert_eq!(row.status.as_deref(), Some("success"));
+        assert_eq!(row.ref_name, "main");
+        assert!(row.jobs_json.as_ref().unwrap().contains("build"));
+        assert!(!row.fetched_at.is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
 }

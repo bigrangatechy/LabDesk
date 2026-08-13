@@ -50,6 +50,28 @@ def _job_is_playable(job: dict) -> bool:
     return status == "manual" or when == "manual"
 
 
+def _sort_pipeline_jobs(jobs: list) -> list:
+    """Playable/manual first, then stage, then name."""
+
+    def key(job: dict):
+        playable = 0 if _job_is_playable(job) else 1
+        stage = (job.get("stage") or "").lower()
+        name = (job.get("name") or "").lower()
+        return (playable, stage, name)
+
+    return sorted(jobs, key=key)
+
+
+def _format_job_row(job: dict) -> str:
+    stage = job.get("stage") or ""
+    name = job.get("name") or f"job {job.get('id')}"
+    status = job.get("status") or ""
+    label = f"{stage} · {name}  [{status}]" if stage else f"{name}  [{status}]"
+    if _job_is_playable(job):
+        label = f"▶ {label}"
+    return label
+
+
 def _set_colored_diff(widget: QTextEdit, text: str) -> None:
     widget.clear()
     dark = widget.palette().color(QPalette.ColorRole.Window).lightness() < 128
@@ -166,8 +188,9 @@ class RepoWindow(QMainWindow):
             self.btn_fetch.setEnabled(available)
             self.btn_mr.setEnabled(available)
             if hasattr(self, "btn_pipeline_refresh"):
-                self.btn_pipeline_refresh.setEnabled(available)
-                self.btn_pipeline_open.setEnabled(available and bool(self._pipeline_web_url))
+                # Refresh stays enabled offline so cached pipeline can load.
+                self.btn_pipeline_refresh.setEnabled(True)
+                self.btn_pipeline_open.setEnabled(bool(self._pipeline_web_url))
                 self.btn_play_job.setEnabled(available)
         tip = "Working offline — network git actions disabled." if not available else ""
         self.btn_push.setToolTip(tip)
@@ -218,14 +241,7 @@ class RepoWindow(QMainWindow):
         self._refresh_changes()
         self._refresh_history()
         self._refresh_branches()
-        if self._network_available:
-            self._refresh_pipelines()
-        else:
-            self.pipeline_chip.setText("Pipeline: (offline)")
-            if hasattr(self, "pipeline_summary"):
-                self.pipeline_summary.setText("Offline — cannot refresh pipelines.")
-                self.btn_pipeline_refresh.setEnabled(False)
-                self.btn_play_job.setEnabled(False)
+        self._refresh_pipelines()
 
     def _build_changes_tab(self) -> QWidget:
         page = QWidget()
@@ -971,9 +987,113 @@ class RepoWindow(QMainWindow):
             working_message="Working…",
         )
 
+    def _apply_pipeline_view(
+        self,
+        *,
+        project_id,
+        pipe: dict | None,
+        jobs: list,
+        branch: str | None = None,
+        cached: bool = False,
+        fetched_at: str | None = None,
+    ) -> None:
+        self._pipeline_project_id = project_id
+        if not pipe:
+            self._pipeline_web_url = None
+            self.pipeline_chip.setText(
+                "Pipeline: none for current branch"
+                if not cached
+                else "Pipeline: (offline — no cache)"
+            )
+            self.pipeline_summary.setText(
+                "No pipeline found for the current branch."
+                if not cached
+                else "Offline — no cached pipeline for this branch."
+            )
+            self.pipeline_jobs.clear()
+            self.btn_pipeline_open.setEnabled(False)
+            self.btn_play_job.setEnabled(False)
+            return
+        status = pipe.get("status") or "unknown"
+        self._pipeline_web_url = pipe.get("web_url")
+        chip = f"Pipeline: {status}"
+        if cached:
+            chip = f"Pipeline: {status} (cached)"
+        self.pipeline_chip.setText(chip)
+        ref = pipe.get("ref") or branch or "—"
+        lines = [
+            f"#{pipe.get('id')}  {status}  ref={ref}",
+            f"Updated: {pipe.get('updated_at') or pipe.get('created_at') or '—'}",
+        ]
+        if fetched_at:
+            lines.append(f"Cached: {fetched_at}")
+        self.pipeline_summary.setText("\n".join(lines))
+        self.btn_pipeline_open.setEnabled(bool(self._pipeline_web_url))
+        self.btn_play_job.setEnabled(self._network_available and not cached)
+        self.pipeline_jobs.clear()
+        for job in _sort_pipeline_jobs(list(jobs)):
+            if not isinstance(job, dict):
+                continue
+            item = QListWidgetItem(_format_job_row(job))
+            item.setData(Qt.ItemDataRole.UserRole, job)
+            self.pipeline_jobs.addItem(item)
+
+    def _load_cached_pipelines(self) -> None:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+
+        def work():
+            import labdesk_core
+
+            info = labdesk_core.resolve_repo_project(path)
+            project_id = int(info["project_id"])
+            branch = info.get("current_branch") or labdesk_core.repo_branch(path)
+            cached = labdesk_core.cached_pipeline(project_id, branch)
+            return {
+                "project_id": project_id,
+                "branch": branch,
+                "cached": cached,
+            }
+
+        def on_ok(data) -> None:
+            cached = (data or {}).get("cached")
+            if not cached:
+                self._apply_pipeline_view(
+                    project_id=(data or {}).get("project_id"),
+                    pipe=None,
+                    jobs=[],
+                    branch=(data or {}).get("branch"),
+                    cached=True,
+                )
+                return
+            self._apply_pipeline_view(
+                project_id=(data or {}).get("project_id"),
+                pipe=cached.get("pipeline"),
+                jobs=cached.get("jobs") or [],
+                branch=(data or {}).get("branch"),
+                cached=True,
+                fetched_at=cached.get("fetched_at"),
+            )
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self.pipeline_chip.setText("Pipeline: (offline)")
+            self.pipeline_summary.setText(f"Offline — could not load cache [{code}]: {msg}")
+            self.btn_play_job.setEnabled(False)
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_pipeline_refresh] if hasattr(self, "btn_pipeline_refresh") else None,
+            status=self.footer.setText,
+            working_message="Loading cached pipeline…",
+        )
+
     def _refresh_pipelines(self) -> None:
         if not self._network_available:
-            self.pipeline_chip.setText("Pipeline: (offline)")
+            self._load_cached_pipelines()
             return
         from labdesk_ui.utils.async_jobs import run_in_background
 
@@ -989,43 +1109,25 @@ class RepoWindow(QMainWindow):
             jobs = []
             if pipe and pipe.get("id") is not None:
                 jobs = labdesk_core.list_pipeline_jobs(project_id, int(pipe["id"]))
+                labdesk_core.cache_pipeline(project_id, branch, pipe, jobs)
             return {"project_id": project_id, "branch": branch, "pipeline": pipe, "jobs": jobs}
 
         def on_ok(data) -> None:
-            pipe = (data or {}).get("pipeline")
-            jobs = (data or {}).get("jobs") or []
-            self._pipeline_project_id = (data or {}).get("project_id")
-            if not pipe:
-                self._pipeline_web_url = None
-                self.pipeline_chip.setText("Pipeline: none for current branch")
-                self.pipeline_summary.setText("No pipeline found for the current branch.")
-                self.pipeline_jobs.clear()
-                self.btn_pipeline_open.setEnabled(False)
-                return
-            status = pipe.get("status") or "unknown"
-            self._pipeline_web_url = pipe.get("web_url")
-            self.pipeline_chip.setText(f"Pipeline: {status}")
-            self.pipeline_summary.setText(
-                f"#{pipe.get('id')}  {status}  ref={pipe.get('ref') or data.get('branch')}\n"
-                f"Updated: {pipe.get('updated_at') or pipe.get('created_at') or '—'}"
+            self._apply_pipeline_view(
+                project_id=(data or {}).get("project_id"),
+                pipe=(data or {}).get("pipeline"),
+                jobs=(data or {}).get("jobs") or [],
+                branch=(data or {}).get("branch"),
+                cached=False,
             )
-            self.btn_pipeline_open.setEnabled(bool(self._pipeline_web_url))
-            self.pipeline_jobs.clear()
-            for job in jobs:
-                name = job.get("name") or f"job {job.get('id')}"
-                jstatus = job.get("status") or ""
-                label = f"{name}  [{jstatus}]"
-                if _job_is_playable(job):
-                    label = f"▶ {label} (manual — Play)"
-                item = QListWidgetItem(label)
-                item.setData(Qt.ItemDataRole.UserRole, job)
-                self.pipeline_jobs.addItem(item)
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
-            self.pipeline_chip.setText(f"Pipeline: [{code}]")
-            self.pipeline_summary.setText(f"[{code}] {msg}")
             if code.startswith("LD-NET"):
                 self.set_network_available(False)
+                self._load_cached_pipelines()
+                return
+            self.pipeline_chip.setText(f"Pipeline: [{code}]")
+            self.pipeline_summary.setText(f"[{code}] {msg}")
 
         run_in_background(
             self,
