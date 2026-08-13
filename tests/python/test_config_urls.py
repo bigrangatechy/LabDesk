@@ -5,6 +5,11 @@ from __future__ import annotations
 import pytest
 
 labdesk_core = pytest.importorskip("labdesk_core")
+if not hasattr(labdesk_core, "validate_base_url"):
+    pytest.skip(
+        "labdesk_core extension module not built (namespace package only)",
+        allow_module_level=True,
+    )
 
 
 def _code_from_exc(exc: BaseException) -> str:

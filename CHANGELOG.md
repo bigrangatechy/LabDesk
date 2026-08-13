@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **14:27:37  13/08/2026** — CI pytest: `format_error` must not treat the
+  empty `src/labdesk_core` namespace (PYTHONPATH=src) as the PyO3 module;
+  parse `[LD-…]` in pure Python when the extension is missing.
 - **14:07:05  13/08/2026** — Async jobs: do not parent `QThread` to the
   owner widget (Qt aborts if the window is closed mid-job); quit the
   thread on `destroyed`. Added pytest suite for this and repo reopen.

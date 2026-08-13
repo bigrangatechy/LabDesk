@@ -21,9 +21,16 @@ def test_format_error_fallback_without_structured_message():
     assert "plain failure" in msg
 
 
-def test_format_error_parses_bracket_code_when_core_available():
-    pytest = __import__("pytest")
-    pytest.importorskip("labdesk_core")
-    code, msg = format_error(RuntimeError("[LD-NET-001] Cannot reach instance. Working offline."))
+def test_format_error_parses_bracket_code():
+    """Must work even when the PyO3 module is not built (CI / PYTHONPATH=src)."""
+    code, msg = format_error(
+        RuntimeError("[LD-NET-001] Cannot reach instance. Working offline.")
+    )
     assert code == "LD-NET-001"
-    assert msg
+    assert "Cannot reach instance" in msg
+
+
+def test_format_error_parses_bracket_code_with_colon():
+    code, msg = format_error(RuntimeError("[LD-GIT-020] Conflicts detected. Resolve externally."))
+    assert code == "LD-GIT-020"
+    assert "Conflicts" in msg
