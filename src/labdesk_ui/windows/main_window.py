@@ -265,12 +265,31 @@ class MainWindow(QMainWindow):
             resolved = str(Path(path).resolve())
         except OSError:
             resolved = path
-        existing = self._find_repo_window(resolved)
-        if existing is not None:
-            existing.raise_()
-            existing.activateWindow()
-            existing.showNormal()
-            return
+        self._prune_repo_windows_silent()
+        for win in list(self._repo_windows):
+            if not self._repo_window_alive(win):
+                continue
+            try:
+                same = win.repo_path == resolved
+            except RuntimeError:
+                continue
+            if not same:
+                continue
+            # Only reuse a still-visible window. After Close, WA_DeleteOnClose
+            # leaves a Python wrapper whose repo_path still works but C++ is
+            # gone/dying — raising that shows "Internal C++ object already deleted".
+            try:
+                visible = win.isVisible()
+            except RuntimeError:
+                visible = False
+            if visible:
+                self._focus_repo_window(win)
+                return
+            try:
+                self._repo_windows.remove(win)
+            except ValueError:
+                pass
+            break
         win = RepoWindow(resolved, title=title or f"LabDesk — {resolved}", parent=None)
         win.set_network_available(self._online)
         win.destroyed.connect(self._prune_repo_windows)
@@ -280,11 +299,26 @@ class MainWindow(QMainWindow):
         win.activateWindow()
         self._rebuild_window_menu()
 
-    def _find_repo_window(self, resolved_path: str) -> RepoWindow | None:
-        self._prune_repo_windows()
-        for win in self._repo_windows:
+    @staticmethod
+    def _repo_window_alive(win: RepoWindow) -> bool:
+        try:
+            from shiboken6 import isValid
+
+            return bool(isValid(win))
+        except Exception:
             try:
-                if win.repo_path == resolved_path:
+                _ = win.objectName()
+                return True
+            except RuntimeError:
+                return False
+
+    def _find_repo_window(self, resolved_path: str) -> RepoWindow | None:
+        self._prune_repo_windows_silent()
+        for win in self._repo_windows:
+            if not self._repo_window_alive(win):
+                continue
+            try:
+                if win.repo_path == resolved_path and win.isVisible():
                     return win
             except RuntimeError:
                 continue
@@ -293,16 +327,15 @@ class MainWindow(QMainWindow):
     def _prune_repo_windows(self, *_args) -> None:
         alive: list[RepoWindow] = []
         for win in self._repo_windows:
-            try:
-                # Accessing a C++-deleted QObject raises RuntimeError.
-                _ = win.repo_path
+            if self._repo_window_alive(win):
                 alive.append(win)
-            except RuntimeError:
-                continue
         self._repo_windows = alive
         self._rebuild_window_menu()
 
     def _focus_repo_window(self, win: RepoWindow) -> None:
+        if not self._repo_window_alive(win):
+            self._prune_repo_windows()
+            return
         try:
             win.raise_()
             win.activateWindow()
@@ -323,7 +356,11 @@ class MainWindow(QMainWindow):
             return
         menu.addSeparator()
         for win in self._repo_windows:
+            if not self._repo_window_alive(win):
+                continue
             try:
+                if not win.isVisible():
+                    continue
                 label = win.windowTitle() or win.repo_path
                 act = QAction(label, self)
                 act.triggered.connect(
@@ -334,14 +371,9 @@ class MainWindow(QMainWindow):
                 continue
 
     def _prune_repo_windows_silent(self) -> None:
-        alive: list[RepoWindow] = []
-        for win in self._repo_windows:
-            try:
-                _ = win.repo_path
-                alive.append(win)
-            except RuntimeError:
-                continue
-        self._repo_windows = alive
+        self._repo_windows = [
+            win for win in self._repo_windows if self._repo_window_alive(win)
+        ]
 
     def _focus_main_window(self) -> None:
         self.raise_()
@@ -351,6 +383,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         # Closing the main window closes owned repo windows (WA_DeleteOnClose).
         for win in list(self._repo_windows):
+            if not self._repo_window_alive(win):
+                continue
             try:
                 win.close()
             except RuntimeError:
@@ -368,6 +402,8 @@ class MainWindow(QMainWindow):
             projects.set_network_available(available)
         self._prune_repo_windows_silent()
         for win in self._repo_windows:
+            if not self._repo_window_alive(win):
+                continue
             try:
                 win.set_network_available(available)
             except RuntimeError:

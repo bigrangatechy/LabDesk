@@ -20,6 +20,13 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **13:55:49  13/08/2026** — Repo windows: detect closed wrappers with
+  `shiboken6.isValid` (not `repo_path`, which survives C++ delete) and
+  only reuse still-visible windows so reopen after close works.
+- **13:51:46  13/08/2026** — Background jobs: marshal results through a
+  UI-thread `QObject` bridge. Bare Python callables on worker signals
+  could run off-thread and SIGSEGV in `QLabel`/`libQt6Gui` (Python 3.14
+  crash notification after connect/refresh).
 - **22:35:22  12/08/2026** — Flatpak CI: drop unsupported
   `flatpak-builder --env=…`; sed-inject `LABDESK_VERSION` into the
   manifest `build-options.env` instead.

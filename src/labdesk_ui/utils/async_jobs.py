@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtWidgets import QWidget
 
 from labdesk_ui.utils.helpers import format_error
@@ -28,6 +28,107 @@ class _Worker(QObject):
             self.failed.emit(code, msg, exc)
 
 
+class _ResultBridge(QObject):
+    """Lives on the owner (UI) thread so slots never touch widgets off-thread.
+
+    Connecting bare Python callables with QueuedConnection is unreliable in
+    PySide — Qt may invoke them on the worker thread, which segfaults in Qt Gui
+    (QLabel/QTextDocument). Always route through QObject slots on the UI thread.
+    """
+
+    def __init__(
+        self,
+        owner: QObject,
+        on_success: Callable[[Any], None] | None,
+        on_error: Callable[[str, str, BaseException], None] | None,
+        on_finished: Callable[[], None] | None,
+        busy_widgets: list[QWidget],
+        handles: list,
+        handle: dict,
+    ) -> None:
+        super().__init__(owner)
+        self._on_success = on_success
+        self._on_error = on_error
+        self._on_finished = on_finished
+        self._busy_widgets = busy_widgets
+        self._handles = handles
+        self._handle = handle
+        self._done = False
+
+    @Slot(object)
+    def on_ok(self, result: object) -> None:
+        try:
+            from shiboken6 import isValid
+
+            if not isValid(self):
+                return
+            parent = self.parent()
+            if parent is not None and not isValid(parent):
+                return
+        except Exception:
+            return
+        try:
+            if self._on_success is not None:
+                self._on_success(result)
+        finally:
+            self._cleanup()
+
+    @Slot(str, str, object)
+    def on_err(self, code: str, msg: str, exc: object) -> None:
+        try:
+            from shiboken6 import isValid
+
+            if not isValid(self):
+                return
+            parent = self.parent()
+            if parent is not None and not isValid(parent):
+                return
+        except Exception:
+            return
+        try:
+            if self._on_error is not None:
+                err = exc if isinstance(exc, BaseException) else Exception(str(exc))
+                self._on_error(code, msg, err)
+        finally:
+            self._cleanup()
+
+    def _cleanup(self) -> None:
+        if self._done:
+            return
+        self._done = True
+        try:
+            from shiboken6 import isValid
+
+            widgets_ok = isValid(self)
+        except Exception:
+            widgets_ok = False
+        if widgets_ok:
+            for w in self._busy_widgets:
+                try:
+                    from shiboken6 import isValid as _iv
+
+                    if _iv(w):
+                        w.setEnabled(True)
+                except Exception:
+                    pass
+            if self._on_finished is not None:
+                try:
+                    self._on_finished()
+                except RuntimeError:
+                    pass
+        try:
+            self._handles.remove(self._handle)
+        except ValueError:
+            pass
+        try:
+            from shiboken6 import isValid
+
+            if isValid(self):
+                self.deleteLater()
+        except Exception:
+            pass
+
+
 def run_in_background(
     owner: QObject,
     fn: Callable[[], Any],
@@ -41,7 +142,8 @@ def run_in_background(
 ) -> None:
     """
     Start ``fn`` on a worker thread. Callbacks run on the owner's thread
-    (queued connections). Never touch widgets from ``fn``.
+    via a ``QObject`` bridge (queued auto-connection). Never touch widgets
+    from ``fn``.
     """
     widgets = list(busy_widgets or [])
     for w in widgets:
@@ -53,41 +155,28 @@ def run_in_background(
     worker = _Worker(fn)
     worker.moveToThread(thread)
 
-    # Keep refs so GC does not collect mid-flight.
     handles = getattr(owner, "_labdesk_async_handles", None)
     if handles is None:
         handles = []
         setattr(owner, "_labdesk_async_handles", handles)
-    handle = {"thread": thread, "worker": worker}
+    handle: dict = {"thread": thread, "worker": worker}
     handles.append(handle)
 
-    def _cleanup() -> None:
-        for w in widgets:
-            w.setEnabled(True)
-        if on_finished is not None:
-            on_finished()
-        try:
-            handles.remove(handle)
-        except ValueError:
-            pass
-
-    def _ok(result: object) -> None:
-        try:
-            if on_success is not None:
-                on_success(result)
-        finally:
-            _cleanup()
-
-    def _err(code: str, msg: str, exc: object) -> None:
-        try:
-            if on_error is not None:
-                on_error(code, msg, exc if isinstance(exc, BaseException) else Exception(str(exc)))
-        finally:
-            _cleanup()
+    bridge = _ResultBridge(
+        owner,
+        on_success,
+        on_error,
+        on_finished,
+        widgets,
+        handles,
+        handle,
+    )
+    handle["bridge"] = bridge
 
     thread.started.connect(worker.run)
-    worker.finished.connect(_ok, Qt.ConnectionType.QueuedConnection)
-    worker.failed.connect(_err, Qt.ConnectionType.QueuedConnection)
+    # Worker lives on ``thread``; bridge on ``owner`` → Auto becomes Queued.
+    worker.finished.connect(bridge.on_ok)
+    worker.failed.connect(bridge.on_err)
     worker.finished.connect(thread.quit)
     worker.failed.connect(thread.quit)
     thread.finished.connect(worker.deleteLater)
