@@ -23,6 +23,8 @@ bullets without a stamp predate this convention.
 - **14:07:05  13/08/2026** — Async jobs: do not parent `QThread` to the
   owner widget (Qt aborts if the window is closed mid-job); quit the
   thread on `destroyed`. Added pytest suite for this and repo reopen.
+  Strengthened assertions so restored bugs fail (thread parent, UI-thread
+  callback affinity, dead-wrapper reopen, `validate_base_url`).
 - **13:55:49  13/08/2026** — Repo windows: detect closed wrappers with
   `shiboken6.isValid` (not `repo_path`, which survives C++ delete) and
   only reuse still-visible windows so reopen after close works.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QObject, QThread
+from PySide6.QtCore import QObject, QThread, Qt
 from PySide6.QtWidgets import QLabel, QWidget
 from shiboken6 import isValid
 
@@ -43,6 +43,7 @@ def test_async_callback_runs_on_owner_thread(qapp, process_events):
 
     assert "error" not in seen, seen.get("error")
     assert seen["result"] == {"ok": True}
+    # These two fail if someone wires finished → bare callable (worker thread).
     assert seen["callback_thread"] is owner_thread
     assert seen["worker_thread"] is not owner_thread
 
@@ -93,30 +94,76 @@ def test_async_can_update_qlabel_safely(qapp, process_events):
         working_message="Working…",
     )
     _wait_until(lambda: label.text() == "done", process_events=process_events)
-    assert label.isEnabled()
+    assert label.text() == "done"
+    assert label.isEnabled() is True
+
+
+def test_async_qthread_is_not_child_of_owner(qapp, process_events):
+    """Parenting QThread to the owner aborts Qt if the window closes mid-job."""
+    host = QWidget()
+    gate = {"go": False}
+    done = {"yes": False}
+
+    def work():
+        deadline = time.time() + 2.0
+        while not gate["go"] and time.time() < deadline:
+            time.sleep(0.01)
+        return 1
+
+    def on_ok(_r) -> None:
+        done["yes"] = True
+
+    run_in_background(host, work, on_success=on_ok)
+    _wait_until(
+        lambda: bool(getattr(host, "_labdesk_async_handles", None)),
+        process_events=process_events,
+    )
+    handles = host._labdesk_async_handles
+    assert handles, "expected an in-flight async handle"
+    thread = handles[0]["thread"]
+    assert isinstance(thread, QThread)
+    assert isValid(thread)
+    assert thread.isRunning()
+    # Regression lock: must stay None (parented thread → abort on owner destroy).
+    assert thread.parent() is None
+
+    gate["go"] = True
+    _wait_until(lambda: done["yes"], process_events=process_events, timeout=3.0)
 
 
 def test_async_owner_destroyed_mid_job_does_not_abort(qapp, process_events):
-    """QThread must not be a child of the owner (Qt aborts if destroyed early)."""
+    """Destroying the owner while work runs must not abort the interpreter."""
     host = QWidget()
+    host.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+    host.show()
+    process_events()
     seen = {"n": 0}
+    started = {"yes": False}
 
     def work():
-        time.sleep(0.2)
+        started["yes"] = True
+        time.sleep(0.25)
         return 1
 
     def on_ok(_r) -> None:
         seen["n"] += 1
 
     run_in_background(host, work, on_success=on_ok)
+    _wait_until(lambda: started["yes"], process_events=process_events, timeout=2.0)
+
+    handles = list(getattr(host, "_labdesk_async_handles", []) or [])
+    assert handles, "job should still be in flight"
+    thread = handles[0]["thread"]
+    assert isValid(thread)
+    assert thread.parent() is None
+
     host.close()
-    host.deleteLater()
-    deadline = time.time() + 1.0
+    deadline = time.time() + 2.0
     while time.time() < deadline and isValid(host):
         process_events(10)
         time.sleep(0.01)
-    time.sleep(0.3)
-    process_events(40)
-    # Success = process still alive (no Qt abort). Callback may be skipped.
-    assert True
+    assert not isValid(host)
 
+    time.sleep(0.35)
+    process_events(40)
+    assert seen["n"] == 0

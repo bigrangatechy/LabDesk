@@ -7,40 +7,36 @@ import pytest
 labdesk_core = pytest.importorskip("labdesk_core")
 
 
-def _connect_code(url: str) -> str:
-    """Attempt connect with a dummy PAT; return LD-… code from the failure."""
-    try:
-        labdesk_core.connect_instance("t", url, "dummy-pat-for-url-tests", "strict")
-    except Exception as exc:
-        parsed = labdesk_core.parse_error_message(str(exc))
-        return parsed.get("code") or "LD-SYS-001"
-    pytest.fail(f"connect unexpectedly succeeded for {url}")
+def _code_from_exc(exc: BaseException) -> str:
+    parsed = labdesk_core.parse_error_message(str(exc))
+    return parsed.get("code") or "LD-SYS-001"
 
 
-def test_https_public_accepted_until_auth_or_network():
-    # URL must pass validation; then auth/network fails with a dummy PAT.
-    code = _connect_code("https://gitlab.example.com")
-    assert code in {
-        "LD-AUTH-001",
-        "LD-AUTH-002",
-        "LD-AUTH-003",
-        "LD-NET-001",
-        "LD-NET-010",
-        "LD-NET-011",
-        "LD-API-001",
-        "LD-SYS-001",
-    }
-    assert code not in {"LD-CFG-003", "LD-CFG-004"}
+def test_validate_https_ok():
+    labdesk_core.validate_base_url("https://gitlab.example.com")
 
 
-def test_http_rfc1918_accepted_until_auth_or_network():
-    code = _connect_code("http://192.168.0.214:8929")
-    assert code not in {"LD-CFG-003", "LD-CFG-004"}
+def test_validate_http_rfc1918_ok():
+    labdesk_core.validate_base_url("http://192.168.0.214:8929")
+    labdesk_core.validate_base_url("http://10.1.2.3")
+    labdesk_core.validate_base_url("http://172.16.0.1")
+    labdesk_core.validate_base_url("http://127.0.0.1")
+    labdesk_core.validate_base_url("http://localhost:8080")
 
 
-def test_http_public_hostname_rejected():
-    assert _connect_code("http://gitlab.example.com") == "LD-CFG-003"
+def test_validate_http_public_hostname_rejected():
+    with pytest.raises(Exception) as ei:
+        labdesk_core.validate_base_url("http://gitlab.example.com")
+    assert _code_from_exc(ei.value) == "LD-CFG-003"
 
 
-def test_saas_rejected():
-    assert _connect_code("https://gitlab.com") == "LD-CFG-004"
+def test_validate_saas_rejected():
+    with pytest.raises(Exception) as ei:
+        labdesk_core.validate_base_url("https://gitlab.com")
+    assert _code_from_exc(ei.value) == "LD-CFG-004"
+
+
+def test_validate_github_saas_rejected():
+    with pytest.raises(Exception) as ei:
+        labdesk_core.validate_base_url("https://github.com")
+    assert _code_from_exc(ei.value) == "LD-CFG-004"

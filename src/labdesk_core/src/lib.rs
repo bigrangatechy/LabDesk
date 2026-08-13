@@ -966,6 +966,13 @@ fn play_job(py: Python<'_>, project_id: i64, job_id: u64) -> PyResult<PyObject> 
     Ok(d.into())
 }
 
+/// Validate instance base URL (SaaS reject + LAN HTTP allowlist).
+#[pyfunction]
+fn validate_base_url(base_url: String) -> PyResult<()> {
+    config::validate_base_url(&base_url)?;
+    Ok(())
+}
+
 /// Restore config.known-good.toml over config.toml (startup recovery helper).
 #[pyfunction]
 fn revert_config_to_known_good() -> PyResult<()> {
@@ -1094,6 +1101,7 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_check_for_updates, m)?)?;
     m.add_function(wrap_pyfunction!(set_active_ui_view, m)?)?;
     m.add_function(wrap_pyfunction!(set_ui_shell, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_base_url, m)?)?;
     m.add_function(wrap_pyfunction!(revert_config_to_known_good, m)?)?;
     m.add_function(wrap_pyfunction!(parse_error_message, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
