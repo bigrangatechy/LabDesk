@@ -6,7 +6,7 @@ use crate::api_client::GitLabProject;
 use crate::error::{ErrorInfo, LabDeskError, Result};
 use crate::paths::AppPaths;
 
-const SCHEMA_VERSION: &str = "3";
+const SCHEMA_VERSION: &str = "4";
 
 pub fn open(paths: &AppPaths) -> Result<Connection> {
     paths.ensure_dirs().map_err(|e| {
@@ -15,12 +15,32 @@ pub fn open(paths: &AppPaths) -> Result<Connection> {
         )
     })?;
 
-    let conn = Connection::open(paths.cache_db()).map_err(|e| {
+    let db = paths.cache_db();
+    if db.exists() {
+        if let Ok(conn) = Connection::open(&db) {
+            let ver: Option<String> = conn
+                .query_row(
+                    "SELECT value FROM schema_meta WHERE key = 'schema_version'",
+                    [],
+                    |row| row.get(0),
+                )
+                .ok();
+            if ver.as_deref() != Some(SCHEMA_VERSION) {
+                drop(conn);
+                return rebuild(paths);
+            }
+            init_schema(&conn)?;
+            return Ok(conn);
+        }
+        // Unreadable DB → rebuild.
+        return rebuild(paths);
+    }
+
+    let conn = Connection::open(&db).map_err(|e| {
         LabDeskError::App(
             ErrorInfo::new("LD-CACHE-001", "Cache corrupted. Rebuilding.").with_detail(e.to_string()),
         )
     })?;
-
     init_schema(&conn)?;
     Ok(conn)
 }
@@ -33,7 +53,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
             value TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS projects (
-            instance_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
             project_id INTEGER NOT NULL,
             name TEXT NOT NULL,
             name_with_namespace TEXT NOT NULL,
@@ -45,11 +65,11 @@ fn init_schema(conn: &Connection) -> Result<()> {
             visibility TEXT,
             last_activity_at TEXT,
             fetched_at TEXT NOT NULL,
-            PRIMARY KEY (instance_id, project_id)
+            PRIMARY KEY (account_id, project_id)
         );
         CREATE TABLE IF NOT EXISTS local_repos (
             id TEXT PRIMARY KEY,
-            instance_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
             project_id INTEGER,
             path TEXT NOT NULL UNIQUE,
             preferred_remote TEXT,
@@ -59,7 +79,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
             last_push_at TEXT
         );
         CREATE TABLE IF NOT EXISTS pipelines (
-            instance_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
             project_id INTEGER NOT NULL,
             ref TEXT NOT NULL,
             pipeline_id INTEGER NOT NULL,
@@ -68,7 +88,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
             updated_at TEXT,
             jobs_json TEXT,
             fetched_at TEXT NOT NULL,
-            PRIMARY KEY (instance_id, project_id, ref)
+            PRIMARY KEY (account_id, project_id, ref)
         );
         "#,
     )
@@ -111,13 +131,13 @@ fn fetched_stamp() -> String {
 
 pub fn replace_projects(
     conn: &Connection,
-    instance_id: &str,
+    account_id: &str,
     projects: &[GitLabProject],
 ) -> Result<()> {
     let tx = conn.unchecked_transaction().map_err(cache_err)?;
     tx.execute(
-        "DELETE FROM projects WHERE instance_id = ?1",
-        params![instance_id],
+        "DELETE FROM projects WHERE account_id = ?1",
+        params![account_id],
     )
     .map_err(cache_err)?;
 
@@ -127,7 +147,7 @@ pub fn replace_projects(
             .prepare(
                 r#"
                 INSERT INTO projects (
-                    instance_id, project_id, name, name_with_namespace, path_with_namespace,
+                    account_id, project_id, name, name_with_namespace, path_with_namespace,
                     http_url_to_repo, ssh_url_to_repo, web_url, default_branch, visibility,
                     last_activity_at, fetched_at
                 ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
@@ -137,7 +157,7 @@ pub fn replace_projects(
 
         for p in projects {
             stmt.execute(params![
-                instance_id,
+                account_id,
                 p.id as i64,
                 p.name,
                 p.name_with_namespace,
@@ -172,7 +192,7 @@ pub struct CachedProject {
     pub fetched_at: String,
 }
 
-pub fn list_projects(conn: &Connection, instance_id: &str) -> Result<Vec<CachedProject>> {
+pub fn list_projects(conn: &Connection, account_id: &str) -> Result<Vec<CachedProject>> {
     let mut stmt = conn
         .prepare(
             r#"
@@ -180,14 +200,14 @@ pub fn list_projects(conn: &Connection, instance_id: &str) -> Result<Vec<CachedP
                    http_url_to_repo, ssh_url_to_repo, web_url, default_branch,
                    visibility, last_activity_at, fetched_at
             FROM projects
-            WHERE instance_id = ?1
+            WHERE account_id = ?1
             ORDER BY last_activity_at DESC NULLS LAST, name_with_namespace ASC
             "#,
         )
         .map_err(cache_err)?;
 
     let rows = stmt
-        .query_map(params![instance_id], |row| {
+        .query_map(params![account_id], |row| {
             Ok(CachedProject {
                 project_id: row.get(0)?,
                 name: row.get(1)?,
@@ -213,7 +233,7 @@ pub fn list_projects(conn: &Connection, instance_id: &str) -> Result<Vec<CachedP
 
 pub fn get_cached_project(
     conn: &Connection,
-    instance_id: &str,
+    account_id: &str,
     project_id: i64,
 ) -> Result<Option<CachedProject>> {
     let mut stmt = conn
@@ -223,13 +243,13 @@ pub fn get_cached_project(
                    http_url_to_repo, ssh_url_to_repo, web_url, default_branch,
                    visibility, last_activity_at, fetched_at
             FROM projects
-            WHERE instance_id = ?1 AND project_id = ?2
+            WHERE account_id = ?1 AND project_id = ?2
             "#,
         )
         .map_err(cache_err)?;
 
     let mut rows = stmt
-        .query_map(params![instance_id, project_id], |row| {
+        .query_map(params![account_id, project_id], |row| {
             Ok(CachedProject {
                 project_id: row.get(0)?,
                 name: row.get(1)?,
@@ -255,7 +275,7 @@ pub fn get_cached_project(
 
 pub fn upsert_local_repo(
     conn: &Connection,
-    instance_id: &str,
+    account_id: &str,
     project_id: Option<i64>,
     path: &str,
     clone_url: &str,
@@ -274,11 +294,11 @@ pub fn upsert_local_repo(
         conn.execute(
             r#"
             UPDATE local_repos
-            SET instance_id = ?1, project_id = ?2, clone_url = ?3,
+            SET account_id = ?1, project_id = ?2, clone_url = ?3,
                 last_opened_at = ?4, preferred_remote = 'origin'
             WHERE id = ?5
             "#,
-            params![instance_id, project_id, clone_url, stamp, id],
+            params![account_id, project_id, clone_url, stamp, id],
         )
         .map_err(cache_err)?;
         return Ok(id);
@@ -288,11 +308,11 @@ pub fn upsert_local_repo(
     conn.execute(
         r#"
         INSERT INTO local_repos (
-            id, instance_id, project_id, path, preferred_remote, clone_url,
+            id, account_id, project_id, path, preferred_remote, clone_url,
             added_at, last_opened_at, last_push_at
         ) VALUES (?1,?2,?3,?4,'origin',?5,?6,?6,NULL)
         "#,
-        params![id, instance_id, project_id, path, clone_url, stamp],
+        params![id, account_id, project_id, path, clone_url, stamp],
     )
     .map_err(cache_err)?;
     Ok(id)
@@ -300,19 +320,19 @@ pub fn upsert_local_repo(
 
 pub fn find_local_repo_by_project(
     conn: &Connection,
-    instance_id: &str,
+    account_id: &str,
     project_id: i64,
 ) -> Result<Option<(String, String)>> {
     // Prefer an existing path; then most recently opened/added.
     let mut stmt = conn
         .prepare(
             "SELECT id, path FROM local_repos
-             WHERE instance_id = ?1 AND project_id = ?2
+             WHERE account_id = ?1 AND project_id = ?2
              ORDER BY COALESCE(last_opened_at, added_at) DESC",
         )
         .map_err(cache_err)?;
     let rows = stmt
-        .query_map(params![instance_id, project_id], |row| {
+        .query_map(params![account_id, project_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })
         .map_err(cache_err)?;
@@ -339,7 +359,7 @@ pub fn find_local_repo_by_path(
 ) -> Result<Option<(Option<String>, Option<i64>, Option<String>)>> {
     let mut stmt = conn
         .prepare(
-            "SELECT instance_id, project_id, clone_url FROM local_repos WHERE path = ?1 LIMIT 1",
+            "SELECT account_id, project_id, clone_url FROM local_repos WHERE path = ?1 LIMIT 1",
         )
         .map_err(cache_err)?;
     let mut rows = stmt
@@ -366,14 +386,14 @@ fn normalize_git_url(url: &str) -> String {
 /// Match a clone/remote URL against cached project http/ssh URLs.
 pub fn find_project_by_clone_url(
     conn: &Connection,
-    instance_id: &str,
+    account_id: &str,
     clone_url: &str,
 ) -> Result<Option<CachedProject>> {
     let needle = normalize_git_url(clone_url);
     if needle.is_empty() {
         return Ok(None);
     }
-    let projects = list_projects(conn, instance_id)?;
+    let projects = list_projects(conn, account_id)?;
     for p in projects {
         let http = p.http_url_to_repo.clone();
         let ssh = p.ssh_url_to_repo.clone();
@@ -399,7 +419,7 @@ pub struct CachedPipeline {
 
 pub fn upsert_pipeline(
     conn: &Connection,
-    instance_id: &str,
+    account_id: &str,
     project_id: i64,
     ref_name: &str,
     pipeline_id: i64,
@@ -412,10 +432,10 @@ pub fn upsert_pipeline(
     conn.execute(
         r#"
         INSERT INTO pipelines (
-            instance_id, project_id, ref, pipeline_id, status, web_url,
+            account_id, project_id, ref, pipeline_id, status, web_url,
             updated_at, jobs_json, fetched_at
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-        ON CONFLICT(instance_id, project_id, ref) DO UPDATE SET
+        ON CONFLICT(account_id, project_id, ref) DO UPDATE SET
             pipeline_id = excluded.pipeline_id,
             status = excluded.status,
             web_url = excluded.web_url,
@@ -424,7 +444,7 @@ pub fn upsert_pipeline(
             fetched_at = excluded.fetched_at
         "#,
         params![
-            instance_id,
+            account_id,
             project_id,
             ref_name,
             pipeline_id,
@@ -441,7 +461,7 @@ pub fn upsert_pipeline(
 
 pub fn get_pipeline(
     conn: &Connection,
-    instance_id: &str,
+    account_id: &str,
     project_id: i64,
     ref_name: &str,
 ) -> Result<Option<CachedPipeline>> {
@@ -450,13 +470,13 @@ pub fn get_pipeline(
             r#"
             SELECT pipeline_id, status, ref, web_url, updated_at, jobs_json, fetched_at
             FROM pipelines
-            WHERE instance_id = ?1 AND project_id = ?2 AND ref = ?3
+            WHERE account_id = ?1 AND project_id = ?2 AND ref = ?3
             LIMIT 1
             "#,
         )
         .map_err(cache_err)?;
     let mut rows = stmt
-        .query_map(params![instance_id, project_id, ref_name], |row| {
+        .query_map(params![account_id, project_id, ref_name], |row| {
             Ok(CachedPipeline {
                 pipeline_id: row.get(0)?,
                 status: row.get(1)?,

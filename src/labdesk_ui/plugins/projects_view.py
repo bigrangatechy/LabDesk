@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -21,15 +22,40 @@ from labdesk_ui.plugins import AppContext, register_view
 from labdesk_ui.utils.helpers import format_error
 
 
+def filter_projects(projects: list, query: str) -> list:
+    """Case-insensitive filter on name / namespace path fields."""
+    q = (query or "").strip().lower()
+    if not q:
+        return list(projects)
+    out = []
+    for p in projects:
+        if not isinstance(p, dict):
+            continue
+        hay = " ".join(
+            str(p.get(k) or "")
+            for k in ("name", "name_with_namespace", "path_with_namespace")
+        ).lower()
+        if q in hay:
+            out.append(p)
+    return out
+
+
 class ProjectsView(QWidget):
     def __init__(self, parent: QWidget, ctx: AppContext) -> None:
         super().__init__(parent)
         self._ctx = ctx
+        self._all_projects: list = []
 
         layout = QVBoxLayout(self)
 
         self.projects_meta = QLabel("Projects")
         layout.addWidget(self.projects_meta)
+
+        self.filter_edit = QLineEdit()
+        self.filter_edit.setPlaceholderText("Filter projects…")
+        self.filter_edit.setClearButtonEnabled(True)
+        self.filter_edit.textChanged.connect(self._apply_filter)
+        layout.addWidget(self.filter_edit)
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(
@@ -42,7 +68,7 @@ class ProjectsView(QWidget):
         layout.addWidget(self.table, stretch=1)
 
         row = QHBoxLayout()
-        self.btn_connect = QPushButton("Add / connect instance…")
+        self.btn_connect = QPushButton("Add host / account…")
         self.btn_connect.clicked.connect(self._ctx.show_connect_dialog)
         row.addWidget(self.btn_connect)
 
@@ -113,23 +139,41 @@ class ProjectsView(QWidget):
             import labdesk_core
 
             cfg = labdesk_core.load_config()
-            if not (cfg.get("instances") or []):
+            if not (cfg.get("accounts") or cfg.get("instances")):
+                self._all_projects = []
                 self.table.setRowCount(0)
-                self.projects_meta.setText("Projects (none — connect an instance)")
+                self.projects_meta.setText("Projects (none — connect a host/account)")
                 return
 
             projects = labdesk_core.list_projects()
-            self._fill_table(projects)
-            fetched = projects[0].get("fetched_at") if projects else None
-            self.projects_meta.setText(
-                f"Projects ({len(projects)} cached"
-                + (f", fetched_at {fetched}" if fetched else "")
-                + ")"
-            )
+            self._all_projects = list(projects or [])
+            self._apply_filter()
         except Exception as exc:
             code, msg = format_error(exc)
             self.projects_meta.setText(f"Projects — [{code}] {msg}")
+            self._all_projects = []
             self.table.setRowCount(0)
+
+    def _apply_filter(self, _text: str = "") -> None:
+        filtered = filter_projects(self._all_projects, self.filter_edit.text())
+        self._fill_table(filtered)
+        total = len(self._all_projects)
+        shown = len(filtered)
+        fetched = None
+        if self._all_projects:
+            fetched = self._all_projects[0].get("fetched_at")
+        q = self.filter_edit.text().strip()
+        if q:
+            meta = f"Projects (showing {shown} of {total}"
+        else:
+            meta = f"Projects ({total} cached"
+        if fetched:
+            meta += f", fetched_at {fetched}"
+        meta += ")"
+        if hasattr(self._ctx, "is_network_available") and not self._ctx.is_network_available():
+            if "offline" not in meta.lower():
+                meta += " · offline (cached)"
+        self.projects_meta.setText(meta)
 
     def _fill_table(self, projects: list) -> None:
         self.table.setRowCount(len(projects))

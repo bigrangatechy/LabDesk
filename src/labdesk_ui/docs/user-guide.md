@@ -60,8 +60,10 @@ Under Flatpak, LabDesk keeps its files under:
 
 ## 3. First-time setup
 
-1. On first launch with no instances, LabDesk offers **Add / connect**.
-2. Enter a display name, **base URL**, and API **personal access token**.
+1. On first launch with no hosts, LabDesk offers **Add / connect**.
+2. Choose **New host** (base URL + TLS) or **Add account** to an
+   existing host, then enter an account label and API **personal access
+   token**.
    - Prefer **`https://…`**.
    - On a trusted LAN you may use **`http://192.168.x.x:port`** (or
      other private / loopback addresses). Public host names still need
@@ -71,6 +73,10 @@ Under Flatpak, LabDesk keeps its files under:
    Imported CA.
 5. The PAT is stored in the **system keyring**, not in plain config
    files.
+
+You can connect **several GitLab machines** and **several accounts** on
+the same machine. Use the host and account selectors in the main window
+to switch; the Projects list follows the active account.
 
 ---
 
@@ -87,8 +93,10 @@ Under Flatpak, LabDesk keeps its files under:
 
 ## 5. Projects & cloning
 
-- **Refresh projects** loads your project list from GitLab (and keeps a
-  local copy for offline browsing).
+- **Filter projects…** narrows the list by name or namespace path
+  (local cache only).
+- **Refresh projects** loads your project list from GitLab for the
+  **active account** (and keeps a local copy for offline browsing).
 - **Clone** (HTTPS or SSH) into the default clone folder.
 - **Open local** / **Add existing…** attach an already-cloned folder.
 - Double-click a project or use Open local to open a **repo window**.

@@ -22,22 +22,34 @@ pub struct GeneralConfig {
     pub default_clone_dir: String,
     pub check_for_updates: bool,
     pub active_instance_id: Option<String>,
+    pub active_account_id: Option<String>,
     /// Registered UI view id (e.g. `projects`, `settings`).
     pub active_ui_view: String,
     /// Main window shell: `classic` (top nav) or `sidebar`.
     pub ui_shell: String,
 }
 
+/// GitLab host (machine).
 #[derive(Debug, Clone)]
 pub struct InstanceConfig {
     pub id: String,
     pub name: String,
     pub base_url: String,
     pub api_version: String,
+    pub ssl_mode: String,
+    pub created_at: String,
+}
+
+/// GitLab account (user/PAT) on a host.
+#[derive(Debug, Clone)]
+pub struct AccountConfig {
+    pub id: String,
+    pub instance_id: String,
+    pub name: String,
+    pub username: Option<String>,
     pub api_auth: String,
     pub keyring_account: String,
     pub git_https_auth: String,
-    pub ssl_mode: String,
     pub created_at: String,
     pub last_connected: Option<String>,
     pub gitlab_version: Option<String>,
@@ -48,6 +60,7 @@ pub struct InstanceConfig {
 pub struct AppConfig {
     pub general: GeneralConfig,
     pub instances: Vec<InstanceConfig>,
+    pub accounts: Vec<AccountConfig>,
     /// Full document so unknown top-level / `[general]` keys survive round-trips.
     pub document: DocumentMut,
 }
@@ -59,6 +72,7 @@ impl Default for GeneralConfig {
             default_clone_dir: "~/Projects".into(),
             check_for_updates: true,
             active_instance_id: None,
+            active_account_id: None,
             active_ui_view: "projects".into(),
             ui_shell: "classic".into(),
         }
@@ -66,14 +80,35 @@ impl Default for GeneralConfig {
 }
 
 impl AppConfig {
+    #[allow(dead_code)]
     pub fn active_instance(&self) -> Option<&InstanceConfig> {
         let id = self.general.active_instance_id.as_deref()?;
         self.instances.iter().find(|i| i.id == id)
     }
 
-    pub fn active_instance_mut(&mut self) -> Option<&mut InstanceConfig> {
-        let id = self.general.active_instance_id.clone()?;
-        self.instances.iter_mut().find(|i| i.id == id)
+    pub fn active_account(&self) -> Option<&AccountConfig> {
+        let id = self.general.active_account_id.as_deref()?;
+        self.accounts.iter().find(|a| a.id == id)
+    }
+
+    pub fn active_account_mut(&mut self) -> Option<&mut AccountConfig> {
+        let id = self.general.active_account_id.clone()?;
+        self.accounts.iter_mut().find(|a| a.id == id)
+    }
+
+    /// Active account plus its host (API auth follows the account).
+    pub fn active_connection(&self) -> Option<(&AccountConfig, &InstanceConfig)> {
+        let acc = self.active_account()?;
+        let inst = self.instances.iter().find(|i| i.id == acc.instance_id)?;
+        Some((acc, inst))
+    }
+
+    #[allow(dead_code)]
+    pub fn accounts_for_instance(&self, instance_id: &str) -> Vec<&AccountConfig> {
+        self.accounts
+            .iter()
+            .filter(|a| a.instance_id == instance_id)
+            .collect()
     }
 }
 
@@ -131,7 +166,12 @@ pub fn normalize_base_url(base_url: &str) -> String {
     base_url.trim().trim_end_matches('/').to_string()
 }
 
-pub fn keyring_account_for(base_url: &str) -> String {
+pub fn keyring_account_for(base_url: &str, account_id: &str) -> String {
+    format!("labdesk:{}:{}", normalize_base_url(base_url), account_id)
+}
+
+/// Legacy V1 keyring id (URL only) — kept on migrate so existing PATs still load.
+pub fn legacy_keyring_account_for(base_url: &str) -> String {
     format!("labdesk:{}", normalize_base_url(base_url))
 }
 
@@ -159,7 +199,17 @@ pub fn load_or_default(paths: &AppPaths) -> Result<AppConfig> {
         )
     })?;
 
-    parse_document(&text)
+    let mut cfg = parse_document(&text)?;
+    // Persist host/account split when we migrated legacy instance keyring fields.
+    let legacy_in_file = text.contains("keyring_account")
+        && text
+            .lines()
+            .any(|l| l.trim_start().starts_with("[[instances]]"))
+        && !text.contains("[[accounts]]");
+    if legacy_in_file && !cfg.accounts.is_empty() {
+        save(paths, &mut cfg)?;
+    }
+    Ok(cfg)
 }
 
 pub fn parse_document(text: &str) -> Result<AppConfig> {
@@ -174,10 +224,11 @@ pub fn parse_document(text: &str) -> Result<AppConfig> {
     })?;
 
     let general = read_general(&document)?;
-    let instances = read_instances(&document)?;
+    let (instances, accounts, general) = read_instances_and_accounts(&document, general)?;
     Ok(AppConfig {
         general,
         instances,
+        accounts,
         document,
     })
 }
@@ -192,10 +243,12 @@ fn default_config() -> AppConfig {
     general["ui_shell"] = value("classic");
     document["general"] = Item::Table(general);
     document["instances"] = Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
+    document["accounts"] = Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
 
     AppConfig {
         general: GeneralConfig::default(),
         instances: Vec::new(),
+        accounts: Vec::new(),
         document,
     }
 }
@@ -224,6 +277,10 @@ fn read_general(doc: &DocumentMut) -> Result<GeneralConfig> {
             .get("active_instance_id")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
+        active_account_id: table
+            .get("active_account_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         active_ui_view: table
             .get("active_ui_view")
             .and_then(|v| v.as_str())
@@ -237,45 +294,141 @@ fn read_general(doc: &DocumentMut) -> Result<GeneralConfig> {
     })
 }
 
-fn read_instances(doc: &DocumentMut) -> Result<Vec<InstanceConfig>> {
+/// Read hosts + accounts; migrate legacy instance rows that still carry keyring fields.
+fn read_instances_and_accounts(
+    doc: &DocumentMut,
+    mut general: GeneralConfig,
+) -> Result<(Vec<InstanceConfig>, Vec<AccountConfig>, GeneralConfig)> {
+    let mut instances = Vec::new();
+    let mut accounts = read_accounts(doc)?;
+
     let Some(array) = doc.get("instances").and_then(|i| i.as_array_of_tables()) else {
-        return Ok(Vec::new());
+        return Ok((instances, accounts, general));
     };
 
-    let mut out = Vec::new();
     for table in array.iter() {
         let id = required_str(table, "id")?;
         let name = required_str(table, "name")?;
-        let base_url = required_str(table, "base_url")?;
+        let base_url = normalize_base_url(&required_str(table, "base_url")?);
         reject_saas_url(&base_url)?;
-        out.push(InstanceConfig {
+        let created_at = table
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let ssl_mode = table
+            .get("ssl_mode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("strict")
+            .to_string();
+        let api_version = table
+            .get("api_version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("v4")
+            .to_string();
+
+        // Legacy: keyring lived on the instance row.
+        let legacy_keyring = table
+            .get("keyring_account")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        if let Some(keyring_account) = legacy_keyring {
+            let already = accounts.iter().any(|a| a.instance_id == id);
+            if !already {
+                let acc_id = Uuid::new_v4().to_string();
+                // Prefer existing keyring string so the PAT still resolves.
+                let keyring = if keyring_account.is_empty() {
+                    legacy_keyring_account_for(&base_url)
+                } else {
+                    keyring_account
+                };
+                accounts.push(AccountConfig {
+                    id: acc_id.clone(),
+                    instance_id: id.clone(),
+                    name: name.clone(),
+                    username: None,
+                    api_auth: table
+                        .get("api_auth")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("PAT")
+                        .to_string(),
+                    keyring_account: keyring,
+                    git_https_auth: table
+                        .get("git_https_auth")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("credential_helper")
+                        .to_string(),
+                    created_at: created_at.clone(),
+                    last_connected: table
+                        .get("last_connected")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    gitlab_version: table
+                        .get("gitlab_version")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    gitlab_revision: table
+                        .get("gitlab_revision")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                });
+                if general.active_account_id.is_none()
+                    && general.active_instance_id.as_deref() == Some(id.as_str())
+                {
+                    general.active_account_id = Some(acc_id);
+                }
+            }
+        }
+
+        instances.push(InstanceConfig {
             id,
             name,
-            base_url: normalize_base_url(&base_url),
-            api_version: table
-                .get("api_version")
+            base_url,
+            api_version,
+            ssl_mode,
+            created_at,
+        });
+    }
+
+    // If we migrated accounts but active_account_id still unset, pick first.
+    if general.active_account_id.is_none() {
+        if let Some(first) = accounts.first() {
+            general.active_account_id = Some(first.id.clone());
+            general.active_instance_id = Some(first.instance_id.clone());
+        }
+    } else if let Some(acc_id) = general.active_account_id.clone() {
+        if let Some(acc) = accounts.iter().find(|a| a.id == acc_id) {
+            general.active_instance_id = Some(acc.instance_id.clone());
+        }
+    }
+
+    Ok((instances, accounts, general))
+}
+
+fn read_accounts(doc: &DocumentMut) -> Result<Vec<AccountConfig>> {
+    let Some(array) = doc.get("accounts").and_then(|i| i.as_array_of_tables()) else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    for table in array.iter() {
+        out.push(AccountConfig {
+            id: required_str(table, "id")?,
+            instance_id: required_str(table, "instance_id")?,
+            name: required_str(table, "name")?,
+            username: table
+                .get("username")
                 .and_then(|v| v.as_str())
-                .unwrap_or("v4")
-                .to_string(),
+                .map(|s| s.to_string()),
             api_auth: table
                 .get("api_auth")
                 .and_then(|v| v.as_str())
                 .unwrap_or("PAT")
                 .to_string(),
-            keyring_account: table
-                .get("keyring_account")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| keyring_account_for(&base_url)),
+            keyring_account: required_str(table, "keyring_account")?,
             git_https_auth: table
                 .get("git_https_auth")
                 .and_then(|v| v.as_str())
                 .unwrap_or("credential_helper")
-                .to_string(),
-            ssl_mode: table
-                .get("ssl_mode")
-                .and_then(|v| v.as_str())
-                .unwrap_or("strict")
                 .to_string(),
             created_at: table
                 .get("created_at")
@@ -381,35 +534,56 @@ fn sync_document(cfg: &mut AppConfig) {
             general.remove("active_instance_id");
         }
     }
+    match &cfg.general.active_account_id {
+        Some(id) => general["active_account_id"] = value(id),
+        None => {
+            general.remove("active_account_id");
+        }
+    }
     general["active_ui_view"] = value(&cfg.general.active_ui_view);
     general["ui_shell"] = value(&cfg.general.ui_shell);
 
-    let mut array = toml_edit::ArrayOfTables::new();
+    let mut inst_array = toml_edit::ArrayOfTables::new();
     for inst in &cfg.instances {
         let mut t = Table::new();
         t["id"] = value(&inst.id);
         t["name"] = value(&inst.name);
         t["base_url"] = value(&inst.base_url);
         t["api_version"] = value(&inst.api_version);
-        t["api_auth"] = value(&inst.api_auth);
-        t["keyring_account"] = value(&inst.keyring_account);
-        t["git_https_auth"] = value(&inst.git_https_auth);
         t["ssl_mode"] = value(&inst.ssl_mode);
         t["created_at"] = value(&inst.created_at);
-        if let Some(v) = &inst.last_connected {
+        inst_array.push(t);
+    }
+    cfg.document["instances"] = Item::ArrayOfTables(inst_array);
+
+    let mut acc_array = toml_edit::ArrayOfTables::new();
+    for acc in &cfg.accounts {
+        let mut t = Table::new();
+        t["id"] = value(&acc.id);
+        t["instance_id"] = value(&acc.instance_id);
+        t["name"] = value(&acc.name);
+        if let Some(u) = &acc.username {
+            t["username"] = value(u);
+        }
+        t["api_auth"] = value(&acc.api_auth);
+        t["keyring_account"] = value(&acc.keyring_account);
+        t["git_https_auth"] = value(&acc.git_https_auth);
+        t["created_at"] = value(&acc.created_at);
+        if let Some(v) = &acc.last_connected {
             t["last_connected"] = value(v);
         }
-        if let Some(v) = &inst.gitlab_version {
+        if let Some(v) = &acc.gitlab_version {
             t["gitlab_version"] = value(v);
         }
-        if let Some(v) = &inst.gitlab_revision {
+        if let Some(v) = &acc.gitlab_revision {
             t["gitlab_revision"] = value(v);
         }
-        array.push(t);
+        acc_array.push(t);
     }
-    cfg.document["instances"] = Item::ArrayOfTables(array);
+    cfg.document["accounts"] = Item::ArrayOfTables(acc_array);
 }
 
+/// Find or create a host by normalized base_url (does not clear other hosts).
 pub fn upsert_instance(
     cfg: &mut AppConfig,
     name: String,
@@ -418,15 +592,11 @@ pub fn upsert_instance(
 ) -> Result<InstanceConfig> {
     let base_url = normalize_base_url(&base_url);
     reject_saas_url(&base_url)?;
-
     let now = iso8601_now();
-    let keyring_account = keyring_account_for(&base_url);
 
     if let Some(existing) = cfg.instances.iter_mut().find(|i| i.base_url == base_url) {
         existing.name = name;
         existing.ssl_mode = ssl_mode;
-        existing.keyring_account = keyring_account;
-        cfg.general.active_instance_id = Some(existing.id.clone());
         return Ok(existing.clone());
     }
 
@@ -435,24 +605,82 @@ pub fn upsert_instance(
         name,
         base_url,
         api_version: "v4".into(),
+        ssl_mode,
+        created_at: now,
+    };
+    cfg.instances.push(inst.clone());
+    Ok(inst)
+}
+
+/// Add a new account on an existing host and make it active.
+pub fn add_account(
+    cfg: &mut AppConfig,
+    instance_id: &str,
+    name: String,
+) -> Result<AccountConfig> {
+    let inst = cfg
+        .instances
+        .iter()
+        .find(|i| i.id == instance_id)
+        .cloned()
+        .ok_or_else(|| {
+            LabDeskError::App(ErrorInfo::new(
+                "LD-CFG-003",
+                "Config value invalid: instance_id",
+            ))
+        })?;
+    let now = iso8601_now();
+    let id = Uuid::new_v4().to_string();
+    let keyring_account = keyring_account_for(&inst.base_url, &id);
+    let acc = AccountConfig {
+        id: id.clone(),
+        instance_id: inst.id.clone(),
+        name,
+        username: None,
         api_auth: "PAT".into(),
         keyring_account,
         git_https_auth: "credential_helper".into(),
-        ssl_mode,
         created_at: now,
         last_connected: None,
         gitlab_version: None,
         gitlab_revision: None,
     };
-    cfg.general.active_instance_id = Some(inst.id.clone());
-    // V1 UI: one active instance in the list.
-    cfg.instances.clear();
-    cfg.instances.push(inst.clone());
-    Ok(inst)
+    cfg.accounts.push(acc.clone());
+    set_active_account(cfg, &id)?;
+    Ok(acc)
 }
 
-pub fn touch_last_connected(inst: &mut InstanceConfig) {
-    inst.last_connected = Some(iso8601_now());
+/// Create/find host, add account, activate (connect flow).
+pub fn connect_account(
+    cfg: &mut AppConfig,
+    host_name: String,
+    account_name: String,
+    base_url: String,
+    ssl_mode: String,
+) -> Result<(InstanceConfig, AccountConfig)> {
+    let inst = upsert_instance(cfg, host_name, base_url, ssl_mode)?;
+    let acc = add_account(cfg, &inst.id, account_name)?;
+    Ok((inst, acc))
+}
+
+pub fn set_active_account(cfg: &mut AppConfig, account_id: &str) -> Result<()> {
+    let acc = cfg
+        .accounts
+        .iter()
+        .find(|a| a.id == account_id)
+        .ok_or_else(|| {
+            LabDeskError::App(ErrorInfo::new(
+                "LD-CFG-003",
+                "Config value invalid: active_account_id",
+            ))
+        })?;
+    cfg.general.active_account_id = Some(acc.id.clone());
+    cfg.general.active_instance_id = Some(acc.instance_id.clone());
+    Ok(())
+}
+
+pub fn touch_last_connected(acc: &mut AccountConfig) {
+    acc.last_connected = Some(iso8601_now());
 }
 
 pub(crate) fn iso8601_now_public() -> String {
@@ -639,5 +867,79 @@ mod tests {
     #[test]
     fn saas_rejected() {
         assert!(validate_base_url("https://gitlab.com").is_err());
+    }
+
+    #[test]
+    fn migrate_legacy_instance_to_account() {
+        let toml = r#"
+[general]
+active_instance_id = "inst-1"
+theme = "system"
+default_clone_dir = "~/Projects"
+check_for_updates = true
+
+[[instances]]
+id = "inst-1"
+name = "Lab"
+base_url = "https://gitlab.example.com"
+api_version = "v4"
+api_auth = "PAT"
+keyring_account = "labdesk:https://gitlab.example.com"
+git_https_auth = "credential_helper"
+ssl_mode = "strict"
+created_at = "2026-01-01T00:00:00Z"
+"#;
+        let cfg = parse_document(toml).expect("parse");
+        assert_eq!(cfg.instances.len(), 1);
+        assert_eq!(cfg.accounts.len(), 1);
+        assert_eq!(cfg.accounts[0].instance_id, "inst-1");
+        assert_eq!(
+            cfg.accounts[0].keyring_account,
+            "labdesk:https://gitlab.example.com"
+        );
+        assert_eq!(
+            cfg.general.active_account_id.as_deref(),
+            Some(cfg.accounts[0].id.as_str())
+        );
+        assert!(cfg.instances[0].base_url.contains("gitlab.example.com"));
+    }
+
+    #[test]
+    fn two_accounts_same_host_distinct_keyring() {
+        let mut cfg = default_config();
+        let inst = upsert_instance(
+            &mut cfg,
+            "Lab".into(),
+            "https://gitlab.example.com".into(),
+            "strict".into(),
+        )
+        .unwrap();
+        let a1 = add_account(&mut cfg, &inst.id, "Work".into()).unwrap();
+        let a2 = add_account(&mut cfg, &inst.id, "Personal".into()).unwrap();
+        assert_ne!(a1.keyring_account, a2.keyring_account);
+        assert!(a1.keyring_account.contains(&a1.id));
+        assert!(a2.keyring_account.contains(&a2.id));
+        assert_eq!(cfg.instances.len(), 1);
+        assert_eq!(cfg.accounts.len(), 2);
+    }
+
+    #[test]
+    fn upsert_instance_keeps_other_hosts() {
+        let mut cfg = default_config();
+        upsert_instance(
+            &mut cfg,
+            "A".into(),
+            "https://a.example.com".into(),
+            "strict".into(),
+        )
+        .unwrap();
+        upsert_instance(
+            &mut cfg,
+            "B".into(),
+            "https://b.example.com".into(),
+            "strict".into(),
+        )
+        .unwrap();
+        assert_eq!(cfg.instances.len(), 2);
     }
 }

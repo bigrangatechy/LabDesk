@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **19:03:02  13/08/2026** — Multi-host instances + multi-account users
+  per host (switchers, unique keyring ids); Projects list filter;
+  cache keyed by `account_id`.
 - **17:55:36  13/08/2026** — Pipeline offline cache (latest per branch +
   jobs JSON); richer Pipelines job list; Help → User Guide… (bundled
   `user-guide.md`).

@@ -8,6 +8,7 @@ from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QFont, QKeySequenc
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -96,6 +97,20 @@ class MainWindow(QMainWindow):
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._root_layout.addWidget(self.status)
+
+        switch_row = QHBoxLayout()
+        switch_row.addWidget(QLabel("Host"))
+        self.combo_instance = QComboBox()
+        self.combo_instance.setMinimumWidth(180)
+        self.combo_instance.currentIndexChanged.connect(self._on_instance_combo)
+        switch_row.addWidget(self.combo_instance, stretch=1)
+        switch_row.addWidget(QLabel("Account"))
+        self.combo_account = QComboBox()
+        self.combo_account.setMinimumWidth(140)
+        self.combo_account.currentIndexChanged.connect(self._on_account_combo)
+        switch_row.addWidget(self.combo_account, stretch=1)
+        self._root_layout.addLayout(switch_row)
+        self._switching = False
 
         self.detail = QLabel("")
         self.detail.setObjectName("LabDeskDetail")
@@ -439,15 +454,28 @@ class MainWindow(QMainWindow):
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
 
-    def show_connect_dialog(self) -> None:
-        dlg = InstanceConfigDialog(self)
+    def show_connect_dialog(self, *, mode: str | None = None) -> None:
+        dlg = InstanceConfigDialog(self, mode=mode)
         if dlg.exec() != InstanceConfigDialog.DialogCode.Accepted:
             return
-        name, url, pat, ssl_mode = dlg.values()
+        vals = dlg.values()
         try:
             import labdesk_core
 
-            result = labdesk_core.connect_instance(name, url, pat, ssl_mode)
+            if vals.get("mode") == InstanceConfigDialog.MODE_ADD_ACCOUNT:
+                result = labdesk_core.add_account(
+                    vals["instance_id"],
+                    vals["account_name"],
+                    vals["pat"],
+                )
+            else:
+                result = labdesk_core.connect_account(
+                    vals["host_name"],
+                    vals["account_name"],
+                    vals["base_url"],
+                    vals["pat"],
+                    vals["ssl_mode"],
+                )
             user = result.get("user") or {}
             count = result.get("project_count", 0)
             QMessageBox.information(
@@ -456,6 +484,7 @@ class MainWindow(QMainWindow):
                 f"Signed in as {user.get('name')} (@{user.get('username')}).\n"
                 f"Cached {count} projects.",
             )
+            self.refresh_account_switchers()
             self.refresh_connection_banner()
             projects = self._view_widgets.get("projects")
             if projects is not None and hasattr(projects, "on_activated"):
@@ -464,16 +493,114 @@ class MainWindow(QMainWindow):
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
 
-    def refresh_connection_banner(self) -> None:
+    def refresh_account_switchers(self) -> None:
+        if not hasattr(self, "combo_instance"):
+            return
+        self._switching = True
         try:
             import labdesk_core
 
             cfg = labdesk_core.load_config()
+            general = cfg.get("general") or {}
+            active_iid = general.get("active_instance_id")
+            active_aid = general.get("active_account_id")
             instances = cfg.get("instances") or []
-            if not instances:
+            accounts = cfg.get("accounts") or []
+
+            self.combo_instance.blockSignals(True)
+            self.combo_instance.clear()
+            for inst in instances:
+                label = f"{inst.get('name') or 'GitLab'} — {inst.get('base_url') or ''}"
+                self.combo_instance.addItem(label, inst.get("id"))
+            if active_iid:
+                idx = self.combo_instance.findData(active_iid)
+                if idx >= 0:
+                    self.combo_instance.setCurrentIndex(idx)
+            self.combo_instance.blockSignals(False)
+
+            self._fill_account_combo(accounts, active_iid, active_aid)
+        except Exception:
+            self.combo_instance.clear()
+            self.combo_account.clear()
+        finally:
+            self._switching = False
+
+    def _fill_account_combo(
+        self, accounts: list, instance_id: str | None, active_aid: str | None
+    ) -> None:
+        self.combo_account.blockSignals(True)
+        self.combo_account.clear()
+        for acc in accounts:
+            if instance_id and acc.get("instance_id") != instance_id:
+                continue
+            uname = acc.get("username")
+            label = acc.get("name") or "Account"
+            if uname:
+                label = f"{label} (@{uname})"
+            self.combo_account.addItem(label, acc.get("id"))
+        if active_aid:
+            idx = self.combo_account.findData(active_aid)
+            if idx >= 0:
+                self.combo_account.setCurrentIndex(idx)
+        self.combo_account.blockSignals(False)
+
+    def _on_instance_combo(self, _index: int = 0) -> None:
+        if self._switching:
+            return
+        iid = self.combo_instance.currentData()
+        if not iid:
+            return
+        try:
+            import labdesk_core
+
+            accounts = labdesk_core.list_accounts(iid) or []
+            if not accounts:
+                self.combo_account.clear()
+                return
+            # Prefer keeping current account if it belongs to this host.
+            current = self.combo_account.currentData()
+            pick = next((a for a in accounts if a.get("id") == current), accounts[0])
+            self._switching = True
+            self._fill_account_combo(accounts, iid, pick.get("id"))
+            self._switching = False
+            labdesk_core.set_active_account(pick["id"])
+            self.refresh_connection_banner()
+            projects = self._view_widgets.get("projects")
+            if projects is not None and hasattr(projects, "on_activated"):
+                projects.on_activated()
+        except Exception as exc:
+            code, msg = format_error(exc)
+            self.set_detail(f"[{code}] {msg}")
+
+    def _on_account_combo(self, _index: int = 0) -> None:
+        if self._switching:
+            return
+        aid = self.combo_account.currentData()
+        if not aid:
+            return
+        try:
+            import labdesk_core
+
+            labdesk_core.set_active_account(aid)
+            self.refresh_connection_banner()
+            projects = self._view_widgets.get("projects")
+            if projects is not None and hasattr(projects, "on_activated"):
+                projects.on_activated()
+        except Exception as exc:
+            code, msg = format_error(exc)
+            self.set_detail(f"[{code}] {msg}")
+
+    def refresh_connection_banner(self) -> None:
+        self.refresh_account_switchers()
+        try:
+            import labdesk_core
+
+            cfg = labdesk_core.load_config()
+            accounts = cfg.get("accounts") or []
+            if not accounts:
                 self.status.setText(
-                    "No GitLab instance configured yet.\n"
-                    "Add a self-hosted instance to get started."
+                    "No GitLab account configured yet.\n"
+                    "Add a self-hosted host and account to get started."
                 )
                 self.detail.setText("")
                 self.set_network_available(True)
@@ -494,9 +621,11 @@ class MainWindow(QMainWindow):
             return labdesk_core.fetch_current_user()
 
         def on_ok(user) -> None:
+            acc = user.get("account_name") or ""
             self.status.setText(
-                f"Connected as {user.get('name')} (@{user.get('username')})\n"
-                f"Instance: {user.get('instance_name')} — {user.get('base_url')}"
+                f"Connected as {user.get('name')} (@{user.get('username')})"
+                + (f" — {acc}" if acc else "")
+                + f"\nHost: {user.get('instance_name')} — {user.get('base_url')}"
             )
             self.detail.setText("")
             self.set_network_available(True)
@@ -540,20 +669,20 @@ class MainWindow(QMainWindow):
         )
 
     def prompt_first_run_if_needed(self) -> None:
-        """Offer Add/connect when no instances exist yet."""
+        """Offer Add/connect when no accounts exist yet."""
         try:
             import labdesk_core
 
             cfg = labdesk_core.load_config()
-            if cfg.get("instances"):
+            if cfg.get("accounts") or cfg.get("instances"):
                 return
         except Exception:
             return
         reply = QMessageBox.question(
             self,
             "Welcome to LabDesk",
-            "No GitLab instance is configured yet.\n\n"
-            "Add a self-hosted instance to get started?",
+            "No GitLab account is configured yet.\n\n"
+            "Add a self-hosted host and account to get started?",
         )
         if reply == QMessageBox.StandardButton.Yes:
             self.show_connect_dialog()
@@ -634,9 +763,14 @@ class MainWindow(QMainWindow):
         menu = self.menuBar()
 
         file_menu = menu.addMenu("&File")
-        act_connect = QAction("Add / connect instance…", self)
+        act_connect = QAction("Add host / account…", self)
         act_connect.triggered.connect(self.show_connect_dialog)
         file_menu.addAction(act_connect)
+        act_add_account = QAction("Add account to host…", self)
+        act_add_account.triggered.connect(
+            lambda: self.show_connect_dialog(mode=InstanceConfigDialog.MODE_ADD_ACCOUNT)
+        )
+        file_menu.addAction(act_add_account)
         act_open_repo = QAction("Open repository…", self)
         act_open_repo.setShortcut(QKeySequence.StandardKey.Open)
         act_open_repo.triggered.connect(self.open_repository_dialog)

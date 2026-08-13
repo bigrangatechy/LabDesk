@@ -52,6 +52,10 @@ fn config_to_dict(py: Python<'_>, cfg: &config::AppConfig) -> PyResult<PyObject>
         "active_instance_id",
         cfg.general.active_instance_id.as_deref(),
     )?;
+    general.set_item(
+        "active_account_id",
+        cfg.general.active_account_id.as_deref(),
+    )?;
     general.set_item("active_ui_view", &cfg.general.active_ui_view)?;
     general.set_item("ui_shell", &cfg.general.ui_shell)?;
     root.set_item("general", general)?;
@@ -63,17 +67,17 @@ fn config_to_dict(py: Python<'_>, cfg: &config::AppConfig) -> PyResult<PyObject>
         d.set_item("name", &inst.name)?;
         d.set_item("base_url", &inst.base_url)?;
         d.set_item("api_version", &inst.api_version)?;
-        d.set_item("api_auth", &inst.api_auth)?;
-        d.set_item("keyring_account", &inst.keyring_account)?;
-        d.set_item("git_https_auth", &inst.git_https_auth)?;
         d.set_item("ssl_mode", &inst.ssl_mode)?;
         d.set_item("created_at", &inst.created_at)?;
-        d.set_item("last_connected", inst.last_connected.as_deref())?;
-        d.set_item("gitlab_version", inst.gitlab_version.as_deref())?;
-        d.set_item("gitlab_revision", inst.gitlab_revision.as_deref())?;
         instances.append(d)?;
     }
     root.set_item("instances", instances)?;
+
+    let accounts = pyo3::types::PyList::empty(py);
+    for acc in &cfg.accounts {
+        accounts.append(account_to_dict(py, acc)?)?;
+    }
+    root.set_item("accounts", accounts)?;
     root.set_item(
         "config_path",
         config::config_path_display(&paths::AppPaths::detect()),
@@ -81,12 +85,53 @@ fn config_to_dict(py: Python<'_>, cfg: &config::AppConfig) -> PyResult<PyObject>
     Ok(root.into())
 }
 
-/// Connect instance: validate URL, GET /user, store PAT, save config + known-good.
+fn account_to_dict(py: Python<'_>, acc: &config::AccountConfig) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("id", &acc.id)?;
+    d.set_item("instance_id", &acc.instance_id)?;
+    d.set_item("name", &acc.name)?;
+    d.set_item("username", acc.username.as_deref())?;
+    d.set_item("api_auth", &acc.api_auth)?;
+    d.set_item("keyring_account", &acc.keyring_account)?;
+    d.set_item("git_https_auth", &acc.git_https_auth)?;
+    d.set_item("created_at", &acc.created_at)?;
+    d.set_item("last_connected", acc.last_connected.as_deref())?;
+    d.set_item("gitlab_version", acc.gitlab_version.as_deref())?;
+    d.set_item("gitlab_revision", acc.gitlab_revision.as_deref())?;
+    Ok(d.into())
+}
+
+fn instance_to_dict(py: Python<'_>, inst: &config::InstanceConfig) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("id", &inst.id)?;
+    d.set_item("name", &inst.name)?;
+    d.set_item("base_url", &inst.base_url)?;
+    d.set_item("api_version", &inst.api_version)?;
+    d.set_item("ssl_mode", &inst.ssl_mode)?;
+    d.set_item("created_at", &inst.created_at)?;
+    Ok(d.into())
+}
+
+/// Back-compat: same display name for host + account until UI is updated.
 #[pyfunction]
 #[pyo3(signature = (name, base_url, pat, ssl_mode="strict"))]
 fn connect_instance(
     py: Python<'_>,
     name: String,
+    base_url: String,
+    pat: String,
+    ssl_mode: &str,
+) -> PyResult<PyObject> {
+    connect_account(py, name.clone(), name, base_url, pat, ssl_mode)
+}
+
+/// Connect account: find/create host, add account, validate PAT, store + save.
+#[pyfunction]
+#[pyo3(signature = (host_name, account_name, base_url, pat, ssl_mode="strict"))]
+fn connect_account(
+    py: Python<'_>,
+    host_name: String,
+    account_name: String,
     base_url: String,
     pat: String,
     ssl_mode: &str,
@@ -103,23 +148,34 @@ fn connect_instance(
         .into());
     }
 
-    let inst = config::upsert_instance(&mut cfg, name, base_url, ssl_mode.to_string())?;
+    let (inst, acc) = config::connect_account(
+        &mut cfg,
+        host_name,
+        account_name,
+        base_url,
+        ssl_mode.to_string(),
+    )?;
+    let account_id = acc.id.clone();
+    let keyring = acc.keyring_account.clone();
+    let base_url = inst.base_url.clone();
+    let instance_id = inst.id.clone();
 
-    let user = match api_client::get_user(&inst.base_url, &pat, ssl_mode) {
+    let user = match api_client::get_user(&base_url, &pat, ssl_mode) {
         Ok(u) => u,
         Err(e) => {
             if e.info().code == "LD-AUTH-001" {
-                let _ = secrets::clear_pat(&inst.keyring_account);
+                let _ = secrets::clear_pat(&keyring);
             }
             return Err(e.into());
         }
     };
 
-    secrets::store_pat(&inst.keyring_account, &pat)?;
+    secrets::store_pat(&keyring, &pat)?;
 
-    if let Some(active) = cfg.active_instance_mut() {
+    if let Some(active) = cfg.active_account_mut() {
+        active.username = Some(user.username.clone());
         config::touch_last_connected(active);
-        if let Ok(Some(ver)) = api_client::get_version(&inst.base_url, &pat, ssl_mode) {
+        if let Ok(Some(ver)) = api_client::get_version(&base_url, &pat, ssl_mode) {
             active.gitlab_version = ver.version;
             active.gitlab_revision = ver.revision;
         }
@@ -129,16 +185,17 @@ fn connect_instance(
     config::save_known_good(&paths)?;
 
     // Best-effort project refresh after connect (failures don't undo connect).
-    let project_count = match refresh_projects_inner(&paths, &inst.id, &inst.base_url, &pat, ssl_mode)
-    {
-        Ok(n) => n,
-        Err(_) => 0,
-    };
+    let project_count =
+        match refresh_projects_inner(&paths, &account_id, &base_url, &pat, ssl_mode) {
+            Ok(n) => n,
+            Err(_) => 0,
+        };
 
     let out = PyDict::new(py);
-    out.set_item("instance_id", &inst.id)?;
-    out.set_item("base_url", &inst.base_url)?;
-    out.set_item("keyring_account", &inst.keyring_account)?;
+    out.set_item("account_id", &account_id)?;
+    out.set_item("instance_id", &instance_id)?;
+    out.set_item("base_url", &base_url)?;
+    out.set_item("keyring_account", &keyring)?;
     let u = PyDict::new(py);
     u.set_item("id", user.id)?;
     u.set_item("username", user.username)?;
@@ -150,28 +207,153 @@ fn connect_instance(
     Ok(out.into())
 }
 
+/// Add an account on an existing host, validate PAT, store + activate.
+#[pyfunction]
+fn add_account(
+    py: Python<'_>,
+    instance_id: String,
+    account_name: String,
+    pat: String,
+) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let mut cfg = config::load_or_default(&paths)?;
+
+    let pat = pat.trim().to_string();
+    if pat.is_empty() {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-001",
+            "Authentication failed. Check your token.",
+        ))
+        .into());
+    }
+
+    let inst = cfg
+        .instances
+        .iter()
+        .find(|i| i.id == instance_id)
+        .cloned()
+        .ok_or_else(|| {
+            LabDeskError::App(ErrorInfo::new(
+                "LD-CFG-003",
+                "Config value invalid: instance_id",
+            ))
+        })?;
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+
+    let acc = config::add_account(&mut cfg, &instance_id, account_name)?;
+    let account_id = acc.id.clone();
+    let keyring = acc.keyring_account.clone();
+
+    let user = match api_client::get_user(&base_url, &pat, &ssl_mode) {
+        Ok(u) => u,
+        Err(e) => {
+            if e.info().code == "LD-AUTH-001" {
+                let _ = secrets::clear_pat(&keyring);
+            }
+            return Err(e.into());
+        }
+    };
+
+    secrets::store_pat(&keyring, &pat)?;
+
+    if let Some(active) = cfg.active_account_mut() {
+        active.username = Some(user.username.clone());
+        config::touch_last_connected(active);
+        if let Ok(Some(ver)) = api_client::get_version(&base_url, &pat, &ssl_mode) {
+            active.gitlab_version = ver.version;
+            active.gitlab_revision = ver.revision;
+        }
+    }
+
+    config::save(&paths, &mut cfg)?;
+    config::save_known_good(&paths)?;
+
+    let project_count =
+        match refresh_projects_inner(&paths, &account_id, &base_url, &pat, &ssl_mode) {
+            Ok(n) => n,
+            Err(_) => 0,
+        };
+
+    let out = PyDict::new(py);
+    out.set_item("account_id", &account_id)?;
+    out.set_item("instance_id", &instance_id)?;
+    out.set_item("base_url", &base_url)?;
+    out.set_item("keyring_account", &keyring)?;
+    let u = PyDict::new(py);
+    u.set_item("id", user.id)?;
+    u.set_item("username", user.username)?;
+    u.set_item("name", user.name)?;
+    u.set_item("web_url", user.web_url)?;
+    out.set_item("user", u)?;
+    out.set_item("config_path", config::config_path_display(&paths))?;
+    out.set_item("project_count", project_count)?;
+    Ok(out.into())
+}
+
+/// List configured GitLab hosts.
+#[pyfunction]
+fn list_instances(py: Python<'_>) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let list = pyo3::types::PyList::empty(py);
+    for inst in &cfg.instances {
+        list.append(instance_to_dict(py, inst)?)?;
+    }
+    Ok(list.into())
+}
+
+/// List accounts, optionally filtered by host.
+#[pyfunction]
+#[pyo3(signature = (instance_id=None))]
+fn list_accounts(py: Python<'_>, instance_id: Option<String>) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let list = pyo3::types::PyList::empty(py);
+    for acc in &cfg.accounts {
+        if let Some(ref iid) = instance_id {
+            if &acc.instance_id != iid {
+                continue;
+            }
+        }
+        list.append(account_to_dict(py, acc)?)?;
+    }
+    Ok(list.into())
+}
+
+/// Switch the active account (and its host).
+#[pyfunction]
+fn set_active_account(account_id: String) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    let mut cfg = config::load_or_default(&paths)?;
+    config::set_active_account(&mut cfg, &account_id)?;
+    config::save(&paths, &mut cfg)?;
+    let _ = config::save_known_good(&paths);
+    Ok(())
+}
+
 fn refresh_projects_inner(
     paths: &paths::AppPaths,
-    instance_id: &str,
+    account_id: &str,
     base_url: &str,
     pat: &str,
     ssl_mode: &str,
 ) -> Result<usize, LabDeskError> {
     let projects = api_client::list_membership_projects(base_url, pat, ssl_mode)?;
     let conn = cache::open(paths).or_else(|_| cache::rebuild(paths))?;
-    if cache::replace_projects(&conn, instance_id, &projects).is_err() {
+    if cache::replace_projects(&conn, account_id, &projects).is_err() {
         let conn = cache::rebuild(paths)?;
-        cache::replace_projects(&conn, instance_id, &projects)?;
+        cache::replace_projects(&conn, account_id, &projects)?;
     }
     Ok(projects.len())
 }
 
-/// Fetch current user for the active instance using the keyring PAT.
+/// Fetch current user for the active account using the keyring PAT.
 #[pyfunction]
 fn fetch_current_user(py: Python<'_>) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
@@ -180,8 +362,9 @@ fn fetch_current_user(py: Python<'_>) -> PyResult<PyObject> {
     };
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
-    let keyring = inst.keyring_account.clone();
+    let keyring = acc.keyring_account.clone();
     let instance_name = inst.name.clone();
+    let account_name = acc.name.clone();
     let user = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
         api_client::get_user(&base_url, &pat, &ssl_mode)
@@ -192,6 +375,7 @@ fn fetch_current_user(py: Python<'_>) -> PyResult<PyObject> {
     u.set_item("name", user.name)?;
     u.set_item("web_url", user.web_url)?;
     u.set_item("instance_name", instance_name)?;
+    u.set_item("account_name", account_name)?;
     u.set_item("base_url", base_url)?;
     Ok(u.into())
 }
@@ -201,20 +385,20 @@ fn fetch_current_user(py: Python<'_>) -> PyResult<PyObject> {
 fn refresh_projects(py: Python<'_>) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
         ))
         .into());
     };
-    let instance_id = inst.id.clone();
+    let account_id = acc.id.clone();
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
-    let keyring = inst.keyring_account.clone();
+    let keyring = acc.keyring_account.clone();
     let count = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
-        refresh_projects_inner(&paths, &instance_id, &base_url, &pat, &ssl_mode)
+        refresh_projects_inner(&paths, &account_id, &base_url, &pat, &ssl_mode)
     })?;
     let d = PyDict::new(py);
     d.set_item("count", count)?;
@@ -222,14 +406,14 @@ fn refresh_projects(py: Python<'_>) -> PyResult<PyObject> {
     Ok(d.into())
 }
 
-/// List cached projects for the active instance (no network).
+/// List cached projects for the active account (no network).
 #[pyfunction]
 #[pyo3(signature = (allow_stale=true))]
 fn list_projects(py: Python<'_>, allow_stale: bool) -> PyResult<PyObject> {
     let _ = allow_stale;
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, _inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
@@ -238,7 +422,7 @@ fn list_projects(py: Python<'_>, allow_stale: bool) -> PyResult<PyObject> {
     };
 
     let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
-    let rows = cache::list_projects(&conn, &inst.id)?;
+    let rows = cache::list_projects(&conn, &acc.id)?;
     let list = pyo3::types::PyList::empty(py);
     for p in rows {
         let d = PyDict::new(py);
@@ -266,16 +450,17 @@ fn list_projects(py: Python<'_>, allow_stale: bool) -> PyResult<PyObject> {
 fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
         ))
         .into());
     };
+    let account_id = acc.id.clone();
 
     let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
-    let Some(project) = cache::get_cached_project(&conn, &inst.id, project_id)? else {
+    let Some(project) = cache::get_cached_project(&conn, &account_id, project_id)? else {
         return Err(LabDeskError::App(
             ErrorInfo::new("LD-API-404", "Not found or no access.")
                 .with_detail(format!("project_id {project_id} not in cache; refresh projects")),
@@ -299,7 +484,7 @@ fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<P
             .unwrap_or_default();
         let local_id = cache::upsert_local_repo(
             &conn,
-            &inst.id,
+            &account_id,
             Some(project.project_id),
             &root_s,
             &url,
@@ -336,7 +521,7 @@ fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<P
     let pat = if use_ssh {
         None
     } else {
-        Some(secrets::load_pat(&inst.keyring_account)?)
+        Some(secrets::load_pat(&acc.keyring_account)?)
     };
 
     let ssl_insecure = inst.ssl_mode == "allow_self_signed";
@@ -354,7 +539,7 @@ fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<P
 
     let local_id = cache::upsert_local_repo(
         &conn,
-        &inst.id,
+        &account_id,
         Some(project.project_id),
         &dest.display().to_string(),
         &url,
@@ -377,17 +562,18 @@ fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<P
 fn find_local_repo(py: Python<'_>, project_id: i64) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, _inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
         ))
         .into());
     };
+    let account_id = acc.id.clone();
     let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
     let d = PyDict::new(py);
 
-    if let Some((id, path)) = cache::find_local_repo_by_project(&conn, &inst.id, project_id)? {
+    if let Some((id, path)) = cache::find_local_repo_by_project(&conn, &account_id, project_id)? {
         let exists = std::path::Path::new(&path).join(".git").exists()
             || git_ops::is_git_repository(std::path::Path::new(&path));
         if exists {
@@ -407,7 +593,7 @@ fn find_local_repo(py: Python<'_>, project_id: i64) -> PyResult<PyObject> {
     }
 
     // Probe default clone location for a pre-existing working tree.
-    if let Some(project) = cache::get_cached_project(&conn, &inst.id, project_id)? {
+    if let Some(project) = cache::get_cached_project(&conn, &account_id, project_id)? {
         let (_, clone_root) = config::get_default_clone_dir(&paths)?;
         let candidate = git_ops::destination_for(
             std::path::Path::new(&clone_root),
@@ -422,7 +608,7 @@ fn find_local_repo(py: Python<'_>, project_id: i64) -> PyResult<PyObject> {
                 .unwrap_or_default();
             let local_id = cache::upsert_local_repo(
                 &conn,
-                &inst.id,
+                &account_id,
                 Some(project.project_id),
                 &root_s,
                 &url,
@@ -446,7 +632,7 @@ fn find_local_repo(py: Python<'_>, project_id: i64) -> PyResult<PyObject> {
 fn register_local_repo(py: Python<'_>, project_id: i64, path: String) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, _inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
@@ -454,7 +640,7 @@ fn register_local_repo(py: Python<'_>, project_id: i64, path: String) -> PyResul
         .into());
     };
     let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
-    let Some(project) = cache::get_cached_project(&conn, &inst.id, project_id)? else {
+    let Some(project) = cache::get_cached_project(&conn, &acc.id, project_id)? else {
         return Err(LabDeskError::App(
             ErrorInfo::new("LD-API-404", "Not found or no access.")
                 .with_detail(format!("project_id {project_id} not in cache; refresh projects")),
@@ -481,7 +667,7 @@ fn register_local_repo(py: Python<'_>, project_id: i64, path: String) -> PyResul
         .unwrap_or_default();
     let local_id = cache::upsert_local_repo(
         &conn,
-        &inst.id,
+        &acc.id,
         Some(project.project_id),
         &root_s,
         &url,
@@ -509,12 +695,12 @@ fn open_repo_path(py: Python<'_>, path: String) -> PyResult<PyObject> {
     let root_s = root.display().to_string();
     let url = git_ops::remote_url(&root, "origin")?.unwrap_or_default();
 
-    // If we have an active instance, remember the path for later (project_id unknown).
+    // If we have an active account, remember the path for later (project_id unknown).
     let paths = paths::AppPaths::detect();
     if let Ok(cfg) = config::load_or_default(&paths) {
-        if let Some(inst) = cfg.active_instance() {
+        if let Some((acc, _inst)) = cfg.active_connection() {
             if let Ok(conn) = cache::open(&paths).or_else(|_| cache::rebuild(&paths)) {
-                let _ = cache::upsert_local_repo(&conn, &inst.id, None, &root_s, &url);
+                let _ = cache::upsert_local_repo(&conn, &acc.id, None, &root_s, &url);
             }
         }
     }
@@ -670,19 +856,20 @@ fn repo_checkout_branch(repo_path: String, name: String) -> PyResult<()> {
 fn resolve_repo_project(py: Python<'_>, repo_path: String) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, _inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
         ))
         .into());
     };
+    let account_id = acc.id.clone();
     let conn = cache::open(&paths)?;
 
     let mut project_id: Option<i64> = None;
     let mut clone_url: Option<String> = None;
 
-    if let Some((_iid, pid, curl)) = cache::find_local_repo_by_path(&conn, &repo_path)? {
+    if let Some((_aid, pid, curl)) = cache::find_local_repo_by_path(&conn, &repo_path)? {
         project_id = pid;
         clone_url = curl;
     }
@@ -691,9 +878,9 @@ fn resolve_repo_project(py: Python<'_>, repo_path: String) -> PyResult<PyObject>
     }
 
     let project = if let Some(pid) = project_id {
-        cache::get_cached_project(&conn, &inst.id, pid)?
+        cache::get_cached_project(&conn, &account_id, pid)?
     } else if let Some(ref url) = clone_url {
-        cache::find_project_by_clone_url(&conn, &inst.id, url)?
+        cache::find_project_by_clone_url(&conn, &account_id, url)?
     } else {
         None
     };
@@ -734,14 +921,14 @@ fn create_merge_request(
 ) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
         ))
         .into());
     };
-    let pat = secrets::load_pat(&inst.keyring_account).map_err(|_| {
+    let pat = secrets::load_pat(&acc.keyring_account).map_err(|_| {
         LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
@@ -773,14 +960,14 @@ fn create_merge_request(
 fn repo_pull(py: Python<'_>, repo_path: String) -> PyResult<String> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
         ))
         .into());
     };
-    let pat = secrets::load_pat(&inst.keyring_account).ok();
+    let pat = secrets::load_pat(&acc.keyring_account).ok();
     let ssl_insecure = inst.ssl_mode == "allow_self_signed";
     py.allow_threads(|| {
         let auth = git_ops::AuthOptions {
@@ -797,14 +984,14 @@ fn repo_pull(py: Python<'_>, repo_path: String) -> PyResult<String> {
 fn repo_fetch(py: Python<'_>, repo_path: String) -> PyResult<()> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
         ))
         .into());
     };
-    let pat = secrets::load_pat(&inst.keyring_account).ok();
+    let pat = secrets::load_pat(&acc.keyring_account).ok();
     let ssl_insecure = inst.ssl_mode == "allow_self_signed";
     py.allow_threads(|| {
         let auth = git_ops::AuthOptions {
@@ -841,14 +1028,14 @@ fn repo_merge_branch(repo_path: String, their_branch: String) -> PyResult<String
 fn repo_push(py: Python<'_>, repo_path: String, force: bool) -> PyResult<()> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
         ))
         .into());
     };
-    let pat = secrets::load_pat(&inst.keyring_account).ok();
+    let pat = secrets::load_pat(&acc.keyring_account).ok();
     let ssl_insecure = inst.ssl_mode == "allow_self_signed";
     py.allow_threads(|| {
         let auth = git_ops::AuthOptions {
@@ -875,7 +1062,7 @@ fn repo_push(py: Python<'_>, repo_path: String, force: bool) -> PyResult<()> {
 fn latest_pipeline(py: Python<'_>, project_id: i64, ref_name: String) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
@@ -884,7 +1071,7 @@ fn latest_pipeline(py: Python<'_>, project_id: i64, ref_name: String) -> PyResul
     };
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
-    let keyring = inst.keyring_account.clone();
+    let keyring = acc.keyring_account.clone();
     let pipe = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
         api_client::latest_pipeline(&base_url, &pat, &ssl_mode, project_id, &ref_name)
@@ -909,7 +1096,7 @@ fn latest_pipeline(py: Python<'_>, project_id: i64, ref_name: String) -> PyResul
 fn list_pipeline_jobs(py: Python<'_>, project_id: i64, pipeline_id: u64) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
@@ -918,7 +1105,7 @@ fn list_pipeline_jobs(py: Python<'_>, project_id: i64, pipeline_id: u64) -> PyRe
     };
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
-    let keyring = inst.keyring_account.clone();
+    let keyring = acc.keyring_account.clone();
     let jobs = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
         api_client::list_pipeline_jobs(&base_url, &pat, &ssl_mode, project_id, pipeline_id)
@@ -948,7 +1135,7 @@ fn cache_pipeline(
 ) -> PyResult<()> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, _inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
@@ -988,13 +1175,13 @@ fn cache_pipeline(
                 .with_detail(e.to_string()),
         )
     })?;
-    let instance_id = inst.id.clone();
+    let account_id = acc.id.clone();
     let ref_owned = ref_name.clone();
     py.allow_threads(|| {
         let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
         cache::upsert_pipeline(
             &conn,
-            &instance_id,
+            &account_id,
             project_id,
             &ref_owned,
             pipeline_id,
@@ -1012,11 +1199,11 @@ fn cache_pipeline(
 fn cached_pipeline(py: Python<'_>, project_id: i64, ref_name: String) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, _inst)) = cfg.active_connection() else {
         return Ok(py.None());
     };
     let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
-    let Some(row) = cache::get_pipeline(&conn, &inst.id, project_id, &ref_name)? else {
+    let Some(row) = cache::get_pipeline(&conn, &acc.id, project_id, &ref_name)? else {
         return Ok(py.None());
     };
     let pipe = PyDict::new(py);
@@ -1110,7 +1297,7 @@ fn set_json_item(
 fn play_job(py: Python<'_>, project_id: i64, job_id: u64) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some(inst) = cfg.active_instance() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
@@ -1119,7 +1306,7 @@ fn play_job(py: Python<'_>, project_id: i64, job_id: u64) -> PyResult<PyObject> 
     };
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
-    let keyring = inst.keyring_account.clone();
+    let keyring = acc.keyring_account.clone();
     let j = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
         api_client::play_job(&base_url, &pat, &ssl_mode, project_id, job_id)
@@ -1231,6 +1418,11 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_paths, m)?)?;
     m.add_function(wrap_pyfunction!(load_config, m)?)?;
     m.add_function(wrap_pyfunction!(connect_instance, m)?)?;
+    m.add_function(wrap_pyfunction!(connect_account, m)?)?;
+    m.add_function(wrap_pyfunction!(add_account, m)?)?;
+    m.add_function(wrap_pyfunction!(list_instances, m)?)?;
+    m.add_function(wrap_pyfunction!(list_accounts, m)?)?;
+    m.add_function(wrap_pyfunction!(set_active_account, m)?)?;
     m.add_function(wrap_pyfunction!(fetch_current_user, m)?)?;
     m.add_function(wrap_pyfunction!(refresh_projects, m)?)?;
     m.add_function(wrap_pyfunction!(list_projects, m)?)?;

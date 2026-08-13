@@ -1,4 +1,4 @@
-"""Instance setup dialog — URL + PAT."""
+"""Connect dialog — new GitLab host or add account on an existing host."""
 
 from __future__ import annotations
 
@@ -13,17 +13,30 @@ from PySide6.QtWidgets import (
 
 
 class InstanceConfigDialog(QDialog):
-    def __init__(self, parent=None) -> None:
+    """Modes: new host (URL + TLS + account) or add account to existing host."""
+
+    MODE_NEW_HOST = "new_host"
+    MODE_ADD_ACCOUNT = "add_account"
+
+    def __init__(self, parent=None, *, mode: str | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Connect self-hosted GitLab")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(460)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
-        self.name = QLineEdit()
-        self.name.setPlaceholderText("My GitLab")
-        form.addRow("Display name", self.name)
+        self.mode = QComboBox()
+        self.mode.addItem("New host", self.MODE_NEW_HOST)
+        self.mode.addItem("Add account to existing host", self.MODE_ADD_ACCOUNT)
+        form.addRow("Mode", self.mode)
+
+        self.host_pick = QComboBox()
+        form.addRow("Host", self.host_pick)
+
+        self.host_name = QLineEdit()
+        self.host_name.setPlaceholderText("My GitLab")
+        form.addRow("Host display name", self.host_name)
 
         self.base_url = QLineEdit()
         self.base_url.setPlaceholderText(
@@ -35,6 +48,10 @@ class InstanceConfigDialog(QDialog):
             "On plain HTTP the API PAT is sent in cleartext — trusted LAN only."
         )
         form.addRow("Base URL", self.base_url)
+
+        self.account_name = QLineEdit()
+        self.account_name.setPlaceholderText("Work / Personal / username")
+        form.addRow("Account label", self.account_name)
 
         self.pat = QLineEdit()
         self.pat.setEchoMode(QLineEdit.EchoMode.Password)
@@ -56,10 +73,84 @@ class InstanceConfigDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    def values(self) -> tuple[str, str, str, str]:
-        return (
-            self.name.text().strip() or "GitLab",
-            self.base_url.text().strip().rstrip("/"),
-            self.pat.text().strip(),
-            str(self.ssl_mode.currentData()),
-        )
+        self._instances: list[dict] = []
+        self._load_instances()
+        self.mode.currentIndexChanged.connect(self._sync_mode_ui)
+        self.host_pick.currentIndexChanged.connect(self._on_host_picked)
+
+        if mode == self.MODE_ADD_ACCOUNT:
+            idx = self.mode.findData(self.MODE_ADD_ACCOUNT)
+            if idx >= 0:
+                self.mode.setCurrentIndex(idx)
+        self._sync_mode_ui()
+
+    def _load_instances(self) -> None:
+        self.host_pick.clear()
+        self._instances = []
+        try:
+            import labdesk_core
+
+            self._instances = list(labdesk_core.list_instances() or [])
+        except Exception:
+            self._instances = []
+        for inst in self._instances:
+            label = f"{inst.get('name') or 'GitLab'} — {inst.get('base_url') or ''}"
+            self.host_pick.addItem(label, inst.get("id"))
+        if not self._instances:
+            # Disable add-account mode when no hosts exist.
+            add_idx = self.mode.findData(self.MODE_ADD_ACCOUNT)
+            if add_idx >= 0:
+                try:
+                    self.mode.model().item(add_idx).setEnabled(False)
+                except Exception:
+                    pass
+
+    def _current_mode(self) -> str:
+        return str(self.mode.currentData() or self.MODE_NEW_HOST)
+
+    def _sync_mode_ui(self) -> None:
+        add = self._current_mode() == self.MODE_ADD_ACCOUNT and bool(self._instances)
+        self.host_pick.setVisible(add)
+        self.host_pick.setEnabled(add)
+        # Form labels stay; hide URL/TLS/host name when adding to existing.
+        self.host_name.setVisible(not add)
+        self.host_name.setEnabled(not add)
+        self.base_url.setVisible(not add)
+        self.base_url.setEnabled(not add)
+        self.ssl_mode.setVisible(not add)
+        self.ssl_mode.setEnabled(not add)
+        if add:
+            self._on_host_picked()
+
+    def _on_host_picked(self) -> None:
+        iid = self.host_pick.currentData()
+        inst = next((i for i in self._instances if i.get("id") == iid), None)
+        if inst:
+            self.base_url.setText(inst.get("base_url") or "")
+            ssl = inst.get("ssl_mode") or "strict"
+            idx = self.ssl_mode.findData(ssl)
+            if idx >= 0:
+                self.ssl_mode.setCurrentIndex(idx)
+
+    def values(self) -> dict:
+        """Return a dict describing the connect action."""
+        mode = self._current_mode()
+        if mode == self.MODE_ADD_ACCOUNT and self._instances:
+            return {
+                "mode": self.MODE_ADD_ACCOUNT,
+                "instance_id": str(self.host_pick.currentData() or ""),
+                "account_name": self.account_name.text().strip()
+                or self.host_name.text().strip()
+                or "Account",
+                "pat": self.pat.text().strip(),
+            }
+        host = self.host_name.text().strip() or "GitLab"
+        account = self.account_name.text().strip() or host
+        return {
+            "mode": self.MODE_NEW_HOST,
+            "host_name": host,
+            "account_name": account,
+            "base_url": self.base_url.text().strip().rstrip("/"),
+            "pat": self.pat.text().strip(),
+            "ssl_mode": str(self.ssl_mode.currentData()),
+        }

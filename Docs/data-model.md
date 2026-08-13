@@ -8,8 +8,8 @@ This document describes **what LabDesk persists and caches**, and how
 entities relate. It is the on-disk / in-app model — not the full GitLab
 server schema.
 
-V1 **UI** uses one active instance; the **storage shape** remains
-multi-instance-ready.
+V1 shipped with one active connection; storage now supports **multiple
+GitLab hosts (instances)** and **multiple accounts (users) per host**.
 
 ---
 
@@ -17,11 +17,11 @@ multi-instance-ready.
 
 | Store | Path (concept) | Contents |
 |-------|----------------|----------|
-| Config TOML | Config dir / `config.toml` | Preferences + instance metadata (no secrets) |
+| Config TOML | Config dir / `config.toml` | Preferences + instance/account metadata (no secrets) |
 | Trusted CAs | Config dir / `trusted_certs/` | PEM files when `ssl_mode = imported_ca` |
-| SQLite cache | Data dir / `cache.db` | Projects, local repos, optional MR/pipeline cache |
+| SQLite cache | Data dir / `cache.db` | Projects, local repos, pipeline cache (keyed by **account**) |
 | Logs | Data dir / `logs/` | Application logs (redacted) |
-| OS keyring | Secret Service | API PAT only |
+| OS keyring | Secret Service | API PAT only (per account) |
 | Git credential helper | Helper-defined | Git HTTPS username/password (or PAT-as-password) |
 | Git working copies | User-chosen paths | Real git repos on disk (libgit2); not inside LabDesk data dir |
 
@@ -33,15 +33,20 @@ Flatpak vs XDG locations: Technical Specification §4.1.
 
 ```text
 AppPreferences (1)
-    └── active_instance_id? ──► Instance (1..N in schema; 1 in V1 UI)
+    ├── active_instance_id? ──► Instance (GitLab host, 1..N)
+    └── active_account_id?  ──► Account (user/PAT on a host, 1..N)
                                     │
+                                    ├── instance_id ──► Instance
                                     ├── keyring_account ──► OS keyring (API PAT)
-                                    ├── trusted_certs/ (optional files)
-                                    ├── ProjectCache (0..N)   [SQLite]
-                                    └── LocalRepo (0..N)      [SQLite → filesystem path]
+                                    ├── ProjectCache (0..N)   [SQLite, account_id]
+                                    └── LocalRepo / pipelines [SQLite, account_id]
                                               │
                                               └── git working tree (libgit2)
 ```
+
+**Instance** = a different GitLab **machine** (`base_url` + TLS).  
+**Account** = a different GitLab **user** (PAT) on one machine.  
+API auth and project membership always follow **`active_account_id`**.
 
 Git HTTPS secrets are **not** LabDesk entities; they belong to the
 credential helper (ADR-008).
@@ -105,28 +110,44 @@ V1 Settings stays small; the file may grow ahead of the UI.
 | `theme` | string | yes | **UI-exposed** | `"light"` \| `"dark"` \| `"system"` |
 | `default_clone_dir` | string | yes | **UI-exposed** | Clone destination folder |
 | `check_for_updates` | bool | yes | **UI-exposed** | Check the **LabDesk Flatpak remote** (from `Ranga/flatpaks`, ADR-004); Settings toggle + Check now |
-| `active_instance_id` | string | no | **config / connect flow** | Stable id of active instance; required once ≥1 instance exists |
+| `active_instance_id` | string | no | **config / connect flow** | Active host; kept in lockstep with the active account’s `instance_id` |
+| `active_account_id` | string | no | **config / connect flow** | Active account (PAT); **required** once ≥1 account exists; drives API auth |
 | `active_ui_view` | string | no | **View menu** (+ config) | Pluggable main view id (`projects`, `settings`, …); default `projects` |
 | `ui_shell` | string | no | **UI-exposed** | Main-window shell layout: `"classic"` \| `"sidebar"`; default `classic` |
 
-### 3.2 `[[instances]]` — Instance
+### 3.2 `[[instances]]` — Instance (GitLab host)
 
 | Key | Type | Required | Notes |
 |-----|------|----------|--------|
-| `id` | string | yes | Stable id (e.g. UUID). Used as FK into SQLite and `active_instance_id` |
-| `name` | string | yes | Display name |
+| `id` | string | yes | Stable id (UUID) |
+| `name` | string | yes | Display name for the host |
 | `base_url` | string | yes | Origin only; no `/api/v4`. SaaS hosts rejected. HTTPS required except loopback/RFC1918 may use `http://` |
-| `api_version` | string | yes | `"v4"` for V1 |
-| `api_auth` | string | yes | `"PAT"` |
-| `keyring_account` | string | yes | Keyring lookup id, e.g. `labdesk:https://…` |
-| `git_https_auth` | string | yes | `"credential_helper"` |
+| `api_version` | string | yes | `"v4"` |
 | `ssl_mode` | string | yes | `"strict"` \| `"allow_self_signed"` \| `"imported_ca"` |
+| `created_at` | string | yes | ISO 8601 UTC |
+
+Host rows do **not** store `keyring_account` (that lives on accounts).
+
+### 3.3 `[[accounts]]` — Account (user on a host)
+
+| Key | Type | Required | Notes |
+|-----|------|----------|--------|
+| `id` | string | yes | Stable id (UUID). Used as SQLite **`account_id`** partition key |
+| `instance_id` | string | yes | FK → `[[instances]].id` |
+| `name` | string | yes | Display label (e.g. “Work”, “Personal”) |
+| `username` | string | no | From `GET /user` when known |
+| `api_auth` | string | yes | `"PAT"` |
+| `keyring_account` | string | yes | Keyring lookup id: `labdesk:{base_url}:{account_id}` (legacy single-host installs may keep `labdesk:{base_url}`) |
+| `git_https_auth` | string | yes | `"credential_helper"` |
 | `created_at` | string | yes | ISO 8601 UTC |
 | `last_connected` | string | no | ISO 8601 UTC; updated on successful API use |
 | `gitlab_version` | string | no | From `GET /version` when available |
 | `gitlab_revision` | string | no | From `GET /version` when available |
 
 **Not stored in TOML:** API PAT, git passwords, Authorization headers.
+
+**Migration:** legacy `[[instances]]` that still carry `keyring_account`
+are split on load into one host + one account; `active_account_id` is set.
 
 Example (illustrative):
 
@@ -135,27 +156,30 @@ Example (illustrative):
 theme = "system"
 default_clone_dir = "~/Projects"
 check_for_updates = true
-active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+active_instance_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+active_account_id = "11111111-2222-3333-4444-555555555555"
 active_ui_view = "projects"
 ui_shell = "classic"
 
 [[instances]]
-id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 name = "BigRanga Tech GitLab"
 base_url = "https://gitlab.bigrangatech.com"
 api_version = "v4"
-api_auth = "PAT"
-keyring_account = "labdesk:https://gitlab.bigrangatech.com"
-git_https_auth = "credential_helper"
 ssl_mode = "strict"
 created_at = "2026-07-01T12:00:00Z"
-last_connected = "2026-07-01T15:30:00Z"
-gitlab_version = "17.x.x"
-```
 
-> Tech-spec sample previously omitted `id` / `active_instance_id`.
-> **Accepted 2026-08-07** — both are required; see Technical
-> Specification §4.2.
+[[accounts]]
+id = "11111111-2222-3333-4444-555555555555"
+instance_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+name = "Jessie"
+username = "jessie"
+api_auth = "PAT"
+keyring_account = "labdesk:https://gitlab.bigrangatech.com:11111111-2222-3333-4444-555555555555"
+git_https_auth = "credential_helper"
+created_at = "2026-07-01T12:00:00Z"
+last_connected = "2026-07-01T15:30:00Z"
+```
 
 ---
 
@@ -182,7 +206,7 @@ Populated from `GET /projects?membership=true…` (`api-contract.md`).
 
 | Column | Type | Notes |
 |--------|------|--------|
-| `instance_id` | TEXT | FK → config instance `id` |
+| `account_id` | TEXT | FK → config account `id` (membership differs per user) |
 | `project_id` | INTEGER | GitLab numeric id |
 | `name` | TEXT | |
 | `name_with_namespace` | TEXT | |
@@ -195,7 +219,10 @@ Populated from `GET /projects?membership=true…` (`api-contract.md`).
 | `last_activity_at` | TEXT NULL | From API |
 | `fetched_at` | TEXT | When LabDesk last upserted this row (per-row staleness) |
 
-**Primary key:** `(instance_id, project_id)`
+**Primary key:** `(account_id, project_id)`
+
+**Schema:** version **4** uses `account_id` (v1–3 used `instance_id`).
+Cache is disposable — upgrade rebuilds empty tables.
 
 **Staleness:** UI uses each row’s `fetched_at` (not a single list-wide
 watermark) so offline/cached indicators can be accurate per project.
@@ -207,7 +234,7 @@ LabDesk needs to remember working copies the user opened/cloned.
 | Column | Type | Notes |
 |--------|------|--------|
 | `id` | TEXT | Stable local id (UUID) |
-| `instance_id` | TEXT | FK → instance |
+| `account_id` | TEXT | FK → account |
 | `project_id` | INTEGER NULL | FK-ish to `projects.project_id` when known |
 | `path` | TEXT UNIQUE | Absolute filesystem path to repo root |
 | `preferred_remote` | TEXT NULL | e.g. `origin` |
@@ -234,7 +261,7 @@ Revisit a local MR cache if a “recent MRs” UI is added later.
 
 | Column | Type | Notes |
 |--------|------|--------|
-| `instance_id` | TEXT | |
+| `account_id` | TEXT | |
 | `project_id` | INTEGER | |
 | `mr_iid` | INTEGER | |
 | `title` | TEXT | |
@@ -244,7 +271,7 @@ Revisit a local MR cache if a “recent MRs” UI is added later.
 | `target_branch` | TEXT | |
 | `fetched_at` | TEXT | |
 
-**Primary key (future):** `(instance_id, project_id, mr_iid)`
+**Primary key (future):** `(account_id, project_id, mr_iid)`
 
 ### 4.6 `pipelines` (shipped — latest per ref)
 
@@ -253,7 +280,7 @@ tab can show status offline. **No history** — one row per ref.
 
 | Column | Type | Notes |
 |--------|------|--------|
-| `instance_id` | TEXT | |
+| `account_id` | TEXT | |
 | `project_id` | INTEGER | |
 | `ref` | TEXT | Branch/tag |
 | `pipeline_id` | INTEGER | |
@@ -263,7 +290,7 @@ tab can show status offline. **No history** — one row per ref.
 | `jobs_json` | TEXT | JSON array of last jobs list (for offline UI) |
 | `fetched_at` | TEXT | When LabDesk wrote the row |
 
-**Primary key:** `(instance_id, project_id, ref)`.
+**Primary key:** `(account_id, project_id, ref)`.
 
 Play remains **online-only**; cached jobs are display-only when offline.
 
@@ -273,7 +300,7 @@ Play remains **online-only**; cached jobs are display-only when offline.
 
 | Secret | Store | Key / identity |
 |--------|-------|----------------|
-| API PAT | OS keyring | `keyring_account` from Instance |
+| API PAT | OS keyring | `keyring_account` from Account |
 | Git HTTPS password / PAT-as-password | Credential helper | Host/URL attributes per helper |
 | SSH private keys | User agent / files | Outside LabDesk |
 
@@ -299,10 +326,10 @@ allows.
 
 | Event | Behaviour |
 |-------|-----------|
-| Instance removed | Delete keyring entry; delete SQLite rows for `instance_id`; leave git working copies on disk unless user asks to delete |
-| PAT invalid | Clear keyring secret; keep Instance row |
+| Instance / account removed | Delete keyring entry for that account; delete SQLite rows for `account_id`; leave git working copies on disk unless user asks to delete |
+| PAT invalid | Clear keyring secret; keep Account row |
 | Cache corrupt | Delete `cache.db`, recreate empty schema, refetch when online |
-| SaaS URL attempted | Do not write Instance or secrets |
+| SaaS URL attempted | Do not write Instance/Account or secrets |
 
 ---
 
@@ -320,7 +347,9 @@ proves what libgit2 / the UI can reliably provide.
    from git: decide while implementing.
 4. ~~**`merge_requests` table in V1**~~ — **Deferred** (not V1).
 5. ~~**Pipeline primary key / history depth**~~ — **Accepted:** latest
-   only per `(instance_id, project_id, ref)` + `jobs_json`; no history.
+   only per `(account_id, project_id, ref)` + `jobs_json`; no history.
+6. ~~**Multi-instance / multi-account**~~ — **Accepted:** hosts in
+   `[[instances]]`, users in `[[accounts]]`, cache keyed by `account_id`.
 
 ---
 

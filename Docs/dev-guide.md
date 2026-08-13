@@ -157,6 +157,8 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
 ## 7. Data & API
 
 - Implement against `data-model.md` and `api-contract.md`.
+- **Hosts** (`[[instances]]`) vs **accounts** (`[[accounts]]`); API and
+  SQLite cache follow `active_account_id` (`account_id` columns).
 - Map failures to `error-codes.md` (`LD-…`) at the core → UI boundary.
 - No plaintext PAT in config; no Bearer API auth in V1.
 - **Config file first:** `config.toml` is authoritative and should
