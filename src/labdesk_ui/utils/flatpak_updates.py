@@ -32,7 +32,18 @@ def check_for_labdesk_updates() -> dict:
     """Return {available: bool, detail: str, updates: list[str]}.
 
     Raises RuntimeError with [LD-SYS-021] on failure.
+
+    Unpackaged / ``./scripts/run-labdesk.sh`` runs are not Flatpak installs:
+    skip the host ``flatpak`` CLI there (it can block for minutes and is
+    irrelevant to the tree you are smoke-testing).
     """
+    if not is_flatpak():
+        return {
+            "available": False,
+            "detail": "Not running as Flatpak — update check skipped.",
+            "updates": [],
+            "skipped": True,
+        }
     try:
         # Refresh appstream metadata (best-effort).
         subprocess.run(

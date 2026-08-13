@@ -41,6 +41,20 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **20:31:32  13/08/2026** — Dark theme: fill out Fusion palette roles used by
+  stylesheets (`Mid` / `Light` / disabled text, etc.) and re-polish existing
+  widgets so secondary labels and borders update when switching theme.
+- **20:25:44  13/08/2026** — Sidebar shell: stop parenting the unused
+  classic column (and nav leftovers) to `QMainWindow`, which sat over the
+  central widget and ate all clicks (filter, project rows, Projects/Settings
+  nav). Unused hosts are parked hidden under the body instead.
+- **20:20:09  13/08/2026** — Startup / Settings Flatpak update check no
+  longer runs `flatpak update --appstream` on the UI thread (could block
+  for minutes and make Projects look hung). Unpackaged/dev runs skip the
+  host `flatpak` CLI entirely.
+- **20:12:08  13/08/2026** — Projects list: use a `QTableView` model with
+  debounced filter and background cache load (avoid per-row
+  `QTableWidgetItem` fills that stall large membership lists).
 - **14:35:42  13/08/2026** — Pipelines: treat GitLab jobs with
   `status: manual` as playable (not only `when: manual`), so rules-based
   manual jobs like Flatpak publish can be started from LabDesk.

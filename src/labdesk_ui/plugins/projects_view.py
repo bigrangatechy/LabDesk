@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -12,8 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
+    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -40,11 +40,57 @@ def filter_projects(projects: list, query: str) -> list:
     return out
 
 
+class _ProjectsTableModel(QAbstractTableModel):
+    _HEADERS = ("Project", "Default branch", "Visibility", "Last activity")
+    _KEYS = ("name_with_namespace", "default_branch", "visibility", "last_activity_at")
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._rows: list = []
+
+    def set_rows(self, rows: list) -> None:
+        self.beginResetModel()
+        self._rows = list(rows)
+        self.endResetModel()
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+        return 0 if parent.isValid() else len(self._rows)
+
+    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+        return 0 if parent.isValid() else len(self._HEADERS)
+
+    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or role != Qt.ItemDataRole.DisplayRole:
+            return None
+        p = self._rows[index.row()]
+        key = self._KEYS[index.column()]
+        if key == "name_with_namespace":
+            return p.get("name_with_namespace") or p.get("name") or ""
+        return p.get(key) or ""
+
+    def headerData(self, section: int, orientation, role: int = Qt.ItemDataRole.DisplayRole):
+        if role != Qt.ItemDataRole.DisplayRole:
+            return None
+        if orientation == Qt.Orientation.Horizontal:
+            return self._HEADERS[section]
+        return str(section + 1)
+
+    def project_at(self, row: int) -> dict | None:
+        if 0 <= row < len(self._rows):
+            p = self._rows[row]
+            return p if isinstance(p, dict) else None
+        return None
+
+
 class ProjectsView(QWidget):
     def __init__(self, parent: QWidget, ctx: AppContext) -> None:
         super().__init__(parent)
         self._ctx = ctx
         self._all_projects: list = []
+        self._filter_timer = QTimer(self)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(120)
+        self._filter_timer.timeout.connect(self._apply_filter)
 
         layout = QVBoxLayout(self)
 
@@ -54,17 +100,29 @@ class ProjectsView(QWidget):
         self.filter_edit = QLineEdit()
         self.filter_edit.setPlaceholderText("Filter projects…")
         self.filter_edit.setClearButtonEnabled(True)
-        self.filter_edit.textChanged.connect(self._apply_filter)
+        self.filter_edit.textChanged.connect(self._on_filter_text_changed)
         layout.addWidget(self.filter_edit)
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(
-            ["Project", "Default branch", "Visibility", "Last activity"]
-        )
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.doubleClicked.connect(self._open_local_repo)
+        self._model = _ProjectsTableModel(self)
+        self.table = QTableView()
+        self.table.setModel(self._model)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSortingEnabled(False)
+        self.table.setWordWrap(False)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        self.table.setColumnWidth(1, 120)
+        self.table.setColumnWidth(2, 90)
+        self.table.setColumnWidth(3, 180)
+        self.table.doubleClicked.connect(lambda _idx: self._open_local_repo())
         layout.addWidget(self.table, stretch=1)
 
         row = QHBoxLayout()
@@ -125,38 +183,56 @@ class ProjectsView(QWidget):
                 self.projects_meta.setText(f"{text} · offline (cached)")
 
     def _selected_project(self) -> dict | None:
-        row = self.table.currentRow()
-        if row < 0:
+        indexes = self.table.selectionModel().selectedRows()
+        if not indexes:
             return None
-        item = self.table.item(row, 0)
-        if not item:
-            return None
-        data = item.data(Qt.ItemDataRole.UserRole)
-        return data if isinstance(data, dict) else None
+        return self._model.project_at(indexes[0].row())
+
+    def _on_filter_text_changed(self, _text: str = "") -> None:
+        self._filter_timer.start()
 
     def _load_cached_projects(self) -> None:
-        try:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        def work():
             import labdesk_core
 
             cfg = labdesk_core.load_config()
             if not (cfg.get("accounts") or cfg.get("instances")):
+                return {"projects": [], "empty": True}
+            projects = labdesk_core.list_projects()
+            # Plain dicts so the UI thread never touches PyO3 objects.
+            return {
+                "projects": [dict(p) if hasattr(p, "items") else p for p in (projects or [])],
+                "empty": False,
+            }
+
+        def on_ok(data) -> None:
+            if (data or {}).get("empty"):
                 self._all_projects = []
-                self.table.setRowCount(0)
+                self._model.set_rows([])
                 self.projects_meta.setText("Projects (none — connect a host/account)")
                 return
-
-            projects = labdesk_core.list_projects()
-            self._all_projects = list(projects or [])
+            self._all_projects = (data or {}).get("projects") or []
             self._apply_filter()
-        except Exception as exc:
-            code, msg = format_error(exc)
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
             self.projects_meta.setText(f"Projects — [{code}] {msg}")
             self._all_projects = []
-            self.table.setRowCount(0)
+            self._model.set_rows([])
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            status=self._ctx.set_detail,
+            working_message="Loading projects…",
+        )
 
     def _apply_filter(self, _text: str = "") -> None:
         filtered = filter_projects(self._all_projects, self.filter_edit.text())
-        self._fill_table(filtered)
+        self._model.set_rows(filtered)
         total = len(self._all_projects)
         shown = len(filtered)
         fetched = None
@@ -174,16 +250,6 @@ class ProjectsView(QWidget):
             if "offline" not in meta.lower():
                 meta += " · offline (cached)"
         self.projects_meta.setText(meta)
-
-    def _fill_table(self, projects: list) -> None:
-        self.table.setRowCount(len(projects))
-        for row, p in enumerate(projects):
-            item = QTableWidgetItem(p.get("name_with_namespace") or p.get("name") or "")
-            item.setData(Qt.ItemDataRole.UserRole, p)
-            self.table.setItem(row, 0, item)
-            self.table.setItem(row, 1, QTableWidgetItem(p.get("default_branch") or ""))
-            self.table.setItem(row, 2, QTableWidgetItem(p.get("visibility") or ""))
-            self.table.setItem(row, 3, QTableWidgetItem(p.get("last_activity_at") or ""))
 
     def _refresh_projects(self) -> None:
         from labdesk_ui.utils.async_jobs import run_in_background

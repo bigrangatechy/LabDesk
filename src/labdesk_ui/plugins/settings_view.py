@@ -66,9 +66,9 @@ class SettingsView(QWidget):
         layout.addLayout(form)
 
         update_row = QHBoxLayout()
-        check_now = QPushButton("Check for updates now…")
-        check_now.clicked.connect(self._check_updates_now)
-        update_row.addWidget(check_now)
+        self.btn_check_updates = QPushButton("Check for updates now…")
+        self.btn_check_updates.clicked.connect(self._check_updates_now)
+        update_row.addWidget(self.btn_check_updates)
         update_row.addStretch(1)
         layout.addLayout(update_row)
 
@@ -144,18 +144,32 @@ class SettingsView(QWidget):
             self.clone_dir.setText(chosen)
 
     def _check_updates_now(self) -> None:
-        try:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        def work():
             from labdesk_ui.utils.flatpak_updates import check_for_labdesk_updates
 
-            result = check_for_labdesk_updates()
-            detail = result.get("detail") or ""
-            if result.get("available"):
+            return check_for_labdesk_updates()
+
+        def on_ok(result) -> None:
+            detail = (result or {}).get("detail") or ""
+            if (result or {}).get("available"):
                 QMessageBox.information(self, "Updates", detail)
             else:
                 QMessageBox.information(self, "Updates", detail or "No updates found.")
-        except Exception as exc:
-            code, msg = format_error(exc)
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
             QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_check_updates],
+            status=self._ctx.set_detail,
+            working_message="Checking for Flatpak updates…",
+        )
 
     def _save(self) -> None:
         try:

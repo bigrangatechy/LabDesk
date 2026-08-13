@@ -156,6 +156,16 @@ class MainWindow(QMainWindow):
     def _permanent_widgets(self) -> set[QWidget]:
         return {self.stack, self._nav_host, self._column}
 
+    def _park_widget(self, w: QWidget) -> None:
+        """Keep a permanent host alive without covering the central widget.
+
+        Parenting leftovers to ``QMainWindow`` itself makes them float over the
+        central widget and eat all mouse/keyboard input (sidebar shell used to
+        leave ``_column`` stuck like that).
+        """
+        w.hide()
+        w.setParent(self._body)
+
     def _take_layout_widgets(self, layout) -> None:
         """Detach all items from a layout without deleting permanent widgets."""
         while layout.count():
@@ -167,7 +177,7 @@ class MainWindow(QMainWindow):
                     self._take_layout_widgets(child)
                 continue
             if w in self._permanent_widgets():
-                w.setParent(self)
+                self._park_widget(w)
             else:
                 w.setParent(None)
                 w.deleteLater()
@@ -204,7 +214,9 @@ class MainWindow(QMainWindow):
                 item = old.takeAt(0)
                 w = item.widget()
                 if w is not None:
-                    w.setParent(self)
+                    # Drop labels / old buttons — never parent them to QMainWindow.
+                    w.setParent(None)
+                    w.deleteLater()
             holder = QWidget()
             holder.setLayout(old)
             holder.deleteLater()
@@ -252,20 +264,26 @@ class MainWindow(QMainWindow):
         # Detach permanent hosts before rearranging — never destroy them.
         self._take_layout_widgets(self._body_layout)
         self._take_layout_widgets(self._column_layout)
-        self.stack.setParent(self)
-        self._nav_host.setParent(self)
-        self._column.setParent(self)
+        self._park_widget(self.stack)
+        self._park_widget(self._nav_host)
+        self._park_widget(self._column)
 
         self._rebuild_nav_buttons()
         self._set_nav_orientation(vertical=(name == "sidebar"))
 
         if name == "sidebar":
+            # Classic column host stays parked/hidden so it cannot overlay clicks.
             self._body_layout.addWidget(self._nav_host)
             self._body_layout.addWidget(self.stack, stretch=1)
+            self._nav_host.show()
+            self.stack.show()
         else:
             self._column_layout.addWidget(self._nav_host)
             self._column_layout.addWidget(self.stack, stretch=1)
             self._body_layout.addWidget(self._column, stretch=1)
+            self._column.show()
+            self._nav_host.show()
+            self.stack.show()
 
     # --- AppContext API for plugins ---------------------------------
 
@@ -688,7 +706,12 @@ class MainWindow(QMainWindow):
             self.show_connect_dialog()
 
     def check_updates_on_startup_if_enabled(self) -> None:
-        """Quiet Flatpak update check when general.check_for_updates is true."""
+        """Quiet Flatpak update check when general.check_for_updates is true.
+
+        Must not run ``flatpak`` on the UI thread — ``update --appstream`` can
+        block for minutes and freezes the whole shell (Projects is the default
+        view, so it looks like the projects list is hung).
+        """
         try:
             import labdesk_core
 
@@ -696,21 +719,35 @@ class MainWindow(QMainWindow):
             general = cfg.get("general") or {}
             if not bool(general.get("check_for_updates", True)):
                 return
-            from labdesk_ui.utils.flatpak_updates import check_for_labdesk_updates
-
-            result = check_for_labdesk_updates()
-            if result.get("available"):
-                self.set_detail(str(result.get("detail") or "Update available."))
-                QMessageBox.information(
-                    self,
-                    "Update available",
-                    str(result.get("detail") or "A LabDesk Flatpak update is available."),
-                )
         except Exception as exc:
-            # Non-fatal: leave a detail line; Settings can retry.
             code, msg = format_error(exc)
             if code == "LD-SYS-021":
                 self.set_detail(f"[{code}] {msg}")
+            return
+
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        def work():
+            from labdesk_ui.utils.flatpak_updates import check_for_labdesk_updates
+
+            return check_for_labdesk_updates()
+
+        def on_ok(result) -> None:
+            if not result or not result.get("available"):
+                return
+            self.set_detail(str(result.get("detail") or "Update available."))
+            QMessageBox.information(
+                self,
+                "Update available",
+                str(result.get("detail") or "A LabDesk Flatpak update is available."),
+            )
+
+        def on_err(code: str, msg: str, _exc: BaseException) -> None:
+            # Non-fatal: leave a detail line; Settings can retry.
+            if code == "LD-SYS-021":
+                self.set_detail(f"[{code}] {msg}")
+
+        run_in_background(self, work, on_success=on_ok, on_error=on_err)
 
 
     def switch_view(self, view_id: str, *, persist: bool = True) -> None:
