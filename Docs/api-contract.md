@@ -190,6 +190,14 @@ semantics without updating this contract and `CHANGELOG.md`.
 Paginate until exhausted; upsert into SQLite cache with a fetched-at
 timestamp (staleness UI when offline).
 
+**After the project list is written**, LabDesk best-effort fetches the
+**latest pipeline for each project’s `default_branch`** (see §6.1) and
+stores `status` + `web_url` on the project cache row for the Projects
+list icon. Failures for a single project are skipped (list refresh still
+succeeds). This is intentionally N requests — same trade-off as the
+GitLab web project list; acceptable for typical self-hosted membership
+sizes.
+
 ---
 
 ### 5.4 Create merge request — `POST /projects/:id/merge_requests`
@@ -281,7 +289,9 @@ PRIVATE-TOKEN: <pat>
 ```
 
 Use latest pipeline `id`, `status`, `web_url`, `updated_at` /
-`created_at` for UI. Scope: **current branch only**.
+`created_at` for UI. **Projects list refresh** calls this once per
+project for `default_branch` (best-effort; see §5.3). The repo
+**Pipelines** tab uses the **current branch**.
 
 ### 6.2 Pipeline jobs — `GET /projects/:id/pipelines/:pipeline_id/jobs`
 

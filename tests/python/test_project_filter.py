@@ -1,8 +1,12 @@
-"""Project list filter helpers."""
+"""Project list filter and pipeline status glyph helpers."""
 
 from __future__ import annotations
 
-from labdesk_ui.plugins.projects_view import filter_projects
+from labdesk_ui.plugins.projects_view import (
+    filter_projects,
+    pipeline_status_color,
+    pipeline_status_glyph,
+)
 
 
 def test_filter_empty_query_returns_all():
@@ -40,3 +44,18 @@ def test_filter_matches_namespace():
     out = filter_projects(projects, "team")
     assert len(out) == 1
     assert out[0]["name"] == "a"
+
+
+def test_pipeline_status_glyph_known_statuses():
+    assert pipeline_status_glyph("success")[0] == "✓"
+    assert pipeline_status_glyph("failed")[0] == "✗"
+    assert pipeline_status_glyph("running")[0] == "●"
+    assert pipeline_status_glyph(None)[0] == "·"
+    assert "success" in pipeline_status_glyph("success")[1]
+
+
+def test_pipeline_status_color_success_differs_from_failed():
+    ok = pipeline_status_color("success", dark=True)
+    bad = pipeline_status_color("failed", dark=True)
+    assert ok is not None and bad is not None
+    assert ok.name() != bad.name()

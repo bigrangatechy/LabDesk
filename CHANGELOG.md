@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **20:45:45  13/08/2026** — Projects list shows a default-branch pipeline
+  status icon (filled on **Refresh projects**; cached offline). Schema v6
+  stores `pipeline_status` / `pipeline_web_url` on project rows.
 - **19:51:52  13/08/2026** — Repo window **Compare** tab (local tip
   compare + optional remote branch check) and **Merge requests** tab
   (opened MRs + SQLite cache). Uses existing Flatpak-bundled stack only

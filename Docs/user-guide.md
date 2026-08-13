@@ -97,6 +97,8 @@ to switch; the Projects list follows the active account.
   (local cache only).
 - **Refresh projects** loads your project list from GitLab for the
   **active account** (and keeps a local copy for offline browsing).
+  It also fills the **pipeline** status icon from each project’s
+  default-branch latest pipeline (may take a moment on large lists).
 - **Clone** (HTTPS or SSH) into the default clone folder.
 - **Open local** / **Add existing…** attach an already-cloned folder.
 - Double-click a project or use Open local to open a **repo window**.

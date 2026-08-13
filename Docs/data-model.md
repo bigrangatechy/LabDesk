@@ -218,14 +218,18 @@ Populated from `GET /projects?membership=true…` (`api-contract.md`).
 | `visibility` | TEXT NULL | |
 | `last_activity_at` | TEXT NULL | From API |
 | `fetched_at` | TEXT | When LabDesk last upserted this row (per-row staleness) |
+| `pipeline_status` | TEXT NULL | Latest pipeline status for `default_branch` (list icon) |
+| `pipeline_web_url` | TEXT NULL | That pipeline’s `web_url` when known |
 
 **Primary key:** `(account_id, project_id)`
 
-**Schema:** version **4** uses `account_id` (v1–3 used `instance_id`).
-Cache is disposable — upgrade rebuilds empty tables.
+**Schema:** version **6** adds `pipeline_status` / `pipeline_web_url`
+(v5 added `merge_requests`; v4 used `account_id`). Cache is disposable —
+upgrade rebuilds empty tables.
 
 **Staleness:** UI uses each row’s `fetched_at` (not a single list-wide
 watermark) so offline/cached indicators can be accurate per project.
+Pipeline icons refresh only on **Refresh projects** (online).
 
 ### 4.4 `local_repos` (known clones)
 

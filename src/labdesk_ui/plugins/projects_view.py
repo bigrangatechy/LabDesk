@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -40,9 +40,49 @@ def filter_projects(projects: list, query: str) -> list:
     return out
 
 
+def pipeline_status_glyph(status: str | None) -> tuple[str, str]:
+    """Return (glyph, tooltip) for a GitLab pipeline status string."""
+    s = (status or "").strip().lower()
+    if not s:
+        return ("·", "No pipeline on default branch")
+    mapping = {
+        "success": ("✓", "success"),
+        "failed": ("✗", "failed"),
+        "canceled": ("⊘", "canceled"),
+        "cancelled": ("⊘", "canceled"),
+        "running": ("●", "running"),
+        "pending": ("○", "pending"),
+        "created": ("○", "created"),
+        "waiting_for_resource": ("○", "waiting for resource"),
+        "preparing": ("○", "preparing"),
+        "scheduled": ("○", "scheduled"),
+        "manual": ("▶", "manual"),
+        "skipped": ("–", "skipped"),
+    }
+    glyph, tip = mapping.get(s, ("?", s))
+    return glyph, tip
+
+
+def pipeline_status_color(status: str | None, *, dark: bool) -> QColor | None:
+    """Foreground colour for the pipeline glyph (None = theme default)."""
+    s = (status or "").strip().lower()
+    if not s:
+        return QColor(140, 140, 140) if dark else QColor(120, 120, 120)
+    if s == "success":
+        return QColor("#6bcf6b" if dark else "#0a7a0a")
+    if s == "failed":
+        return QColor("#f08080" if dark else "#a10a0a")
+    if s in ("running", "pending", "created", "waiting_for_resource", "preparing", "scheduled"):
+        return QColor("#7ec8e3" if dark else "#0a4a8a")
+    if s == "manual":
+        return QColor("#e0a040" if dark else "#8a5a00")
+    if s in ("canceled", "cancelled", "skipped"):
+        return QColor(160, 160, 160) if dark else QColor(110, 110, 110)
+    return None
+
+
 class _ProjectsTableModel(QAbstractTableModel):
-    _HEADERS = ("Project", "Default branch", "Visibility", "Last activity")
-    _KEYS = ("name_with_namespace", "default_branch", "visibility", "last_activity_at")
+    _HEADERS = ("CI", "Project", "Default branch", "Visibility", "Last activity")
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -60,13 +100,49 @@ class _ProjectsTableModel(QAbstractTableModel):
         return 0 if parent.isValid() else len(self._HEADERS)
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or role != Qt.ItemDataRole.DisplayRole:
+        if not index.isValid():
             return None
         p = self._rows[index.row()]
-        key = self._KEYS[index.column()]
-        if key == "name_with_namespace":
-            return p.get("name_with_namespace") or p.get("name") or ""
-        return p.get(key) or ""
+        col = index.column()
+        status = p.get("pipeline_status") if isinstance(p, dict) else None
+        glyph, tip = pipeline_status_glyph(status if isinstance(status, str) else None)
+
+        if col == 0:
+            if role == Qt.ItemDataRole.DisplayRole:
+                return glyph
+            if role == Qt.ItemDataRole.ToolTipRole:
+                return tip
+            if role == Qt.ItemDataRole.ForegroundRole:
+                dark = False
+                try:
+                    from PySide6.QtGui import QPalette
+                    from PySide6.QtWidgets import QApplication
+
+                    app = QApplication.instance()
+                    if app is not None:
+                        dark = (
+                            app.palette().color(QPalette.ColorRole.Window).lightness()
+                            < 128
+                        )
+                except Exception:
+                    dark = False
+                return pipeline_status_color(
+                    status if isinstance(status, str) else None, dark=dark
+                )
+            if role == Qt.ItemDataRole.TextAlignmentRole:
+                return int(Qt.AlignmentFlag.AlignCenter)
+            return None
+
+        if role == Qt.ItemDataRole.DisplayRole:
+            if col == 1:
+                return p.get("name_with_namespace") or p.get("name") or ""
+            if col == 2:
+                return p.get("default_branch") or ""
+            if col == 3:
+                return p.get("visibility") or ""
+            if col == 4:
+                return p.get("last_activity_at") or ""
+        return None
 
     def headerData(self, section: int, orientation, role: int = Qt.ItemDataRole.DisplayRole):
         if role != Qt.ItemDataRole.DisplayRole:
@@ -114,14 +190,16 @@ class ProjectsView(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
-        self.table.setColumnWidth(1, 120)
-        self.table.setColumnWidth(2, 90)
-        self.table.setColumnWidth(3, 180)
+        self.table.setColumnWidth(0, 36)
+        self.table.setColumnWidth(2, 120)
+        self.table.setColumnWidth(3, 90)
+        self.table.setColumnWidth(4, 180)
         self.table.doubleClicked.connect(lambda _idx: self._open_local_repo())
         layout.addWidget(self.table, stretch=1)
 
@@ -282,7 +360,7 @@ class ProjectsView(QWidget):
             on_error=on_err,
             busy_widgets=[self.btn_refresh_projects, self.btn_clone, self.btn_clone_ssh],
             status=self._ctx.set_detail,
-            working_message="Refreshing projects…",
+            working_message="Refreshing projects (and pipeline status)…",
         )
 
     def _open_in_browser(self) -> None:

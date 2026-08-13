@@ -345,6 +345,41 @@ fn refresh_projects_inner(
         let conn = cache::rebuild(paths)?;
         cache::replace_projects(&conn, account_id, &projects)?;
     }
+    // Best-effort default-branch pipeline status for the Projects list icon.
+    let conn = cache::open(paths).or_else(|_| cache::rebuild(paths))?;
+    for p in &projects {
+        let Some(branch) = p
+            .default_branch
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        match api_client::latest_pipeline(base_url, pat, ssl_mode, p.id as i64, branch) {
+            Ok(Some(pipe)) => {
+                let _ = cache::set_project_pipeline_status(
+                    &conn,
+                    account_id,
+                    p.id as i64,
+                    pipe.status.as_deref(),
+                    pipe.web_url.as_deref(),
+                );
+            }
+            Ok(None) => {
+                let _ = cache::set_project_pipeline_status(
+                    &conn,
+                    account_id,
+                    p.id as i64,
+                    None,
+                    None,
+                );
+            }
+            Err(_) => {
+                // Skip this project; list refresh still succeeded.
+            }
+        }
+    }
     Ok(projects.len())
 }
 
@@ -437,6 +472,8 @@ fn list_projects(py: Python<'_>, allow_stale: bool) -> PyResult<PyObject> {
         d.set_item("visibility", p.visibility)?;
         d.set_item("last_activity_at", p.last_activity_at)?;
         d.set_item("fetched_at", p.fetched_at)?;
+        d.set_item("pipeline_status", p.pipeline_status)?;
+        d.set_item("pipeline_web_url", p.pipeline_web_url)?;
         list.append(d)?;
     }
     Ok(list.into())

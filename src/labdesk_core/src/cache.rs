@@ -6,7 +6,7 @@ use crate::api_client::GitLabProject;
 use crate::error::{ErrorInfo, LabDeskError, Result};
 use crate::paths::AppPaths;
 
-const SCHEMA_VERSION: &str = "5";
+const SCHEMA_VERSION: &str = "6";
 
 pub fn open(paths: &AppPaths) -> Result<Connection> {
     paths.ensure_dirs().map_err(|e| {
@@ -65,6 +65,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
             visibility TEXT,
             last_activity_at TEXT,
             fetched_at TEXT NOT NULL,
+            pipeline_status TEXT,
+            pipeline_web_url TEXT,
             PRIMARY KEY (account_id, project_id)
         );
         CREATE TABLE IF NOT EXISTS local_repos (
@@ -162,8 +164,8 @@ pub fn replace_projects(
                 INSERT INTO projects (
                     account_id, project_id, name, name_with_namespace, path_with_namespace,
                     http_url_to_repo, ssh_url_to_repo, web_url, default_branch, visibility,
-                    last_activity_at, fetched_at
-                ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
+                    last_activity_at, fetched_at, pipeline_status, pipeline_web_url
+                ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,NULL,NULL)
                 "#,
             )
             .map_err(cache_err)?;
@@ -203,6 +205,8 @@ pub struct CachedProject {
     pub visibility: Option<String>,
     pub last_activity_at: Option<String>,
     pub fetched_at: String,
+    pub pipeline_status: Option<String>,
+    pub pipeline_web_url: Option<String>,
 }
 
 pub fn list_projects(conn: &Connection, account_id: &str) -> Result<Vec<CachedProject>> {
@@ -211,7 +215,8 @@ pub fn list_projects(conn: &Connection, account_id: &str) -> Result<Vec<CachedPr
             r#"
             SELECT project_id, name, name_with_namespace, path_with_namespace,
                    http_url_to_repo, ssh_url_to_repo, web_url, default_branch,
-                   visibility, last_activity_at, fetched_at
+                   visibility, last_activity_at, fetched_at,
+                   pipeline_status, pipeline_web_url
             FROM projects
             WHERE account_id = ?1
             ORDER BY last_activity_at DESC NULLS LAST, name_with_namespace ASC
@@ -233,6 +238,8 @@ pub fn list_projects(conn: &Connection, account_id: &str) -> Result<Vec<CachedPr
                 visibility: row.get(8)?,
                 last_activity_at: row.get(9)?,
                 fetched_at: row.get(10)?,
+                pipeline_status: row.get(11)?,
+                pipeline_web_url: row.get(12)?,
             })
         })
         .map_err(cache_err)?;
@@ -242,6 +249,25 @@ pub fn list_projects(conn: &Connection, account_id: &str) -> Result<Vec<CachedPr
         out.push(r.map_err(cache_err)?);
     }
     Ok(out)
+}
+
+pub fn set_project_pipeline_status(
+    conn: &Connection,
+    account_id: &str,
+    project_id: i64,
+    status: Option<&str>,
+    web_url: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        r#"
+        UPDATE projects
+        SET pipeline_status = ?3, pipeline_web_url = ?4
+        WHERE account_id = ?1 AND project_id = ?2
+        "#,
+        params![account_id, project_id, status, web_url],
+    )
+    .map_err(cache_err)?;
+    Ok(())
 }
 
 pub fn get_cached_project(
@@ -254,7 +280,8 @@ pub fn get_cached_project(
             r#"
             SELECT project_id, name, name_with_namespace, path_with_namespace,
                    http_url_to_repo, ssh_url_to_repo, web_url, default_branch,
-                   visibility, last_activity_at, fetched_at
+                   visibility, last_activity_at, fetched_at,
+                   pipeline_status, pipeline_web_url
             FROM projects
             WHERE account_id = ?1 AND project_id = ?2
             "#,
@@ -275,6 +302,8 @@ pub fn get_cached_project(
                 visibility: row.get(8)?,
                 last_activity_at: row.get(9)?,
                 fetched_at: row.get(10)?,
+                pipeline_status: row.get(11)?,
+                pipeline_web_url: row.get(12)?,
             })
         })
         .map_err(cache_err)?;
@@ -677,6 +706,43 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].mr_iid, 3);
         assert_eq!(rows[0].title.as_deref(), Some("Ship it"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn project_pipeline_status_roundtrip() {
+        let (root, paths) = temp_paths();
+        let conn = open(&paths).expect("open cache");
+        let projects = vec![crate::api_client::GitLabProject {
+            id: 7,
+            name: "labdesk".into(),
+            name_with_namespace: "Ranga / labdesk".into(),
+            path_with_namespace: "Ranga/labdesk".into(),
+            http_url_to_repo: None,
+            ssh_url_to_repo: None,
+            web_url: None,
+            default_branch: Some("main".into()),
+            visibility: Some("private".into()),
+            last_activity_at: None,
+        }];
+        replace_projects(&conn, "acc-1", &projects).expect("replace");
+        set_project_pipeline_status(
+            &conn,
+            "acc-1",
+            7,
+            Some("success"),
+            Some("https://git.example/p/-/pipelines/1"),
+        )
+        .expect("set status");
+        let row = get_cached_project(&conn, "acc-1", 7)
+            .expect("get")
+            .expect("present");
+        assert_eq!(row.pipeline_status.as_deref(), Some("success"));
+        assert!(row
+            .pipeline_web_url
+            .as_ref()
+            .unwrap()
+            .contains("pipelines/1"));
         let _ = fs::remove_dir_all(root);
     }
 }
