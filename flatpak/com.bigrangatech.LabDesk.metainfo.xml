@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   AppStream metainfo for LabDesk.
-  Icons: src/labdesk_ui/assets/com.bigrangatech.LabDesk-{64,128,256,512}x….png
+  Icons: PNG sizes + LabDesk-logo.svg (installed as com.bigrangatech.LabDesk.svg)
+  under src/labdesk_ui/assets/.
   CI injects <releases> with the build-date version (YYYY.MM.DD).
 -->
 <component type="desktop-application">
@@ -10,22 +11,46 @@
   <summary>Desktop client for self-hosted GitLab</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0-or-later</project_license>
-  <developer_name>BigRanga Tech</developer_name>
+  <developer id="com.bigrangatech">
+    <name>BigRanga Tech</name>
+  </developer>
   <description>
     <p>
       LabDesk is a Linux desktop client for self-hosted GitLab instances.
-      Browse projects, work with local git repositories, and create merge
-      requests without using gitlab.com.
+      It is not for gitlab.com — connect to your own forge with a personal
+      access token stored in the system keyring.
+    </p>
+    <p>
+      Browse membership projects, clone over HTTPS or SSH, review local
+      changes and history, push and pull, and open merge requests. Pipeline
+      status for the default branch appears in the project list after a
+      refresh; each repo window can show jobs for the current branch and
+      play manual jobs when online.
+    </p>
+    <p>
+      LabDesk ships as a Flatpak. Updates come from the BigRanga Tech
+      Flatpak remote (Ranga/flatpaks).
     </p>
   </description>
+  <icon type="stock">com.bigrangatech.LabDesk</icon>
   <launchable type="desktop-id">com.bigrangatech.LabDesk.desktop</launchable>
   <url type="homepage">https://git.bigrangatech.com/Ranga/labdesk</url>
+  <url type="bugtracker">https://git.bigrangatech.com/Ranga/labdesk/-/issues</url>
   <provides>
     <binary>labdesk</binary>
   </provides>
   <categories>
     <category>Development</category>
+    <category>RevisionControl</category>
   </categories>
+  <keywords>
+    <keyword>git</keyword>
+    <keyword>gitlab</keyword>
+    <keyword>forge</keyword>
+    <keyword>vcs</keyword>
+    <keyword>merge request</keyword>
+    <keyword>ci</keyword>
+  </keywords>
   <content_rating type="oars-1.1"/>
   <releases>
     <!-- LABDESK_RELEASE_PLACEHOLDER -->

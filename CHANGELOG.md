@@ -36,6 +36,10 @@ bullets without a stamp predate this convention.
 
 ### Changed
 
+- **21:04:31  13/08/2026** — Packaging polish: richer AppStream/desktop
+  metadata, `StartupWMClass` aligned with Flatpak desktop id, LabDesk
+  logo SVGs for app icon + About wordmark, About shows Flatpak vs
+  unpackaged and build-date version via `APP_VERSION`.
 - **18:24:51  13/08/2026** — User guide: end-user only (Discover/app-store
   updates; drop CI / unsigned / unpackaged notes into `dev-guide`).
 - **18:20:52  13/08/2026** — User guide install: signed `.flatpakrepo`

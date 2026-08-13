@@ -13,7 +13,8 @@ This guide is also available in the app under **Help → User Guide…**.
 - Local git (commit, branch, diff) plus forge features (project list,
   merge requests, pipeline status).
 - Distributed as a **Flatpak**.
-- **Help → About** shows the version (`YYYY.MM.DD` on Flatpak builds).
+- **Help → About** shows the version (`YYYY.MM.DD` on Flatpak builds;
+  `dev` when run unpackaged) and whether you are on Flatpak.
 
 ---
 

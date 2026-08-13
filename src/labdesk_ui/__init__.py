@@ -1,3 +1,5 @@
 """LabDesk UI package."""
 
-__version__ = "0.1.0"
+from labdesk_ui.version import APP_VERSION
+
+__version__ = APP_VERSION

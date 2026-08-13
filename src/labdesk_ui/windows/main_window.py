@@ -872,6 +872,8 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _about(self) -> None:
+        from labdesk_ui.utils.branding import app_icon, wordmark_pixmap
+        from labdesk_ui.utils.flatpak_updates import is_flatpak
         from labdesk_ui.version import APP_VERSION
 
         core_ver = ""
@@ -882,14 +884,27 @@ class MainWindow(QMainWindow):
         except Exception:
             core_ver = ""
         core_line = f"\nlabdesk_core {core_ver}" if core_ver else ""
-        QMessageBox.about(
-            self,
-            "About LabDesk",
-            f"LabDesk {APP_VERSION}\n"
+        pack = "Flatpak" if is_flatpak() else "unpackaged (dev)"
+        text = (
+            f"LabDesk {APP_VERSION} ({pack})\n"
             "Desktop client for self-hosted GitLab.\n"
-            f"Linux / Flatpak · GPLv2+{core_line}\n"
-            "Updates: Flatpak remote from Ranga/flatpaks",
+            f"Linux · GPLv2+{core_line}\n"
+            "Updates: Flatpak remote from Ranga/flatpaks"
         )
+        box = QMessageBox(self)
+        box.setWindowTitle("About LabDesk")
+        box.setTextFormat(Qt.TextFormat.PlainText)
+        box.setText(text)
+        icon = app_icon()
+        if not icon.isNull():
+            box.setWindowIcon(icon)
+            box.setIconPixmap(icon.pixmap(64, 64))
+        wordmark = wordmark_pixmap(280)
+        if wordmark is not None and not wordmark.isNull():
+            # Prefer wordmark as the dialog graphic when available.
+            box.setIconPixmap(wordmark)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        box.exec()
 
     def _saved_active_view(self) -> str | None:
         try:

@@ -13,6 +13,7 @@ def main() -> int:
 
     from labdesk_ui import startup as startup_mod
     from labdesk_ui.utils.branding import app_icon
+    from labdesk_ui.version import APP_VERSION
     from labdesk_ui.windows.main_window import MainWindow
 
     recovery = startup_mod.consume_recovery_marker()
@@ -21,6 +22,7 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName("LabDesk")
+    app.setApplicationVersion(APP_VERSION)
     app.setDesktopFileName("com.bigrangatech.LabDesk")
     app.setOrganizationName("BigRanga Tech")
     app.setOrganizationDomain("bigrangatech.com")

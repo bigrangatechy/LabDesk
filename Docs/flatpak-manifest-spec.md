@@ -20,7 +20,7 @@
 | `flatpak/com.bigrangatech.LabDesk.yml` | Manifest |
 | `flatpak/com.bigrangatech.LabDesk.desktop` | Start-menu / launcher entry |
 | `flatpak/com.bigrangatech.LabDesk.metainfo.xml` | AppStream metadata |
-| `flatpak/icons/` | Notes for icon layout; PNGs live in `src/labdesk_ui/assets/` |
+| `flatpak/icons/` | Notes for icon layout; PNGs + `LabDesk-logo*.svg` in `src/labdesk_ui/assets/` |
 | `.gitlab-ci.yml` | Build + push job into `Ranga/flatpaks` |
 
 **Never commit:** `.flatpak-builder/`, `repo/`, `*.flatpak`, ostree
