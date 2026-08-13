@@ -24,6 +24,14 @@ bullets without a stamp predate this convention.
   jobs JSON); richer Pipelines job list; Help → User Guide… (bundled
   `user-guide.md`).
 
+### Changed
+
+- **18:24:51  13/08/2026** — User guide: end-user only (Discover/app-store
+  updates; drop CI / unsigned / unpackaged notes into `dev-guide`).
+- **18:20:52  13/08/2026** — User guide install: signed `.flatpakrepo`
+  only (§2.1); drop unsigned `--no-gpg-verify` path and default
+  `remote-delete` for new users.
+
 ### Fixed
 
 - **14:35:42  13/08/2026** — Pipelines: treat GitLab jobs with

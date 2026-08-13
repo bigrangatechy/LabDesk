@@ -140,13 +140,17 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
   prefer `privileged = true`. CI uses `--disable-rofiles-fuse` so
   `/dev/fuse` is not required. openh264 `apply_extra` / bwrap
   warnings are often non-fatal. See `flatpak-manifest-spec.md` §5.
-- Users add that Flatpak remote and install/update
-  `com.bigrangatech.LabDesk` (user-guide). Prefer GPG-signed remotes
+- End-user install/update wording lives only in `user-guide.md`
+  (signed `.flatpakrepo`; updates via Discover / Software / Flatpak).
+  Do not put CI, unsigned remotes, or unpackaged paths in the user
+  guide — keep those here.
+- Prefer GPG-signed remotes for publish
   (`FLATPAK_GPG_PRIVATE_KEY` in CI; `./scripts/flatpak-gpg-create.sh`).
 - Secrets portal / `org.freedesktop.secrets`; finish args in
   `flatpak-manifest-spec.md`.
 - Preference `check_for_updates` means checking **this** Flatpak remote
-  (data-model / ADR-004).
+  (data-model / ADR-004). New builds appear for users only after CI on
+  `labdesk` has published to `Ranga/flatpaks`.
 
 ---
 

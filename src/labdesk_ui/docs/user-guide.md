@@ -1,12 +1,9 @@
 # LabDesk User Guide
 
 **Status:** Living  
-**Audience:** People using LabDesk day to day  
-**Related:** `user-journey.md` (flows), `security-credentials.md` (secrets),
-Technical Specification (constraints)
+**Audience:** People using LabDesk day to day
 
 This guide is also available in the app under **Help → User Guide…**.
-It stays end-user focused — no API or SQLite schema detail.
 
 ---
 
@@ -15,56 +12,49 @@ It stays end-user focused — no API or SQLite schema detail.
 - Linux desktop client for **self-hosted GitLab** only (not GitLab.com).
 - Local git (commit, branch, diff) plus forge features (project list,
   merge requests, pipeline status).
-- Distributed as **Flatpak** for releases.
-- **V1 is complete** (connect → git → MR → Flatpak). **Help → About**
-  shows the build-date version (`YYYY.MM.DD`).
+- Distributed as a **Flatpak**.
+- **Help → About** shows the version (`YYYY.MM.DD` on Flatpak builds).
 
 ---
 
 ## 2. Install & update
 
-LabDesk releases are Flatpaks from the self-hosted remote published out
-of `Ranga/flatpaks` (not required to use Flathub for beta).
+### 2.1 Install
 
-### 2.1 Add the remote (once)
-
-Flatpak **system** installs refuse unsigned remotes. Prefer the signed
-`.flatpakrepo` after CI has published with GPG (see §2.1a). Until then,
-use a **user** remote with `--no-gpg-verify`:
+Add the LabDesk Flatpak remote once, then install:
 
 ```bash
-flatpak remote-delete --user bigrangatech-flatpaks 2>/dev/null || true
-flatpak remote-add --if-not-exists --user --no-gpg-verify bigrangatech-flatpaks \
-  https://git.bigrangatech.com/Ranga/flatpaks/-/raw/main/labdesk/repo
-flatpak install --user bigrangatech-flatpaks com.bigrangatech.LabDesk
-```
-
-### 2.1a Signed remote (recommended)
-
-```bash
-flatpak remote-delete --user bigrangatech-flatpaks 2>/dev/null || true
 flatpak remote-add --if-not-exists bigrangatech-flatpaks \
   https://git.bigrangatech.com/Ranga/flatpaks/-/raw/main/labdesk/labdesk.flatpakrepo
 flatpak install bigrangatech-flatpaks com.bigrangatech.LabDesk
 flatpak run com.bigrangatech.LabDesk
 ```
 
-Prefer **HTTPS** remotes when TLS is set up for the GitLab host.
+After that, LabDesk appears in your desktop app store (for example
+**Discover** on KDE) like other Flatpaks.
+
+If an older **unsigned** test remote is still listed, remove it once
+(`flatpak remote-delete --user bigrangatech-flatpaks`) and run the
+commands above again.
 
 ### 2.2 Update
+
+Updates are normal Flatpak updates. Your app store (Discover, GNOME
+Software, …) will offer them when a new build is available. You can also
+update from a terminal:
 
 ```bash
 flatpak update com.bigrangatech.LabDesk
 ```
 
-In-app **Check for updates** (Settings) uses the same Flatpak remote.
-New builds appear only after CI on `labdesk` has published to
-`Ranga/flatpaks`.
+Optional: Settings → **Check for updates** does the same check inside
+LabDesk.
 
-### 2.3 Config paths
+### 2.3 Where LabDesk stores data
 
-- Flatpak: under `~/.var/app/com.bigrangatech.LabDesk/`
-- Unpackaged / dev: `~/.config/labdesk/`, `~/.local/share/labdesk/`
+Under Flatpak, LabDesk keeps its files under:
+
+`~/.var/app/com.bigrangatech.LabDesk/`
 
 ---
 
@@ -73,33 +63,32 @@ New builds appear only after CI on `labdesk` has published to
 1. On first launch with no instances, LabDesk offers **Add / connect**.
 2. Enter a display name, **base URL**, and API **personal access token**.
    - Prefer **`https://…`**.
-   - On a LAN you may use **`http://192.168.x.x:port`** (or other
-     RFC1918 / loopback hosts). Public DNS names still require HTTPS.
-   - Over plain HTTP the API PAT travels in cleartext — trusted LAN only.
+   - On a trusted LAN you may use **`http://192.168.x.x:port`** (or
+     other private / loopback addresses). Public host names still need
+     HTTPS.
 3. SaaS hosts (`gitlab.com`, `github.com`, …) are rejected.
 4. Choose a TLS mode: **Strict** (default), **Allow self-signed**, or
-   Imported CA (uses system trust until full CA import lands).
-5. The PAT is stored in the **system keyring**, not in `config.toml`.
+   Imported CA.
+5. The PAT is stored in the **system keyring**, not in plain config
+   files.
 
 ---
 
 ## 4. Settings & preferences
 
 - **Settings → Preferences:** clone folder, theme, window layout
-  (`classic` / `sidebar`), Flatpak update checks.
+  (`classic` / `sidebar`), and whether to check for Flatpak updates.
 - **View** menu: switch Projects / Settings and layout.
-- Full options live in `config.toml` (including tester-only keys).
-  Settings saves preserve keys they do not own.
-- Do **not** put PATs or passwords in the config file.
-- If startup hangs (~45s), LabDesk reverts to last known-good config and
-  shows **`LD-CFG-010`**.
+- Do **not** put PATs or passwords in config files.
+- If startup hangs for a long time, LabDesk may restore the last good
+  settings and show an error with a code like **`LD-CFG-010`**.
 
 ---
 
 ## 5. Projects & cloning
 
-- **Refresh projects** loads your membership list from GitLab (cached
-  in SQLite for offline browsing).
+- **Refresh projects** loads your project list from GitLab (and keeps a
+  local copy for offline browsing).
 - **Clone** (HTTPS or SSH) into the default clone folder.
 - **Open local** / **Add existing…** attach an already-cloned folder.
 - Double-click a project or use Open local to open a **repo window**.
@@ -112,8 +101,8 @@ In the repo window:
 
 - **Changes:** stage / unstage / commit; read-only diffs.
 - **Open in editor:** opens the selected file with the desktop default.
-- **Branches:** list, switch, create, merge into current (clean merge
-  only; conflicts → **`LD-GIT-020`**, resolve externally).
+- **Branches:** list, switch, create, merge into current (clean merges
+  only; if there are conflicts, resolve them outside LabDesk).
 - **Fetch / Pull / Push** and ahead/behind vs upstream in the header.
 - **Force push…** only after an explicit confirmation.
 - After a successful (non-force) push, LabDesk may offer to **create a
@@ -127,26 +116,25 @@ In the repo window:
 - Status chip in the header; **Open in GitLab** opens the pipeline URL.
 - Job list shows stage, name, and status. Rows marked **▶** are waiting
   for manual start — select one and **Play manual job…** (confirm first).
-- Online refresh writes a small cache so offline you can still see the
-  last status and jobs. **Play is disabled offline.**
+- After an online refresh, the last status and jobs are kept so you can
+  still see them offline. **Play is disabled offline.**
 
 ---
 
 ## 8. Working offline
 
-- Banner shows **Working offline** when the API is unreachable
-  (`LD-NET-001`).
+- A banner shows **Working offline** when GitLab cannot be reached.
 - Still works: local Changes / History / Branches / commit / open editor;
-  cached project list; cached pipeline status (if previously fetched).
-- Disabled: project refresh from API, clone, pull/push/force push,
-  create MR, play CI jobs.
+  last project list; last pipeline status (if you refreshed earlier).
+- Disabled: refreshing projects from the server, clone, pull/push/force
+  push, create MR, play CI jobs.
 
 ---
 
 ## 9. Help in the app
 
 - **Help → User Guide…** — this document.
-- **Help → About LabDesk** — version (`YYYY.MM.DD` on Flatpak builds).
+- **Help → About LabDesk** — version.
 
 ---
 
@@ -155,12 +143,12 @@ In the repo window:
 | Symptom | What to try |
 |---------|-------------|
 | Auth failed (`LD-AUTH-001`) | Re-enter PAT; check scopes / expiry |
-| Keyring error (`LD-AUTH-002`) | Unlock Secret Service / password manager |
-| Git auth failed | Credential helper, SSH agent, or PAT-as-password |
+| Keyring error (`LD-AUTH-002`) | Unlock your password manager / Secret Service |
+| Git auth failed | SSH agent, credential helper, or HTTPS with a PAT |
 | 2FA blocks password git | Use SSH or HTTPS with a PAT |
-| Certificate not trusted | Settings TLS mode, or fix host CA |
-| Cache corrupt | LabDesk rebuilds `cache.db`; refresh projects |
-| Flatpak update missing | Confirm CI published to `Ranga/flatpaks` |
+| Certificate not trusted | Change TLS mode in Settings, or fix the host CA |
+| Projects list looks stale | Refresh projects while online |
+| No update in Discover | Run `flatpak update`, or wait for the next published build |
 
 ---
 
@@ -169,10 +157,11 @@ In the repo window:
 - API PAT → OS keyring only.
 - Git HTTPS passwords → Git credential helper.
 - Never paste PATs into chat, issues, or screenshots.
-- LAN `http://` GitLab: PAT is cleartext on the wire — trusted networks only.
+- LAN `http://` GitLab: the PAT travels in cleartext — trusted networks
+  only.
 
 ---
 
 ## Document history
 
-Living user guide; also bundled for **Help → User Guide…**.
+Living end-user guide. Contributor / build notes live in `dev-guide.md`.
