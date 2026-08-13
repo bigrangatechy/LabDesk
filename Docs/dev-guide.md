@@ -23,7 +23,7 @@ src/
   labdesk_core/ Rust / PyO3 core
 flatpak/        Flatpak manifest only (no build artifacts)
 scripts/        helper scripts (e.g. run-labdesk.sh)
-tests/          tests (placeholder)
+tests/          pytest suite (see §8); `tests/python/`
 ```
 
 ### 1.1 Remotes and Flatpak hosting
@@ -167,9 +167,32 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
 
 ## 8. Testing
 
-- TBD: unit (Rust), UI smoke, contract tests against a self-hosted
-  fixture or recorded responses.
-- Beta smoke checklist: `user-guide.md` (install + update).
+Run from the repo root (offscreen Qt; no display needed):
+
+```bash
+./scripts/run-tests.sh
+# or: ./scripts/run-tests.sh -v tests/python/test_async_jobs.py
+```
+
+Installs `requirements-dev.txt` (pytest) if missing, builds `labdesk_core`
+when needed, then runs `tests/python/`.
+
+**What is covered today**
+
+| Area | File | Catches |
+|------|------|---------|
+| Async UI bridge | `test_async_jobs.py` | Worker-thread widget updates (Qt Gui SIGSEGV) |
+| Repo reopen | `test_repo_windows.py` | “Internal C++ object already deleted” after close |
+| LAN / SaaS URLs | `test_config_urls.py` | HTTP allowlist + gitlab.com reject |
+| Version / errors | `test_version_and_helpers.py` | `APP_VERSION`, `format_error` |
+| Packaging | `test_packaging_sanity.py` | CI YAML / Flatpak manifest basics |
+
+CI job `python_pytest` runs the UI suite (no Rust toolchain in that
+image). Full suite including `labdesk_core` URL tests: local
+`./scripts/run-tests.sh`.
+
+Rust: `cd src/labdesk_core && cargo test`.
+Beta smoke checklist: `user-guide.md` (install + update).
 
 ---
 

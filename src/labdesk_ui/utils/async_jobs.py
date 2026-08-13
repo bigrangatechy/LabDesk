@@ -55,54 +55,47 @@ class _ResultBridge(QObject):
         self._handle = handle
         self._done = False
 
-    @Slot(object)
-    def on_ok(self, result: object) -> None:
+    def _owner_ok(self) -> bool:
         try:
             from shiboken6 import isValid
 
             if not isValid(self):
-                return
+                return False
             parent = self.parent()
             if parent is not None and not isValid(parent):
-                return
+                return False
+            return True
         except Exception:
+            return False
+
+    @Slot(object)
+    def on_ok(self, result: object) -> None:
+        if not self._owner_ok():
+            self._cleanup(touch_widgets=False)
             return
         try:
             if self._on_success is not None:
                 self._on_success(result)
         finally:
-            self._cleanup()
+            self._cleanup(touch_widgets=True)
 
     @Slot(str, str, object)
     def on_err(self, code: str, msg: str, exc: object) -> None:
-        try:
-            from shiboken6 import isValid
-
-            if not isValid(self):
-                return
-            parent = self.parent()
-            if parent is not None and not isValid(parent):
-                return
-        except Exception:
+        if not self._owner_ok():
+            self._cleanup(touch_widgets=False)
             return
         try:
             if self._on_error is not None:
                 err = exc if isinstance(exc, BaseException) else Exception(str(exc))
                 self._on_error(code, msg, err)
         finally:
-            self._cleanup()
+            self._cleanup(touch_widgets=True)
 
-    def _cleanup(self) -> None:
+    def _cleanup(self, *, touch_widgets: bool) -> None:
         if self._done:
             return
         self._done = True
-        try:
-            from shiboken6 import isValid
-
-            widgets_ok = isValid(self)
-        except Exception:
-            widgets_ok = False
-        if widgets_ok:
+        if touch_widgets and self._owner_ok():
             for w in self._busy_widgets:
                 try:
                     from shiboken6 import isValid as _iv
@@ -144,6 +137,10 @@ def run_in_background(
     Start ``fn`` on a worker thread. Callbacks run on the owner's thread
     via a ``QObject`` bridge (queued auto-connection). Never touch widgets
     from ``fn``.
+
+    The ``QThread`` is **not** parented to ``owner`` — parenting aborts Qt if
+    the owner is destroyed while the thread is still running (closing a repo
+    window mid-fetch).
     """
     widgets = list(busy_widgets or [])
     for w in widgets:
@@ -151,7 +148,8 @@ def run_in_background(
     if status is not None:
         status(working_message)
 
-    thread = QThread(owner)
+    # Unparented: see docstring. Lifetime held via ``handles`` on owner.
+    thread = QThread()
     worker = _Worker(fn)
     worker.moveToThread(thread)
 
@@ -172,6 +170,18 @@ def run_in_background(
         handle,
     )
     handle["bridge"] = bridge
+
+    def _quit_thread(*_args) -> None:
+        try:
+            from shiboken6 import isValid
+
+            if isValid(thread) and thread.isRunning():
+                thread.quit()
+        except Exception:
+            pass
+
+    # If the owner goes away mid-flight, stop the thread (do not wait here).
+    owner.destroyed.connect(_quit_thread)
 
     thread.started.connect(worker.run)
     # Worker lives on ``thread``; bridge on ``owner`` → Auto becomes Queued.

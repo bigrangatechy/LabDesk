@@ -1,0 +1,2 @@
+# Dev / CI test dependencies (not bundled in Flatpak).
+pytest>=8.0

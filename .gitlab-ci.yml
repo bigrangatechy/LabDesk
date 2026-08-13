@@ -35,6 +35,23 @@ python_import_smoke:
     - test -f flatpak/com.bigrangatech.LabDesk.yml
     - test -f Docs/flatpak-manifest-spec.md
 
+python_pytest:
+  stage: test
+  image: python:3.12-bookworm
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+  variables:
+    QT_QPA_PLATFORM: offscreen
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq libgl1 libxkbcommon0 libegl1 libdbus-1-3 libxcb-cursor0 >/dev/null
+    - pip install -q -r requirements-dev.txt 'PySide6>=6.6,<6.9' PyYAML
+  script:
+    # UI regressions (async bridge, repo reopen). URL tests need labdesk_core
+    # (maturin) — run locally via ./scripts/run-tests.sh.
+    - PYTHONPATH=src pytest tests/python --ignore=tests/python/test_config_urls.py
+
+
 # Build Flatpak and push the ostree repo into Ranga/flatpaks.
 # Tag pipelines auto-run; default branch is manual until runners are confirmed.
 flatpak_build_publish:

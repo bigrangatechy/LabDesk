@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **14:07:05  13/08/2026** — Async jobs: do not parent `QThread` to the
+  owner widget (Qt aborts if the window is closed mid-job); quit the
+  thread on `destroyed`. Added pytest suite for this and repo reopen.
 - **13:55:49  13/08/2026** — Repo windows: detect closed wrappers with
   `shiboken6.isValid` (not `repo_path`, which survives C++ delete) and
   only reuse still-visible windows so reopen after close works.
@@ -36,6 +39,10 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **14:07:05  13/08/2026** — Pytest suite (`./scripts/run-tests.sh`,
+  `tests/python/`): async UI-thread bridge, repo reopen after close,
+  LAN/SaaS URL validation, version/helpers, packaging smoke; CI job
+  `python_pytest`.
 - **15:52:29  12/08/2026** — Post-V1: LAN `http://` for loopback/RFC1918
   GitLab URLs; build-date versioning (`YYYY.MM.DD`); background Qt workers
   for clone/refresh/fetch/push/API; pipeline status + play manual jobs.
