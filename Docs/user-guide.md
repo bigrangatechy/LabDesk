@@ -111,6 +111,12 @@ In the repo window:
 - **Open in editor:** opens the selected file with the desktop default.
 - **Branches:** list, switch, create, merge into current (clean merges
   only; if there are conflicts, resolve them outside LabDesk).
+- **Compare:** pick two branches (local or `origin/…`), see ahead/behind,
+  recent commits, and a read-only tip diff. When online, LabDesk can
+  check whether the other branch exists on GitLab.
+- **Merge requests:** opened MRs for this project (refresh while online;
+  last list kept for offline viewing). **Open in GitLab** for the
+  selected row.
 - **Fetch / Pull / Push** and ahead/behind vs upstream in the header.
 - **Force push…** only after an explicit confirmation.
 - After a successful (non-force) push, LabDesk may offer to **create a
@@ -132,10 +138,11 @@ In the repo window:
 ## 8. Working offline
 
 - A banner shows **Working offline** when GitLab cannot be reached.
-- Still works: local Changes / History / Branches / commit / open editor;
-  last project list; last pipeline status (if you refreshed earlier).
+- Still works: local Changes / History / Branches / Compare / commit /
+  open editor; last project list; last pipeline status and opened MRs
+  (if you refreshed earlier).
 - Disabled: refreshing projects from the server, clone, pull/push/force
-  push, create MR, play CI jobs.
+  push, create MR, play CI jobs, live remote branch check.
 
 ---
 

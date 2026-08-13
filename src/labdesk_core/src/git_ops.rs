@@ -751,6 +751,153 @@ pub fn list_branches(repo_path: &Path) -> Result<BranchList> {
     Ok(BranchList { current, branches })
 }
 
+/// Local + remote-tracking branch names for Compare combos.
+pub fn list_compare_refs(repo_path: &Path) -> Result<BranchList> {
+    let mut listed = list_branches(repo_path)?;
+    let repo = open_repo(repo_path)?;
+    let iter = repo.branches(Some(git2::BranchType::Remote)).map_err(|e| {
+        map_git_error(e, "LD-GIT-001", "Git operation failed.")
+    })?;
+    for item in iter {
+        let (branch, _) = item.map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+        if let Some(name) = branch.name().ok().flatten() {
+            // Skip remote HEAD symbolic refs like origin/HEAD
+            if name.ends_with("/HEAD") {
+                continue;
+            }
+            if !listed.branches.iter().any(|b| b == name) {
+                listed.branches.push(name.to_string());
+            }
+        }
+    }
+    listed.branches.sort();
+    Ok(listed)
+}
+
+#[derive(Debug, Clone)]
+pub struct CompareCommit {
+    pub oid: String,
+    pub summary: String,
+    pub author: String,
+    pub time: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct BranchCompare {
+    pub base_ref: String,
+    pub other_ref: String,
+    /// Commits reachable from `other` but not `base`.
+    pub ahead: usize,
+    /// Commits reachable from `base` but not `other`.
+    pub behind: usize,
+    pub commits: Vec<CompareCommit>,
+    pub diff_text: String,
+}
+
+const COMPARE_COMMIT_LIMIT: usize = 50;
+const COMPARE_DIFF_MAX_CHARS: usize = 200_000;
+
+/// Tip-to-tip compare: ahead/behind of `other` vs `base`, commits on other, unified diff.
+pub fn compare_branches(repo_path: &Path, base_ref: &str, other_ref: &str) -> Result<BranchCompare> {
+    let base_ref = base_ref.trim();
+    let other_ref = other_ref.trim();
+    if base_ref.is_empty() || other_ref.is_empty() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail("Base and other refs are required."),
+        ));
+    }
+    let repo = open_repo(repo_path)?;
+    let base_obj = repo
+        .revparse_single(base_ref)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let other_obj = repo
+        .revparse_single(other_ref)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let base_commit = base_obj
+        .peel_to_commit()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let other_commit = other_obj
+        .peel_to_commit()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let base_oid = base_commit.id();
+    let other_oid = other_commit.id();
+
+    let (ahead, behind) = repo
+        .graph_ahead_behind(other_oid, base_oid)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+
+    let mut revwalk = repo
+        .revwalk()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    revwalk
+        .push(other_oid)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    revwalk
+        .hide(base_oid)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    revwalk
+        .set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+
+    let mut commits = Vec::new();
+    for oid in revwalk {
+        if commits.len() >= COMPARE_COMMIT_LIMIT {
+            break;
+        }
+        let oid = oid.map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+        let c = repo
+            .find_commit(oid)
+            .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+        let summary = c.summary().unwrap_or("").to_string();
+        let author = c.author().name().unwrap_or("").to_string();
+        commits.push(CompareCommit {
+            oid: oid.to_string(),
+            summary,
+            author,
+            time: c.time().seconds(),
+        });
+    }
+
+    let base_tree = base_commit
+        .tree()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let other_tree = other_commit
+        .tree()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let mut opts = DiffOptions::new();
+    let diff = repo
+        .diff_tree_to_tree(Some(&base_tree), Some(&other_tree), Some(&mut opts))
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let mut buf = String::new();
+    diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
+        if buf.len() >= COMPARE_DIFF_MAX_CHARS {
+            return false;
+        }
+        let origin = line.origin();
+        if origin == '+' || origin == '-' || origin == ' ' || origin == '@' {
+            buf.push(origin);
+        }
+        buf.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
+        true
+    })
+    .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    if buf.len() >= COMPARE_DIFF_MAX_CHARS {
+        buf.push_str("\n\n… (diff truncated)\n");
+    } else if buf.is_empty() {
+        buf = "(no textual diff between tips)\n".into();
+    }
+
+    Ok(BranchCompare {
+        base_ref: base_ref.to_string(),
+        other_ref: other_ref.to_string(),
+        ahead,
+        behind,
+        commits,
+        diff_text: buf,
+    })
+}
+
 /// Create a local branch from HEAD; optionally check it out.
 pub fn create_branch(repo_path: &Path, name: &str, checkout: bool) -> Result<()> {
     let name = name.trim();
@@ -1224,4 +1371,49 @@ pub fn destination_for(clone_root: &Path, path_with_namespace: &str) -> PathBuf 
         }
     }
     path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn git(cwd: &Path, args: &[&str]) {
+        let st = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .status()
+            .expect("git");
+        assert!(st.success(), "git {args:?} failed");
+    }
+
+    #[test]
+    fn compare_branches_ahead_and_diff() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("labdesk-compare-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-b", "main"]);
+        fs::write(root.join("a.txt"), "one\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "base"]);
+        git(&root, &["checkout", "-b", "feature"]);
+        fs::write(root.join("a.txt"), "one\ntwo\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "feature change"]);
+        let cmp = compare_branches(&root, "main", "feature").expect("compare");
+        assert_eq!(cmp.ahead, 1);
+        assert_eq!(cmp.behind, 0);
+        assert!(!cmp.commits.is_empty());
+        assert!(cmp.diff_text.contains("two") || cmp.diff_text.contains("+"));
+        let _ = fs::remove_dir_all(root);
+    }
 }

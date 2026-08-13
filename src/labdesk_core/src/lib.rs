@@ -839,6 +839,66 @@ fn repo_list_branches(py: Python<'_>, repo_path: String) -> PyResult<PyObject> {
 }
 
 #[pyfunction]
+fn repo_list_compare_refs(py: Python<'_>, repo_path: String) -> PyResult<PyObject> {
+    let listed = git_ops::list_compare_refs(std::path::Path::new(&repo_path))?;
+    let d = PyDict::new(py);
+    d.set_item("current", listed.current)?;
+    d.set_item("branches", listed.branches)?;
+    Ok(d.into())
+}
+
+#[pyfunction]
+fn repo_compare_branches(
+    py: Python<'_>,
+    repo_path: String,
+    base_ref: String,
+    other_ref: String,
+) -> PyResult<PyObject> {
+    let cmp = git_ops::compare_branches(std::path::Path::new(&repo_path), &base_ref, &other_ref)?;
+    let d = PyDict::new(py);
+    d.set_item("base_ref", cmp.base_ref)?;
+    d.set_item("other_ref", cmp.other_ref)?;
+    d.set_item("ahead", cmp.ahead)?;
+    d.set_item("behind", cmp.behind)?;
+    d.set_item("diff_text", cmp.diff_text)?;
+    let commits = pyo3::types::PyList::empty(py);
+    for c in cmp.commits {
+        let row = PyDict::new(py);
+        row.set_item("oid", c.oid)?;
+        row.set_item("summary", c.summary)?;
+        row.set_item("author", c.author)?;
+        row.set_item("time", c.time)?;
+        commits.append(row)?;
+    }
+    d.set_item("commits", commits)?;
+    Ok(d.into())
+}
+
+#[pyfunction]
+fn remote_branch_exists(py: Python<'_>, project_id: i64, branch: String) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let keyring = acc.keyring_account.clone();
+    let exists = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        api_client::remote_branch_exists(&base_url, &pat, &ssl_mode, project_id, &branch)
+    })?;
+    let d = PyDict::new(py);
+    d.set_item("exists", exists)?;
+    d.set_item("branch", branch)?;
+    Ok(d.into())
+}
+
+#[pyfunction]
 #[pyo3(signature = (repo_path, name, checkout=true))]
 fn repo_create_branch(repo_path: String, name: String, checkout: bool) -> PyResult<()> {
     git_ops::create_branch(std::path::Path::new(&repo_path), &name, checkout)?;
@@ -954,6 +1014,86 @@ fn create_merge_request(
     d.set_item("state", mr.state)?;
     d.set_item("web_url", mr.web_url)?;
     Ok(d.into())
+}
+
+/// Fetch opened MRs for a project into SQLite; returns list.
+#[pyfunction]
+fn refresh_merge_requests(py: Python<'_>, project_id: i64) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let account_id = acc.id.clone();
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let keyring = acc.keyring_account.clone();
+    let rows = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        let mrs = api_client::list_project_merge_requests(&base_url, &pat, &ssl_mode, project_id)?;
+        let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
+        if cache::replace_merge_requests(&conn, &account_id, project_id, &mrs).is_err() {
+            let conn = cache::rebuild(&paths)?;
+            cache::replace_merge_requests(&conn, &account_id, project_id, &mrs)?;
+        }
+        Ok::<_, LabDeskError>(mrs)
+    })?;
+    let list = pyo3::types::PyList::empty(py);
+    for mr in rows {
+        let d = PyDict::new(py);
+        d.set_item("iid", mr.iid)?;
+        d.set_item("title", mr.title)?;
+        d.set_item("state", mr.state)?;
+        d.set_item("web_url", mr.web_url)?;
+        d.set_item("source_branch", mr.source_branch)?;
+        d.set_item("target_branch", mr.target_branch)?;
+        d.set_item("updated_at", mr.updated_at)?;
+        list.append(d)?;
+    }
+    let out = PyDict::new(py);
+    out.set_item("merge_requests", list)?;
+    out.set_item("cached", false)?;
+    Ok(out.into())
+}
+
+/// Cached opened MRs for a project (no network).
+#[pyfunction]
+fn cached_merge_requests(py: Python<'_>, project_id: i64) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, _inst)) = cfg.active_connection() else {
+        return Ok(py.None());
+    };
+    let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
+    let rows = cache::list_cached_merge_requests(&conn, &acc.id, project_id)?;
+    if rows.is_empty() {
+        return Ok(py.None());
+    }
+    let list = pyo3::types::PyList::empty(py);
+    let mut fetched_at = None;
+    for mr in rows {
+        if fetched_at.is_none() {
+            fetched_at = Some(mr.fetched_at.clone());
+        }
+        let d = PyDict::new(py);
+        d.set_item("iid", mr.mr_iid)?;
+        d.set_item("title", mr.title)?;
+        d.set_item("state", mr.state)?;
+        d.set_item("web_url", mr.web_url)?;
+        d.set_item("source_branch", mr.source_branch)?;
+        d.set_item("target_branch", mr.target_branch)?;
+        d.set_item("updated_at", mr.updated_at)?;
+        list.append(d)?;
+    }
+    let out = PyDict::new(py);
+    out.set_item("merge_requests", list)?;
+    out.set_item("cached", true)?;
+    out.set_item("fetched_at", fetched_at)?;
+    Ok(out.into())
 }
 
 #[pyfunction]
@@ -1443,10 +1583,15 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(repo_commit_diff, m)?)?;
     m.add_function(wrap_pyfunction!(repo_branch, m)?)?;
     m.add_function(wrap_pyfunction!(repo_list_branches, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_list_compare_refs, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_compare_branches, m)?)?;
+    m.add_function(wrap_pyfunction!(remote_branch_exists, m)?)?;
     m.add_function(wrap_pyfunction!(repo_create_branch, m)?)?;
     m.add_function(wrap_pyfunction!(repo_checkout_branch, m)?)?;
     m.add_function(wrap_pyfunction!(resolve_repo_project, m)?)?;
     m.add_function(wrap_pyfunction!(create_merge_request, m)?)?;
+    m.add_function(wrap_pyfunction!(refresh_merge_requests, m)?)?;
+    m.add_function(wrap_pyfunction!(cached_merge_requests, m)?)?;
     m.add_function(wrap_pyfunction!(repo_pull, m)?)?;
     m.add_function(wrap_pyfunction!(repo_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(repo_ahead_behind, m)?)?;

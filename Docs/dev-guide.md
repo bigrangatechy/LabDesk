@@ -151,6 +151,9 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
 - Preference `check_for_updates` means checking **this** Flatpak remote
   (data-model / ADR-004). New builds appear for users only after CI on
   `labdesk` has published to `Ranga/flatpaks`.
+- Runtime must stay self-contained: ship UI + `labdesk_core` (vendored
+  libgit2/OpenSSL via crate features) inside the Flatpak — do not add
+  features that require host system libraries at runtime.
 
 ---
 

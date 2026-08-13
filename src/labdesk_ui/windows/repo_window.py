@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QPalette, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -70,6 +71,16 @@ def _format_job_row(job: dict) -> str:
     if _job_is_playable(job):
         label = f"▶ {label}"
     return label
+
+
+def _format_mr_row(mr: dict) -> str:
+    iid = mr.get("iid")
+    title = mr.get("title") or "(no title)"
+    state = mr.get("state") or ""
+    src = mr.get("source_branch") or "?"
+    tgt = mr.get("target_branch") or "?"
+    prefix = f"!{iid} " if iid is not None else ""
+    return f"{prefix}{title}  [{state}]  {src} → {tgt}"
 
 
 def _set_colored_diff(widget: QTextEdit, text: str) -> None:
@@ -165,7 +176,9 @@ class RepoWindow(QMainWindow):
         self.tabs.addTab(self._build_changes_tab(), "Changes")
         self.tabs.addTab(self._build_history_tab(), "History")
         self.tabs.addTab(self._build_branches_tab(), "Branches")
+        self.tabs.addTab(self._build_compare_tab(), "Compare")
         self.tabs.addTab(self._build_pipelines_tab(), "Pipelines")
+        self.tabs.addTab(self._build_mrs_tab(), "Merge requests")
         layout.addWidget(self.tabs, stretch=1)
 
         self.footer = QLabel("")
@@ -174,6 +187,7 @@ class RepoWindow(QMainWindow):
 
         self._pipeline_project_id: int | None = None
         self._pipeline_web_url: str | None = None
+        self._mr_project_id: int | None = None
         self._busy = False
 
         self.refresh()
@@ -192,6 +206,9 @@ class RepoWindow(QMainWindow):
                 self.btn_pipeline_refresh.setEnabled(True)
                 self.btn_pipeline_open.setEnabled(bool(self._pipeline_web_url))
                 self.btn_play_job.setEnabled(available)
+            if hasattr(self, "btn_mr_refresh"):
+                self.btn_mr_refresh.setEnabled(True)
+                self.btn_mr_open.setEnabled(False)
         tip = "Working offline — network git actions disabled." if not available else ""
         self.btn_push.setToolTip(tip)
         self.btn_force.setToolTip(tip)
@@ -211,7 +228,65 @@ class RepoWindow(QMainWindow):
             widgets.extend(
                 [self.btn_pipeline_refresh, self.btn_pipeline_open, self.btn_play_job]
             )
+        if hasattr(self, "btn_mr_refresh"):
+            widgets.extend([self.btn_mr_refresh, self.btn_mr_open])
         return widgets
+
+    def _build_compare_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        pick = QHBoxLayout()
+        pick.addWidget(QLabel("Base"))
+        self.compare_base = QComboBox()
+        self.compare_base.setMinimumWidth(160)
+        pick.addWidget(self.compare_base, stretch=1)
+        pick.addWidget(QLabel("Other"))
+        self.compare_other = QComboBox()
+        self.compare_other.setMinimumWidth(160)
+        pick.addWidget(self.compare_other, stretch=1)
+        self.btn_compare = QPushButton("Compare")
+        self.btn_compare.clicked.connect(self._run_compare)
+        pick.addWidget(self.btn_compare)
+        layout.addLayout(pick)
+
+        self.compare_summary = QLabel("Pick two refs and Compare.")
+        self.compare_summary.setWordWrap(True)
+        layout.addWidget(self.compare_summary)
+
+        split = QSplitter()
+        self.compare_commits = QListWidget()
+        split.addWidget(self.compare_commits)
+        self.compare_diff = QTextEdit()
+        self.compare_diff.setReadOnly(True)
+        self.compare_diff.setFont(QFont("monospace"))
+        self.compare_diff.setPlaceholderText("Tip-to-tip unified diff.")
+        split.addWidget(self.compare_diff)
+        split.setStretchFactor(0, 1)
+        split.setStretchFactor(1, 3)
+        split.setSizes([280, 700])
+        layout.addWidget(split, stretch=1)
+        return page
+
+    def _build_mrs_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        self.mr_summary = QLabel("No merge requests loaded yet.")
+        self.mr_summary.setWordWrap(True)
+        layout.addWidget(self.mr_summary)
+        self.mr_list = QListWidget()
+        layout.addWidget(self.mr_list, stretch=1)
+        row = QHBoxLayout()
+        self.btn_mr_refresh = QPushButton("Refresh MRs")
+        self.btn_mr_refresh.clicked.connect(self._refresh_mrs)
+        row.addWidget(self.btn_mr_refresh)
+        self.btn_mr_open = QPushButton("Open in GitLab")
+        self.btn_mr_open.clicked.connect(self._open_selected_mr)
+        self.btn_mr_open.setEnabled(False)
+        row.addWidget(self.btn_mr_open)
+        row.addStretch(1)
+        layout.addLayout(row)
+        self.mr_list.currentItemChanged.connect(self._on_mr_selected)
+        return page
 
     def _build_pipelines_tab(self) -> QWidget:
         page = QWidget()
@@ -241,7 +316,9 @@ class RepoWindow(QMainWindow):
         self._refresh_changes()
         self._refresh_history()
         self._refresh_branches()
+        self._refresh_compare_refs()
         self._refresh_pipelines()
+        self._refresh_mrs()
 
     def _build_changes_tab(self) -> QWidget:
         page = QWidget()
@@ -986,6 +1063,232 @@ class RepoWindow(QMainWindow):
             status=self.footer.setText,
             working_message="Working…",
         )
+
+    def _refresh_compare_refs(self) -> None:
+        if not hasattr(self, "compare_base"):
+            return
+        try:
+            import labdesk_core
+
+            data = labdesk_core.repo_list_compare_refs(self.repo_path)
+            current = data.get("current") or ""
+            refs = list(data.get("branches") or [])
+            self.compare_base.blockSignals(True)
+            self.compare_other.blockSignals(True)
+            self.compare_base.clear()
+            self.compare_other.clear()
+            for name in refs:
+                self.compare_base.addItem(name)
+                self.compare_other.addItem(name)
+            if current:
+                idx = self.compare_base.findText(current)
+                if idx >= 0:
+                    self.compare_base.setCurrentIndex(idx)
+                origin = f"origin/{current}"
+                oidx = self.compare_other.findText(origin)
+                if oidx >= 0:
+                    self.compare_other.setCurrentIndex(oidx)
+                elif refs:
+                    # Prefer a different local than current when no origin tip.
+                    for i, name in enumerate(refs):
+                        if name != current and not name.startswith("origin/"):
+                            self.compare_other.setCurrentIndex(i)
+                            break
+            self.compare_base.blockSignals(False)
+            self.compare_other.blockSignals(False)
+        except Exception as exc:
+            code, msg = format_error(exc)
+            if hasattr(self, "compare_summary"):
+                self.compare_summary.setText(f"[{code}] {msg}")
+
+    def _run_compare(self) -> None:
+        base = self.compare_base.currentText().strip()
+        other = self.compare_other.currentText().strip()
+        if not base or not other:
+            QMessageBox.information(self, "Compare", "Select base and other refs.")
+            return
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+        online = self._network_available
+
+        def work():
+            import labdesk_core
+
+            cmp = labdesk_core.repo_compare_branches(path, base, other)
+            remote = None
+            if online:
+                try:
+                    info = labdesk_core.resolve_repo_project(path)
+                    pid = int(info["project_id"])
+                    # Check the other tip's branch name on GitLab.
+                    branch = other.split("/", 1)[-1] if other.startswith("origin/") else other
+                    remote = labdesk_core.remote_branch_exists(pid, branch)
+                except Exception as exc:
+                    remote = {"error": str(exc)}
+            return {"compare": cmp, "remote": remote}
+
+        def on_ok(data) -> None:
+            cmp = (data or {}).get("compare") or {}
+            ahead = int(cmp.get("ahead") or 0)
+            behind = int(cmp.get("behind") or 0)
+            lines = [
+                f"{cmp.get('other_ref')} vs {cmp.get('base_ref')}: "
+                f"ahead {ahead}, behind {behind}"
+            ]
+            remote = (data or {}).get("remote")
+            if isinstance(remote, dict):
+                if "exists" in remote:
+                    exists = remote.get("exists")
+                    br = remote.get("branch") or other
+                    lines.append(
+                        f"Remote branch '{br}': "
+                        + ("present on GitLab" if exists else "not found on GitLab")
+                    )
+                elif remote.get("error"):
+                    lines.append(f"Remote check skipped: {remote.get('error')}")
+            elif not online:
+                lines.append("Remote check skipped (offline).")
+            self.compare_summary.setText("\n".join(lines))
+            self.compare_commits.clear()
+            for c in cmp.get("commits") or []:
+                summary = c.get("summary") or ""
+                oid = (c.get("oid") or "")[:8]
+                author = c.get("author") or ""
+                when = _format_commit_time(c.get("time"))
+                label = f"{oid}  {summary}"
+                if author or when:
+                    label += f"\n    {author}  {when}".rstrip()
+                self.compare_commits.addItem(QListWidgetItem(label))
+            _set_colored_diff(self.compare_diff, cmp.get("diff_text") or "")
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self.compare_summary.setText(f"[{code}] {msg}")
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_compare],
+            status=self.footer.setText,
+            working_message="Comparing…",
+        )
+
+    def _apply_mrs_view(self, mrs: list, *, cached: bool = False, fetched_at: str | None = None) -> None:
+        self.mr_list.clear()
+        for mr in mrs:
+            if not isinstance(mr, dict):
+                continue
+            item = QListWidgetItem(_format_mr_row(mr))
+            item.setData(Qt.ItemDataRole.UserRole, mr)
+            self.mr_list.addItem(item)
+        n = len(mrs)
+        meta = f"Opened MRs ({n}"
+        if cached:
+            meta += ", cached"
+        if fetched_at:
+            meta += f", fetched_at {fetched_at}"
+        meta += ")"
+        self.mr_summary.setText(meta)
+        self.btn_mr_open.setEnabled(False)
+
+    def _load_cached_mrs(self) -> None:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+
+        def work():
+            import labdesk_core
+
+            info = labdesk_core.resolve_repo_project(path)
+            project_id = int(info["project_id"])
+            cached = labdesk_core.cached_merge_requests(project_id)
+            return {"project_id": project_id, "cached": cached}
+
+        def on_ok(data) -> None:
+            self._mr_project_id = (data or {}).get("project_id")
+            cached = (data or {}).get("cached")
+            if not cached:
+                self.mr_summary.setText("Offline — no cached merge requests.")
+                self.mr_list.clear()
+                return
+            self._apply_mrs_view(
+                cached.get("merge_requests") or [],
+                cached=True,
+                fetched_at=cached.get("fetched_at"),
+            )
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self.mr_summary.setText(f"Offline — could not load MR cache [{code}]: {msg}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_mr_refresh] if hasattr(self, "btn_mr_refresh") else None,
+            status=self.footer.setText,
+            working_message="Loading cached MRs…",
+        )
+
+    def _refresh_mrs(self) -> None:
+        if not hasattr(self, "mr_list"):
+            return
+        if not self._network_available:
+            self._load_cached_mrs()
+            return
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+
+        def work():
+            import labdesk_core
+
+            info = labdesk_core.resolve_repo_project(path)
+            project_id = int(info["project_id"])
+            result = labdesk_core.refresh_merge_requests(project_id)
+            return {"project_id": project_id, "result": result}
+
+        def on_ok(data) -> None:
+            self._mr_project_id = (data or {}).get("project_id")
+            result = (data or {}).get("result") or {}
+            self._apply_mrs_view(result.get("merge_requests") or [], cached=False)
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            if code.startswith("LD-NET"):
+                self.set_network_available(False)
+                self._load_cached_mrs()
+                return
+            self.mr_summary.setText(f"[{code}] {msg}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_mr_refresh] if hasattr(self, "btn_mr_refresh") else None,
+            status=self.footer.setText,
+            working_message="Loading merge requests…",
+        )
+
+    def _on_mr_selected(self, current, _previous) -> None:
+        mr = current.data(Qt.ItemDataRole.UserRole) if current else None
+        self.btn_mr_open.setEnabled(bool(isinstance(mr, dict) and mr.get("web_url")))
+
+    def _open_selected_mr(self) -> None:
+        item = self.mr_list.currentItem()
+        if item is None:
+            return
+        mr = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(mr, dict) or not mr.get("web_url"):
+            return
+        try:
+            open_url(mr["web_url"])
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
 
     def _apply_pipeline_view(
         self,

@@ -6,7 +6,7 @@ use crate::api_client::GitLabProject;
 use crate::error::{ErrorInfo, LabDeskError, Result};
 use crate::paths::AppPaths;
 
-const SCHEMA_VERSION: &str = "4";
+const SCHEMA_VERSION: &str = "5";
 
 pub fn open(paths: &AppPaths) -> Result<Connection> {
     paths.ensure_dirs().map_err(|e| {
@@ -89,6 +89,19 @@ fn init_schema(conn: &Connection) -> Result<()> {
             jobs_json TEXT,
             fetched_at TEXT NOT NULL,
             PRIMARY KEY (account_id, project_id, ref)
+        );
+        CREATE TABLE IF NOT EXISTS merge_requests (
+            account_id TEXT NOT NULL,
+            project_id INTEGER NOT NULL,
+            mr_iid INTEGER NOT NULL,
+            title TEXT,
+            state TEXT,
+            web_url TEXT,
+            source_branch TEXT,
+            target_branch TEXT,
+            updated_at TEXT,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, project_id, mr_iid)
         );
         "#,
     )
@@ -495,6 +508,99 @@ pub fn get_pipeline(
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct CachedMergeRequest {
+    pub mr_iid: i64,
+    pub title: Option<String>,
+    pub state: Option<String>,
+    pub web_url: Option<String>,
+    pub source_branch: Option<String>,
+    pub target_branch: Option<String>,
+    pub updated_at: Option<String>,
+    pub fetched_at: String,
+}
+
+pub fn replace_merge_requests(
+    conn: &Connection,
+    account_id: &str,
+    project_id: i64,
+    rows: &[crate::api_client::GitLabMergeRequest],
+) -> Result<()> {
+    let tx = conn.unchecked_transaction().map_err(cache_err)?;
+    tx.execute(
+        "DELETE FROM merge_requests WHERE account_id = ?1 AND project_id = ?2",
+        params![account_id, project_id],
+    )
+    .map_err(cache_err)?;
+    let stamp = fetched_stamp();
+    {
+        let mut stmt = tx
+            .prepare(
+                r#"
+                INSERT INTO merge_requests (
+                    account_id, project_id, mr_iid, title, state, web_url,
+                    source_branch, target_branch, updated_at, fetched_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                "#,
+            )
+            .map_err(cache_err)?;
+        for mr in rows {
+            stmt.execute(params![
+                account_id,
+                project_id,
+                mr.iid,
+                mr.title,
+                mr.state,
+                mr.web_url,
+                mr.source_branch,
+                mr.target_branch,
+                mr.updated_at,
+                stamp,
+            ])
+            .map_err(cache_err)?;
+        }
+    }
+    tx.commit().map_err(cache_err)?;
+    Ok(())
+}
+
+pub fn list_cached_merge_requests(
+    conn: &Connection,
+    account_id: &str,
+    project_id: i64,
+) -> Result<Vec<CachedMergeRequest>> {
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT mr_iid, title, state, web_url, source_branch, target_branch,
+                   updated_at, fetched_at
+            FROM merge_requests
+            WHERE account_id = ?1 AND project_id = ?2
+            ORDER BY mr_iid DESC
+            "#,
+        )
+        .map_err(cache_err)?;
+    let rows = stmt
+        .query_map(params![account_id, project_id], |row| {
+            Ok(CachedMergeRequest {
+                mr_iid: row.get(0)?,
+                title: row.get(1)?,
+                state: row.get(2)?,
+                web_url: row.get(3)?,
+                source_branch: row.get(4)?,
+                target_branch: row.get(5)?,
+                updated_at: row.get(6)?,
+                fetched_at: row.get(7)?,
+            })
+        })
+        .map_err(cache_err)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r.map_err(cache_err)?);
+    }
+    Ok(out)
+}
+
 fn cache_err(e: rusqlite::Error) -> LabDeskError {
     LabDeskError::App(
         ErrorInfo::new("LD-CACHE-001", "Cache corrupted. Rebuilding.").with_detail(e.to_string()),
@@ -550,6 +656,27 @@ mod tests {
         assert_eq!(row.ref_name, "main");
         assert!(row.jobs_json.as_ref().unwrap().contains("build"));
         assert!(!row.fetched_at.is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn replace_and_list_merge_requests() {
+        let (root, paths) = temp_paths();
+        let conn = open(&paths).expect("open cache");
+        let mrs = vec![crate::api_client::GitLabMergeRequest {
+            iid: 3,
+            title: Some("Ship it".into()),
+            state: Some("opened".into()),
+            web_url: Some("https://git.example/p/-/merge_requests/3".into()),
+            source_branch: Some("feature".into()),
+            target_branch: Some("main".into()),
+            updated_at: Some("2026-08-13T00:00:00Z".into()),
+        }];
+        replace_merge_requests(&conn, "acc-1", 9, &mrs).expect("replace");
+        let rows = list_cached_merge_requests(&conn, "acc-1", 9).expect("list");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].mr_iid, 3);
+        assert_eq!(rows[0].title.as_deref(), Some("Ship it"));
         let _ = fs::remove_dir_all(root);
     }
 }

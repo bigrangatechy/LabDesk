@@ -239,6 +239,36 @@ Content-Type: application/json
 | `401` | Re-auth PAT |
 | `404` | Project missing or no access |
 
+### 5.5 List merge requests — `GET /projects/:id/merge_requests`
+
+**When:** Repo window **Merge requests** tab (opened MRs for the
+current project).
+
+```http
+GET {api_root}/projects/{id}/merge_requests?state=opened&per_page=50&order_by=updated_at&sort=desc
+PRIVATE-TOKEN: <pat>
+```
+
+| Query | Notes |
+|-------|--------|
+| `state` | `opened` for the thin list (this slice) |
+| `per_page` | Cap **50** |
+| `order_by` / `sort` | Prefer recently updated first |
+
+**Success:** `200` — JSON array. Fields LabDesk caches / shows:
+
+| Field | Use |
+|-------|-----|
+| `iid` | Display `!iid` |
+| `title` | List row |
+| `state` | Badge |
+| `web_url` | Open in GitLab |
+| `source_branch` / `target_branch` | Row summary |
+| `updated_at` | Optional meta |
+
+Replace SQLite rows for `(account_id, project_id)` on successful refresh.
+Offline UI reads the last cache.
+
 ---
 
 ## 6. Pipelines (post-V1)
@@ -280,7 +310,8 @@ PRIVATE-TOKEN: <pat>
 ```
 
 **Success:** `200` — branch exists. **`404`** — missing on remote.
-Used for branch comparison / preflight before MR if implemented.
+Used by the repo **Compare** tab (remote status for the selected
+branch tip) and optional MR preflight.
 
 ---
 

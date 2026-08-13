@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **19:51:52  13/08/2026** — Repo window **Compare** tab (local tip
+  compare + optional remote branch check) and **Merge requests** tab
+  (opened MRs + SQLite cache). Uses existing Flatpak-bundled stack only
+  (vendored libgit2 / PySide6; no host system libs).
 - **19:03:02  13/08/2026** — Multi-host instances + multi-account users
   per host (switchers, unique keyring ids); Projects list filter;
   cache keyed by `account_id`.

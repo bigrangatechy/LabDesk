@@ -252,12 +252,11 @@ remote?” — useful when someone does not commit and push every change.
 Uncommitted work has no push time; the stamp only moves on a successful
 push.
 
-### 4.5 `merge_requests` (deferred)
+### 4.5 `merge_requests` (shipped — opened per project)
 
-**Not in V1.** Creating an MR only needs the API response (`web_url`).
-Revisit a local MR cache if a “recent MRs” UI is added later.
-
-~~Suggested shape (future):~~
+Caches **opened** merge requests for a project so the repo **Merge
+requests** tab can show a thin list offline. Refresh replaces all rows
+for that `(account_id, project_id)`.
 
 | Column | Type | Notes |
 |--------|------|--------|
@@ -269,9 +268,13 @@ Revisit a local MR cache if a “recent MRs” UI is added later.
 | `web_url` | TEXT | |
 | `source_branch` | TEXT | |
 | `target_branch` | TEXT | |
-| `fetched_at` | TEXT | |
+| `updated_at` | TEXT NULL | From API |
+| `fetched_at` | TEXT | When LabDesk wrote the row |
 
-**Primary key (future):** `(account_id, project_id, mr_iid)`
+**Primary key:** `(account_id, project_id, mr_iid)`.
+
+**Schema:** version **5** adds this table (v4 used `account_id` on
+projects/pipelines only). Cache upgrade rebuilds disposable DB.
 
 ### 4.6 `pipelines` (shipped — latest per ref)
 
@@ -345,7 +348,8 @@ proves what libgit2 / the UI can reliably provide.
 3. **`last_push_at` on `local_repos`** — **Intent accepted** (UI frame:
    time since last successful push to remote). Recording vs deriving
    from git: decide while implementing.
-4. ~~**`merge_requests` table in V1**~~ — **Deferred** (not V1).
+4. ~~**`merge_requests` table**~~ — **Accepted:** opened MRs per project
+   for the Merge requests tab (`account_id`); replace on refresh.
 5. ~~**Pipeline primary key / history depth**~~ — **Accepted:** latest
    only per `(account_id, project_id, ref)` + `jobs_json`; no history.
 6. ~~**Multi-instance / multi-account**~~ — **Accepted:** hosts in

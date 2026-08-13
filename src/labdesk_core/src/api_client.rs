@@ -293,6 +293,101 @@ pub fn create_merge_request(
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct GitLabMergeRequest {
+    pub iid: i64,
+    pub title: Option<String>,
+    pub state: Option<String>,
+    pub web_url: Option<String>,
+    pub source_branch: Option<String>,
+    pub target_branch: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+/// Opened MRs for a project (`api-contract` §5.5).
+pub fn list_project_merge_requests(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+) -> Result<Vec<GitLabMergeRequest>> {
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/projects/{}/merge_requests?state=opened&per_page=50&order_by=updated_at&sort=desc",
+        api_root(base_url),
+        project_id
+    );
+    let resp = client
+        .get(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(map_status(status, &body));
+    }
+    serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode merge_requests: {e}")),
+        )
+    })
+}
+
+/// Whether a branch exists on the remote project (`api-contract` §6.4).
+/// Returns `Ok(true)` / `Ok(false)` for 200 / 404; other errors map to LabDesk codes.
+pub fn remote_branch_exists(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    branch: &str,
+) -> Result<bool> {
+    let branch = branch.trim().trim_start_matches("refs/heads/");
+    // Strip remote prefix like origin/ for API branch name.
+    let branch = branch
+        .strip_prefix("origin/")
+        .unwrap_or(branch)
+        .trim();
+    if branch.is_empty() {
+        return Ok(false);
+    }
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/projects/{}/repository/branches/{}",
+        api_root(base_url),
+        project_id,
+        urlencoding_ref(branch)
+    );
+    let resp = client
+        .get(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    if status.as_u16() == 200 {
+        return Ok(true);
+    }
+    if status.as_u16() == 404 {
+        return Ok(false);
+    }
+    let body = resp.text().unwrap_or_default();
+    Err(map_status(status, &body))
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct GitLabPipeline {
     pub id: u64,
     pub status: Option<String>,
