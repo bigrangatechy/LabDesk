@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **14:35:42  13/08/2026** — Pipelines: treat GitLab jobs with
+  `status: manual` as playable (not only `when: manual`), so rules-based
+  manual jobs like Flatpak publish can be started from LabDesk.
 - **14:27:37  13/08/2026** — CI pytest: `format_error` must not treat the
   empty `src/labdesk_core` namespace (PYTHONPATH=src) as the PyO3 module;
   parse `[LD-…]` in pure Python when the extension is missing.

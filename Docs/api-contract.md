@@ -260,8 +260,8 @@ GET {api_root}/projects/{id}/pipelines/{pipeline_id}/jobs
 PRIVATE-TOKEN: <pat>
 ```
 
-LabDesk lists jobs with `when == "manual"` (and status that allows play)
-for the **Play** action.
+LabDesk treats a job as **playable** when `status == "manual"` (GitLab
+play API) or `when == "manual"` (CI yaml). The UI marks those with ▶.
 
 ### 6.3 Play manual job — `POST /projects/:id/jobs/:job_id/play`
 

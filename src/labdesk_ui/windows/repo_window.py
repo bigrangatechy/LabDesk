@@ -38,6 +38,18 @@ def _format_commit_time(epoch: int | float | None) -> str:
         return str(epoch)
 
 
+def _job_is_playable(job: dict) -> bool:
+    """GitLab play API accepts jobs waiting in ``status: manual``.
+
+    ``when`` may also be ``manual`` (CI yaml), but status is what the Jobs
+    API documents for playable actions — rules-based manual jobs sometimes
+    surface mainly via status.
+    """
+    status = (job.get("status") or "").lower()
+    when = (job.get("when") or "").lower()
+    return status == "manual" or when == "manual"
+
+
 def _set_colored_diff(widget: QTextEdit, text: str) -> None:
     widget.clear()
     dark = widget.palette().color(QPalette.ColorRole.Window).lightness() < 128
@@ -1000,12 +1012,11 @@ class RepoWindow(QMainWindow):
             self.btn_pipeline_open.setEnabled(bool(self._pipeline_web_url))
             self.pipeline_jobs.clear()
             for job in jobs:
-                when = (job.get("when") or "").lower()
                 name = job.get("name") or f"job {job.get('id')}"
                 jstatus = job.get("status") or ""
                 label = f"{name}  [{jstatus}]"
-                if when == "manual":
-                    label = f"▶ {label} (manual)"
+                if _job_is_playable(job):
+                    label = f"▶ {label} (manual — Play)"
                 item = QListWidgetItem(label)
                 item.setData(Qt.ItemDataRole.UserRole, job)
                 self.pipeline_jobs.addItem(item)
@@ -1046,10 +1057,15 @@ class RepoWindow(QMainWindow):
         job = item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(job, dict):
             return
-        when = (job.get("when") or "").lower()
-        if when != "manual":
+        if not _job_is_playable(job):
+            status = job.get("status") or "?"
+            when = job.get("when") or "?"
             QMessageBox.information(
-                self, "Play job", "Only manual jobs can be played from LabDesk."
+                self,
+                "Play job",
+                "Only jobs waiting for manual start can be played from LabDesk.\n\n"
+                f"Selected job status={status}, when={when}.\n"
+                "Look for a row marked ▶ (status manual).",
             )
             return
         name = job.get("name") or job.get("id")
