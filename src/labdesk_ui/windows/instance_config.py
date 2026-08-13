@@ -6,9 +6,15 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
+    QHBoxLayout,
+    QLabel,
     QLineEdit,
+    QMessageBox,
+    QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
 
@@ -61,15 +67,31 @@ class InstanceConfigDialog(QDialog):
         self.ssl_mode = QComboBox()
         self.ssl_mode.addItem("Strict (system trust)", "strict")
         self.ssl_mode.addItem("Allow self-signed", "allow_self_signed")
-        self.ssl_mode.addItem("Imported CA (system trust for now)", "imported_ca")
+        self.ssl_mode.addItem("Imported CA", "imported_ca")
         form.addRow("TLS mode", self.ssl_mode)
+
+        ca_row = QWidget()
+        ca_layout = QHBoxLayout(ca_row)
+        ca_layout.setContentsMargins(0, 0, 0, 0)
+        self.ca_status = QLabel()
+        self.ca_status.setWordWrap(True)
+        self.ca_import = QPushButton("Import CA…")
+        self.ca_import.setToolTip(
+            "Copy a PEM/CRT into LabDesk’s trusted_certs/ folder "
+            "(used for API and git HTTPS when TLS mode is Imported CA)."
+        )
+        self.ca_import.clicked.connect(self._on_import_ca)
+        ca_layout.addWidget(self.ca_status, stretch=1)
+        ca_layout.addWidget(self.ca_import)
+        form.addRow("Trusted CAs", ca_row)
+        self._ca_row = ca_row
 
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
@@ -77,6 +99,7 @@ class InstanceConfigDialog(QDialog):
         self._load_instances()
         self.mode.currentIndexChanged.connect(self._sync_mode_ui)
         self.host_pick.currentIndexChanged.connect(self._on_host_picked)
+        self.ssl_mode.currentIndexChanged.connect(self._sync_ca_ui)
 
         if mode == self.MODE_ADD_ACCOUNT:
             idx = self.mode.findData(self.MODE_ADD_ACCOUNT)
@@ -121,6 +144,57 @@ class InstanceConfigDialog(QDialog):
         self.ssl_mode.setEnabled(not add)
         if add:
             self._on_host_picked()
+        self._sync_ca_ui()
+
+    def _sync_ca_ui(self) -> None:
+        add = self._current_mode() == self.MODE_ADD_ACCOUNT and bool(self._instances)
+        show = (not add) and str(self.ssl_mode.currentData()) == "imported_ca"
+        self._ca_row.setVisible(show)
+        if show:
+            self._refresh_ca_status()
+
+    def _list_certs(self) -> list[str]:
+        try:
+            import labdesk_core
+
+            return list(labdesk_core.list_trusted_certs() or [])
+        except Exception:
+            return []
+
+    def _refresh_ca_status(self) -> None:
+        names = self._list_certs()
+        if names:
+            self.ca_status.setText(f"{len(names)} file(s): {', '.join(names)}")
+        else:
+            self.ca_status.setText("No CA files yet — import a PEM or CRT.")
+
+    def _on_import_ca(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import CA certificate",
+            "",
+            "Certificates (*.pem *.crt *.cer);;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            import labdesk_core
+
+            result = labdesk_core.import_trusted_cert(path)
+            name = (result or {}).get("name") or path
+            QMessageBox.information(
+                self,
+                "CA imported",
+                f"Imported {name}.\n"
+                f"Stored under {(result or {}).get('trusted_certs_dir') or 'trusted_certs/'}.",
+            )
+            self._refresh_ca_status()
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Import failed",
+                f"Could not import certificate.\n\n{exc}",
+            )
 
     def _on_host_picked(self) -> None:
         iid = self.host_pick.currentData()
@@ -131,6 +205,21 @@ class InstanceConfigDialog(QDialog):
             idx = self.ssl_mode.findData(ssl)
             if idx >= 0:
                 self.ssl_mode.setCurrentIndex(idx)
+
+    def _on_accept(self) -> None:
+        if (
+            self._current_mode() == self.MODE_NEW_HOST
+            and str(self.ssl_mode.currentData()) == "imported_ca"
+            and not self._list_certs()
+        ):
+            QMessageBox.warning(
+                self,
+                "Import a CA first",
+                "TLS mode is Imported CA, but no certificates are in "
+                "trusted_certs/ yet.\n\nImport a PEM or CRT, then try again.",
+            )
+            return
+        self.accept()
 
     def values(self) -> dict:
         """Return a dict describing the connect action."""

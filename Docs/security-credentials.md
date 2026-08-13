@@ -137,6 +137,19 @@ Per-instance `ssl_mode` (HTTPS):
 - Default for new instances: **`strict`**.
 - `allow_self_signed` must be an explicit user action, not silent.
 
+### 5.1 Imported CA (`ssl_mode = imported_ca`)
+
+- Store user-selected PEMs as files under
+  `{config_dir}/trusted_certs/` (extensions `.pem` / `.crt` / `.cer`).
+- Connect dialog **Import CA…** copies into that folder; filenames are
+  listed in the dialog.
+- **API (reqwest):** each imported PEM is added as an extra root
+  certificate (system roots remain).
+- **Git HTTPS (libgit2):** LabDesk writes a concatenated bundle
+  `trusted_certs/labdesk-ca-bundle.pem` and sets `GIT_SSL_CAINFO` for
+  the duration of clone/fetch/push (serialized).
+- Empty `trusted_certs/` with this mode → **`LD-NET-010`**.
+
 ## 6. SaaS rejection
 
 At instance setup, reject known public SaaS hosts (at least

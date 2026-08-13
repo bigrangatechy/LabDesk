@@ -10,11 +10,25 @@ mod error;
 mod git_ops;
 mod paths;
 mod secrets;
+mod tls;
 
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict};
 
 use crate::error::{ErrorInfo, LabDeskError};
+
+fn ssl_git_opts(ssl_mode: &str) -> Result<(bool, Option<std::path::PathBuf>), LabDeskError> {
+    match ssl_mode {
+        "allow_self_signed" => Ok((true, None)),
+        "imported_ca" => {
+            let paths = paths::AppPaths::detect();
+            let bundle = tls::write_ca_bundle(&paths)?;
+            Ok((false, Some(bundle)))
+        }
+        _ => Ok((false, None)),
+    }
+}
+
 
 /// Return detected config/data paths.
 #[pyfunction]
@@ -29,6 +43,10 @@ fn get_paths(py: Python<'_>) -> PyResult<PyObject> {
         paths.known_good_toml().display().to_string(),
     )?;
     d.set_item("cache_db", paths.cache_db().display().to_string())?;
+    d.set_item(
+        "trusted_certs_dir",
+        paths.trusted_certs_dir().display().to_string(),
+    )?;
     Ok(d.into())
 }
 
@@ -561,7 +579,7 @@ fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<P
         Some(secrets::load_pat(&acc.keyring_account)?)
     };
 
-    let ssl_insecure = inst.ssl_mode == "allow_self_signed";
+    let (ssl_insecure, ssl_ca_bundle) = ssl_git_opts(&inst.ssl_mode)?;
     let dest_owned = dest.clone();
     let url_owned = url.clone();
     py.allow_threads(|| {
@@ -571,6 +589,7 @@ fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<P
             transport: tr,
             pat_fallback: pat.as_deref(),
             ssl_insecure,
+            ssl_ca_bundle: ssl_ca_bundle.as_deref(),
         })
     })?;
 
@@ -1145,12 +1164,13 @@ fn repo_pull(py: Python<'_>, repo_path: String) -> PyResult<String> {
         .into());
     };
     let pat = secrets::load_pat(&acc.keyring_account).ok();
-    let ssl_insecure = inst.ssl_mode == "allow_self_signed";
+    let (ssl_insecure, ssl_ca_bundle) = ssl_git_opts(&inst.ssl_mode)?;
     py.allow_threads(|| {
         let auth = git_ops::AuthOptions {
             pat_fallback: pat.as_deref(),
             ssl_insecure,
             prefer_ssh: false,
+            ssl_ca_bundle: ssl_ca_bundle.as_deref(),
         };
         git_ops::pull(std::path::Path::new(&repo_path), "origin", &auth)
     })
@@ -1169,12 +1189,13 @@ fn repo_fetch(py: Python<'_>, repo_path: String) -> PyResult<()> {
         .into());
     };
     let pat = secrets::load_pat(&acc.keyring_account).ok();
-    let ssl_insecure = inst.ssl_mode == "allow_self_signed";
+    let (ssl_insecure, ssl_ca_bundle) = ssl_git_opts(&inst.ssl_mode)?;
     py.allow_threads(|| {
         let auth = git_ops::AuthOptions {
             pat_fallback: pat.as_deref(),
             ssl_insecure,
             prefer_ssh: false,
+            ssl_ca_bundle: ssl_ca_bundle.as_deref(),
         };
         git_ops::fetch(std::path::Path::new(&repo_path), "origin", &auth)
     })?;
@@ -1213,12 +1234,13 @@ fn repo_push(py: Python<'_>, repo_path: String, force: bool) -> PyResult<()> {
         .into());
     };
     let pat = secrets::load_pat(&acc.keyring_account).ok();
-    let ssl_insecure = inst.ssl_mode == "allow_self_signed";
+    let (ssl_insecure, ssl_ca_bundle) = ssl_git_opts(&inst.ssl_mode)?;
     py.allow_threads(|| {
         let auth = git_ops::AuthOptions {
             pat_fallback: pat.as_deref(),
             ssl_insecure,
             prefer_ssh: false,
+            ssl_ca_bundle: ssl_ca_bundle.as_deref(),
         };
         git_ops::push(std::path::Path::new(&repo_path), "origin", force, &auth)
     })?;
@@ -1544,6 +1566,48 @@ fn get_default_clone_dir(py: Python<'_>) -> PyResult<PyObject> {
     Ok(d.into())
 }
 
+/// List imported CA filenames under trusted_certs/.
+#[pyfunction]
+fn list_trusted_certs(py: Python<'_>) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let files = tls::list_cert_files(&paths)?;
+    let list = pyo3::types::PyList::empty(py);
+    for f in files {
+        let name = f
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        list.append(name)?;
+    }
+    Ok(list.into())
+}
+
+/// Import a PEM/CRT into trusted_certs/; returns dest path + count.
+#[pyfunction]
+fn import_trusted_cert(py: Python<'_>, source_path: String) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let dest = tls::import_cert_file(&paths, std::path::Path::new(&source_path))?;
+    let count = tls::list_cert_files(&paths)?.len();
+    let d = PyDict::new(py);
+    d.set_item("path", dest.display().to_string())?;
+    d.set_item("name", dest.file_name().and_then(|s| s.to_str()).unwrap_or(""))?;
+    d.set_item("count", count)?;
+    d.set_item(
+        "trusted_certs_dir",
+        paths.trusted_certs_dir().display().to_string(),
+    )?;
+    Ok(d.into())
+}
+
+/// Remove an imported CA by filename.
+#[pyfunction]
+fn remove_trusted_cert(name: String) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    tls::remove_cert_file(&paths, &name)?;
+    Ok(())
+}
+
 /// Set and persist `general.default_clone_dir` (expands `~`).
 #[pyfunction]
 fn set_default_clone_dir(py: Python<'_>, path: String) -> PyResult<PyObject> {
@@ -1639,6 +1703,9 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cache_pipeline, m)?)?;
     m.add_function(wrap_pyfunction!(cached_pipeline, m)?)?;
     m.add_function(wrap_pyfunction!(play_job, m)?)?;
+    m.add_function(wrap_pyfunction!(list_trusted_certs, m)?)?;
+    m.add_function(wrap_pyfunction!(import_trusted_cert, m)?)?;
+    m.add_function(wrap_pyfunction!(remove_trusted_cert, m)?)?;
     m.add_function(wrap_pyfunction!(get_default_clone_dir, m)?)?;
     m.add_function(wrap_pyfunction!(set_default_clone_dir, m)?)?;
     m.add_function(wrap_pyfunction!(set_theme, m)?)?;

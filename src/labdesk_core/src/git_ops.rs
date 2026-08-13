@@ -21,12 +21,15 @@ pub struct CloneRequest<'a> {
     pub transport: CloneTransport,
     pub pat_fallback: Option<&'a str>,
     pub ssl_insecure: bool,
+    /// When set (imported CA), libgit2 uses this PEM bundle via GIT_SSL_CAINFO.
+    pub ssl_ca_bundle: Option<&'a Path>,
 }
 
 pub struct AuthOptions<'a> {
     pub pat_fallback: Option<&'a str>,
     pub ssl_insecure: bool,
     pub prefer_ssh: bool,
+    pub ssl_ca_bundle: Option<&'a Path>,
 }
 
 pub fn clone_repository(req: &CloneRequest<'_>) -> Result<()> {
@@ -62,6 +65,11 @@ pub fn clone_repository(req: &CloneRequest<'_>) -> Result<()> {
     }
 
     let auth_pat = req.pat_fallback.map(|s| s.to_string());
+    let _ca_guard = if let Some(bundle) = req.ssl_ca_bundle {
+        Some(crate::tls::GitSslCaInfoGuard::apply(bundle)?)
+    } else {
+        None
+    };
     let mut fetch_opts = FetchOptions::new();
     fetch_opts.remote_callbacks(make_callbacks(
         req.url.to_string(),
@@ -388,6 +396,11 @@ pub fn file_diff(repo_path: &Path, rel_path: &str) -> Result<String> {
 }
 
 pub fn fetch(repo_path: &Path, remote_name: &str, auth: &AuthOptions<'_>) -> Result<()> {
+    let _ca_guard = if let Some(bundle) = auth.ssl_ca_bundle {
+        Some(crate::tls::GitSslCaInfoGuard::apply(bundle)?)
+    } else {
+        None
+    };
     let repo = open_repo(repo_path)?;
     let mut remote = repo.find_remote(remote_name).map_err(|e| {
         LabDeskError::App(
@@ -682,6 +695,11 @@ pub fn push(
                 .with_detail(e.message().to_string()),
         )
     })?;
+    let _ca_guard = if let Some(bundle) = auth.ssl_ca_bundle {
+        Some(crate::tls::GitSslCaInfoGuard::apply(bundle)?)
+    } else {
+        None
+    };
     let url = remote.url().unwrap_or("").to_string();
     let mut opts = PushOptions::new();
     opts.remote_callbacks(make_callbacks(

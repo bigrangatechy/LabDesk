@@ -51,8 +51,11 @@ fn client_for(ssl_mode: &str) -> Result<reqwest::blocking::Client> {
             b = b.danger_accept_invalid_certs(true);
         }
         "imported_ca" => {
-            // Full imported CA support comes later; for now use system trust
-            // and surface LD-NET-010 on failure.
+            let paths = crate::paths::AppPaths::detect();
+            let certs = crate::tls::load_reqwest_certs(&paths)?;
+            for cert in certs {
+                b = b.add_root_certificate(cert);
+            }
         }
         _ => {}
     }

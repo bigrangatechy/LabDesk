@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **21:17:29  13/08/2026** — `ssl_mode = imported_ca`: trust PEMs in
+  `trusted_certs/` for API (reqwest) and git HTTPS (`GIT_SSL_CAINFO`
+  bundle); Connect dialog **Import CA…**; empty folder → `LD-NET-010`.
 - **20:45:45  13/08/2026** — Projects list shows a default-branch pipeline
   status icon (filled on **Refresh projects**; cached offline). Schema v6
   stores `pipeline_status` / `pipeline_web_url` on project rows.

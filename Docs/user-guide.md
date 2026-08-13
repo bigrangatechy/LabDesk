@@ -71,7 +71,10 @@ Under Flatpak, LabDesk keeps its files under:
      HTTPS.
 3. SaaS hosts (`gitlab.com`, `github.com`, …) are rejected.
 4. Choose a TLS mode: **Strict** (default), **Allow self-signed**, or
-   Imported CA.
+   **Imported CA**. For Imported CA, use **Import CA…** to add a
+   PEM/CRT into LabDesk’s `trusted_certs/` folder (used for API and
+   git HTTPS). Connect fails with **`LD-NET-010`** if none are
+   imported.
 5. The PAT is stored in the **system keyring**, not in plain config
    files.
 
