@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStackedWidget,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QTableView,
@@ -352,9 +353,8 @@ class ProjectsView(QWidget):
         self.filter_edit.textChanged.connect(self._on_filter_text_changed)
         layout.addWidget(self.filter_edit)
 
-        self._stack_host = QWidget()
-        stack_layout = QVBoxLayout(self._stack_host)
-        stack_layout.setContentsMargins(0, 0, 0, 0)
+        self._stack_host = QStackedWidget()
+        self._layout_stack = self._stack_host
 
         self._model = _ProjectsTableModel(self)
         self.table = QTableView()
@@ -380,7 +380,7 @@ class ProjectsView(QWidget):
         self.table.setColumnWidth(4, 180)
         self.table.doubleClicked.connect(lambda _idx: self._open_local_repo())
         self.table.selectionModel().selectionChanged.connect(self._on_table_selection)
-        stack_layout.addWidget(self.table)
+        self._layout_stack.addWidget(self.table)
 
         self.cards_scroll = QScrollArea()
         self.cards_scroll.setWidgetResizable(True)
@@ -390,10 +390,9 @@ class ProjectsView(QWidget):
         self.cards_grid.setContentsMargins(4, 4, 4, 4)
         self.cards_grid.setSpacing(8)
         self.cards_scroll.setWidget(self.cards_host)
-        self.cards_scroll.hide()
-        stack_layout.addWidget(self.cards_scroll)
+        self._layout_stack.addWidget(self.cards_scroll)
 
-        layout.addWidget(self._stack_host, stretch=1)
+        layout.addWidget(self._layout_stack, stretch=1)
 
         row = QHBoxLayout()
         self.btn_connect = QPushButton("Add host / account…")
@@ -470,8 +469,9 @@ class ProjectsView(QWidget):
         mode = mode if mode in ("table", "cards") else "table"
         self._layout_mode = mode
         show_cards = mode == "cards"
-        self.table.setVisible(not show_cards)
-        self.cards_scroll.setVisible(show_cards)
+        self._layout_stack.setCurrentWidget(
+            self.cards_scroll if show_cards else self.table
+        )
         if show_cards:
             self._rebuild_cards(filter_projects(self._all_projects, self.filter_edit.text()))
 

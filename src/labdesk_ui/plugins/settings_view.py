@@ -65,6 +65,7 @@ class SettingsView(QWidget):
         self.projects_layout = QComboBox()
         self.projects_layout.addItem("Table", "table")
         self.projects_layout.addItem("Cards", "cards")
+        self.projects_layout.currentIndexChanged.connect(self._on_projects_layout_changed)
         form.addRow("Projects list layout", self.projects_layout)
 
         progress_row = QHBoxLayout()
@@ -145,7 +146,9 @@ class SettingsView(QWidget):
             self.ui_shell.setCurrentIndex(sidx if sidx >= 0 else 0)
             layout = general.get("projects_layout") or "table"
             lidx = self.projects_layout.findData(layout)
+            self.projects_layout.blockSignals(True)
             self.projects_layout.setCurrentIndex(lidx if lidx >= 0 else 0)
+            self.projects_layout.blockSignals(False)
             self._progress_color = str(general.get("progress_overlay_color") or "#2ecc71")
             self.progress_alpha.setValue(int(general.get("progress_overlay_alpha") or 70))
             self._refresh_progress_color_btn()
@@ -174,6 +177,28 @@ class SettingsView(QWidget):
         if chosen.isValid():
             self._progress_color = chosen.name()
             self._refresh_progress_color_btn()
+
+    def _apply_projects_layout_now(self) -> None:
+        """Persist + apply Projects table/cards immediately (does not require Save)."""
+        import labdesk_core
+
+        layout_choice = self.projects_layout.itemData(self.projects_layout.currentIndex())
+        labdesk_core.set_projects_layout(str(layout_choice or "table"))
+        projects = None
+        if hasattr(self._ctx, "view_widget"):
+            projects = self._ctx.view_widget("projects")
+        elif hasattr(self._ctx, "_view_widgets"):
+            projects = self._ctx._view_widgets.get("projects")
+        if projects is not None and hasattr(projects, "apply_prefs"):
+            projects.apply_prefs()
+
+    def _on_projects_layout_changed(self, _index: int = 0) -> None:
+        try:
+            self._apply_projects_layout_now()
+            self._ctx.set_detail("Projects list layout updated.")
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
 
     def _browse_clone_dir(self) -> None:
         start = self.clone_dir.text().strip() or ""
@@ -232,7 +257,12 @@ class SettingsView(QWidget):
             labdesk_core.set_ui_shell(shell)
             if hasattr(self._ctx, "set_ui_shell"):
                 self._ctx.set_ui_shell(shell, persist=False)
-            labdesk_core.set_projects_layout(str(self.projects_layout.currentData() or "table"))
+            # Prefer itemData — currentData() can be None in some PySide builds
+            # even when Cards is selected, which used to force "table" via `or`.
+            layout_choice = self.projects_layout.itemData(
+                self.projects_layout.currentIndex()
+            )
+            labdesk_core.set_projects_layout(str(layout_choice or "table"))
             labdesk_core.set_progress_overlay(
                 self._progress_color,
                 int(self.progress_alpha.value()),

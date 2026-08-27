@@ -18,6 +18,12 @@ bullets without a stamp predate this convention.
 
 ## [Unreleased]
 
+### Fixed
+
+- **20:53:08  27/08/2026** — Projects **Cards** layout sticks: Settings applies
+  the choice immediately (not only via Save/Done), persists with `itemData`,
+  and Projects switches via `QStackedWidget` instead of hide/show.
+
 ### Added
 
 - **20:26:22  27/08/2026** — Projects **table/cards** layout option; clone/push

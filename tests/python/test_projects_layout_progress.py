@@ -112,14 +112,13 @@ def test_layout_mode_toggle_shows_cards_or_table(qapp, monkeypatch, process_even
     parent.show()
     view.show()
     process_events()
-    assert not view.table.isHidden()
-    assert view.cards_scroll.isHidden()
+    assert view._layout_stack.currentWidget() is view.table
 
     FakeCore.layout = "cards"
     view.apply_prefs()
     process_events()
-    assert not view.cards_scroll.isHidden()
-    assert view.table.isHidden()
+    assert view._layout_stack.currentWidget() is view.cards_scroll
+    assert view._layout_mode == "cards"
     assert view._overlay_color.alpha() == 90
     assert view._overlay_color.red() == 255
 
@@ -150,6 +149,23 @@ def test_layout_mode_toggle_shows_cards_or_table(qapp, monkeypatch, process_even
 
     parent.close()
     process_events(20)
+
+
+def test_settings_save_reads_cards_item_data(qapp, monkeypatch, process_events):
+    """Regression: currentData() None must not force table when Cards is selected."""
+    from PySide6.QtWidgets import QComboBox
+
+    box = QComboBox()
+    box.addItem("Table", "table")
+    box.addItem("Cards", "cards")
+    box.setCurrentIndex(1)
+    # Mimic a flaky currentData() while itemData stays correct.
+    monkeypatch.setattr(box, "currentData", lambda *a, **k: None)
+    choice = box.itemData(box.currentIndex())
+    assert choice == "cards"
+    assert str(choice or "table") == "cards"
+    # The old expression would wrongly persist table:
+    assert str(box.currentData() or "table") == "table"
 
 
 def test_filter_still_works_with_cards_data():
