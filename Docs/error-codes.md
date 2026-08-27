@@ -68,7 +68,7 @@ Examples: `LD-AUTH-001`, `LD-CFG-010`, `LD-API-429`.
 |------|------|------------------------|--------|
 | `LD-AUTH-001` | PAT rejected (`401` / invalid) | "Authentication failed. Check your token." | Clear keyring PAT; re-prompt |
 | `LD-AUTH-002` | Keyring unavailable / locked | "Cannot access system keyring." | Block PAT save |
-| `LD-AUTH-003` | Keyring read/write failed | "Could not store or read the access token." | Block; explain |
+| `LD-AUTH-003` | Keyring read/write failed | "Could not store or read the access token." | Retry; unlock Secret Service; LabDesk serializes + retries transient crypto/session errors |
 | `LD-AUTH-004` | PAT missing when API call needs it | "No access token configured." | Open instance setup |
 
 ### GIT — local git & transport

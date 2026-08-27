@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **21:03:10  27/08/2026** — Intermittent `LD-AUTH-003` Secret Service crypto
+  failures (`message decryption failed`): serialize keyring access, retry
+  transient errors with a fresh session, and cache the PAT in-process after
+  a successful read.
 - **20:55:34  27/08/2026** — Save no longer forces Projects layout back to
   table: form values are snapshotted before `set_ui_shell` re-enters
   Settings and reloads from disk.
