@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **20:26:22  27/08/2026** — Projects **table/cards** layout option; clone/push
+  progress as a translucent fill on the matching row/card (colour + alpha
+  in Settings). Core exposes `get_git_op_progress`.
 - **21:17:29  13/08/2026** — `ssl_mode = imported_ca`: trust PEMs in
   `trusted_certs/` for API (reqwest) and git HTTPS (`GIT_SSL_CAINFO`
   bundle); Connect dialog **Import CA…**; empty folder → `LD-NET-010`.

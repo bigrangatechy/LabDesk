@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -60,10 +62,30 @@ class SettingsView(QWidget):
         self.ui_shell.addItem("Sidebar", "sidebar")
         form.addRow("Main window layout", self.ui_shell)
 
+        self.projects_layout = QComboBox()
+        self.projects_layout.addItem("Table", "table")
+        self.projects_layout.addItem("Cards", "cards")
+        form.addRow("Projects list layout", self.projects_layout)
+
+        progress_row = QHBoxLayout()
+        self.progress_color_btn = QPushButton("Choose…")
+        self.progress_color_btn.clicked.connect(self._pick_progress_color)
+        self._progress_color = "#2ecc71"
+        progress_row.addWidget(self.progress_color_btn)
+        self.progress_alpha = QSpinBox()
+        self.progress_alpha.setRange(0, 255)
+        self.progress_alpha.setValue(70)
+        self.progress_alpha.setToolTip("Transparency of the clone/push fill (0 = invisible, 255 = solid)")
+        progress_row.addWidget(QLabel("Alpha"))
+        progress_row.addWidget(self.progress_alpha)
+        progress_row.addStretch(1)
+        form.addRow("Clone/push fill colour", progress_row)
+
         self.check_updates = QCheckBox("Check LabDesk Flatpak updates on startup")
         form.addRow("Updates", self.check_updates)
 
         layout.addLayout(form)
+        self._refresh_progress_color_btn()
 
         update_row = QHBoxLayout()
         self.btn_check_updates = QPushButton("Check for updates now…")
@@ -121,6 +143,12 @@ class SettingsView(QWidget):
             shell = general.get("ui_shell") or "classic"
             sidx = self.ui_shell.findData(shell)
             self.ui_shell.setCurrentIndex(sidx if sidx >= 0 else 0)
+            layout = general.get("projects_layout") or "table"
+            lidx = self.projects_layout.findData(layout)
+            self.projects_layout.setCurrentIndex(lidx if lidx >= 0 else 0)
+            self._progress_color = str(general.get("progress_overlay_color") or "#2ecc71")
+            self.progress_alpha.setValue(int(general.get("progress_overlay_alpha") or 70))
+            self._refresh_progress_color_btn()
             self.check_updates.setChecked(bool(general.get("check_for_updates", True)))
 
             paths = labdesk_core.get_paths()
@@ -131,6 +159,21 @@ class SettingsView(QWidget):
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
+
+    def _refresh_progress_color_btn(self) -> None:
+        self.progress_color_btn.setText(self._progress_color)
+        self.progress_color_btn.setStyleSheet(
+            f"background-color: {self._progress_color}; padding: 4px 12px;"
+        )
+
+    def _pick_progress_color(self) -> None:
+        from PySide6.QtGui import QColor
+
+        initial = QColor(self._progress_color)
+        chosen = QColorDialog.getColor(initial, self, "Clone/push fill colour")
+        if chosen.isValid():
+            self._progress_color = chosen.name()
+            self._refresh_progress_color_btn()
 
     def _browse_clone_dir(self) -> None:
         start = self.clone_dir.text().strip() or ""
@@ -189,7 +232,19 @@ class SettingsView(QWidget):
             labdesk_core.set_ui_shell(shell)
             if hasattr(self._ctx, "set_ui_shell"):
                 self._ctx.set_ui_shell(shell, persist=False)
+            labdesk_core.set_projects_layout(str(self.projects_layout.currentData() or "table"))
+            labdesk_core.set_progress_overlay(
+                self._progress_color,
+                int(self.progress_alpha.value()),
+            )
             labdesk_core.set_check_for_updates(self.check_updates.isChecked())
+            projects = None
+            if hasattr(self._ctx, "view_widget"):
+                projects = self._ctx.view_widget("projects")
+            elif hasattr(self._ctx, "_view_widgets"):
+                projects = self._ctx._view_widgets.get("projects")
+            if projects is not None and hasattr(projects, "apply_prefs"):
+                projects.apply_prefs()
             self._ctx.set_detail("Settings saved.")
             self._load()
             QMessageBox.information(self, "Settings", "Settings saved to config.toml.")

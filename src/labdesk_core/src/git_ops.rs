@@ -76,6 +76,7 @@ pub fn clone_repository(req: &CloneRequest<'_>) -> Result<()> {
         auth_pat,
         req.transport == CloneTransport::Ssh,
         req.ssl_insecure,
+        true,
     ));
 
     let mut builder = RepoBuilder::new();
@@ -415,6 +416,7 @@ pub fn fetch(repo_path: &Path, remote_name: &str, auth: &AuthOptions<'_>) -> Res
         auth.pat_fallback.map(|s| s.to_string()),
         auth.prefer_ssh || remote_url_is_ssh(remote.url()),
         auth.ssl_insecure,
+        false,
     ));
     opts.download_tags(AutotagOption::All);
     remote
@@ -707,6 +709,7 @@ pub fn push(
         auth.pat_fallback.map(|s| s.to_string()),
         auth.prefer_ssh || remote_url_is_ssh(remote.url()),
         auth.ssl_insecure,
+        true,
     ));
 
     remote
@@ -1294,6 +1297,7 @@ fn make_callbacks(
     pat: Option<String>,
     prefer_ssh: bool,
     ssl_insecure: bool,
+    report_progress: bool,
 ) -> RemoteCallbacks<'static> {
     let mut callbacks = RemoteCallbacks::new();
     callbacks.credentials(move |_url, username_from_url, allowed| {
@@ -1308,6 +1312,20 @@ fn make_callbacks(
     if ssl_insecure {
         callbacks.certificate_check(|_cert, _valid| {
             Ok(git2::CertificateCheckStatus::CertificateOk)
+        });
+    }
+    if report_progress {
+        callbacks.transfer_progress(|stats| {
+            crate::git_progress::on_transfer(
+                stats.received_objects(),
+                stats.total_objects(),
+                stats.indexed_objects(),
+                stats.received_bytes(),
+            );
+            true
+        });
+        callbacks.push_transfer_progress(|current, total, bytes| {
+            crate::git_progress::on_transfer(current, total, current, bytes);
         });
     }
     callbacks

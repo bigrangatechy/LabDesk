@@ -27,6 +27,12 @@ pub struct GeneralConfig {
     pub active_ui_view: String,
     /// Main window shell: `classic` (top nav) or `sidebar`.
     pub ui_shell: String,
+    /// Projects list presentation: `table` or `cards`.
+    pub projects_layout: String,
+    /// Hex colour for clone/push row/card fill (e.g. `#2ecc71`).
+    pub progress_overlay_color: String,
+    /// Alpha 0–255 for the progress fill.
+    pub progress_overlay_alpha: u8,
 }
 
 /// GitLab host (machine).
@@ -75,6 +81,9 @@ impl Default for GeneralConfig {
             active_account_id: None,
             active_ui_view: "projects".into(),
             ui_shell: "classic".into(),
+            projects_layout: "table".into(),
+            progress_overlay_color: "#2ecc71".into(),
+            progress_overlay_alpha: 70,
         }
     }
 }
@@ -241,6 +250,9 @@ fn default_config() -> AppConfig {
     general["check_for_updates"] = Item::Value(Value::from(true));
     general["active_ui_view"] = value("projects");
     general["ui_shell"] = value("classic");
+    general["projects_layout"] = value("table");
+    general["progress_overlay_color"] = value("#2ecc71");
+    general["progress_overlay_alpha"] = Item::Value(Value::from(70i64));
     document["general"] = Item::Table(general);
     document["instances"] = Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
     document["accounts"] = Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
@@ -291,6 +303,21 @@ fn read_general(doc: &DocumentMut) -> Result<GeneralConfig> {
             .and_then(|v| v.as_str())
             .unwrap_or("classic")
             .to_string(),
+        projects_layout: table
+            .get("projects_layout")
+            .and_then(|v| v.as_str())
+            .unwrap_or("table")
+            .to_string(),
+        progress_overlay_color: table
+            .get("progress_overlay_color")
+            .and_then(|v| v.as_str())
+            .unwrap_or("#2ecc71")
+            .to_string(),
+        progress_overlay_alpha: table
+            .get("progress_overlay_alpha")
+            .and_then(|v| v.as_integer())
+            .and_then(|n| u8::try_from(n).ok())
+            .unwrap_or(70),
     })
 }
 
@@ -542,6 +569,10 @@ fn sync_document(cfg: &mut AppConfig) {
     }
     general["active_ui_view"] = value(&cfg.general.active_ui_view);
     general["ui_shell"] = value(&cfg.general.ui_shell);
+    general["projects_layout"] = value(&cfg.general.projects_layout);
+    general["progress_overlay_color"] = value(&cfg.general.progress_overlay_color);
+    general["progress_overlay_alpha"] =
+        Item::Value(Value::from(i64::from(cfg.general.progress_overlay_alpha)));
 
     let mut inst_array = toml_edit::ArrayOfTables::new();
     for inst in &cfg.instances {
@@ -836,6 +867,45 @@ pub fn set_ui_shell(paths: &AppPaths, shell: &str) -> Result<()> {
     Ok(())
 }
 
+/// Persist projects list layout (`table` | `cards`).
+pub fn set_projects_layout(paths: &AppPaths, layout: &str) -> Result<()> {
+    let layout = layout.trim();
+    if !matches!(layout, "table" | "cards") {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-CFG-003",
+            "Config value invalid: projects_layout",
+        )));
+    }
+    let mut cfg = load_or_default(paths)?;
+    cfg.general.projects_layout = layout.to_string();
+    save(paths, &mut cfg)?;
+    let _ = save_known_good(paths);
+    Ok(())
+}
+
+fn validate_overlay_color(color: &str) -> Result<String> {
+    let c = color.trim();
+    let hex = c.strip_prefix('#').unwrap_or(c);
+    if hex.len() != 6 || !hex.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-CFG-003",
+            "Config value invalid: progress_overlay_color",
+        )));
+    }
+    Ok(format!("#{}", hex.to_ascii_lowercase()))
+}
+
+/// Persist clone/push progress fill colour + alpha.
+pub fn set_progress_overlay(paths: &AppPaths, color: &str, alpha: u8) -> Result<()> {
+    let color = validate_overlay_color(color)?;
+    let mut cfg = load_or_default(paths)?;
+    cfg.general.progress_overlay_color = color;
+    cfg.general.progress_overlay_alpha = alpha;
+    save(paths, &mut cfg)?;
+    let _ = save_known_good(paths);
+    Ok(())
+}
+
 #[allow(dead_code)]
 pub fn path_exists(path: &Path) -> bool {
     path.exists()
@@ -844,6 +914,8 @@ pub fn path_exists(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn https_public_ok() {
@@ -867,6 +939,45 @@ mod tests {
     #[test]
     fn saas_rejected() {
         assert!(validate_base_url("https://gitlab.com").is_err());
+    }
+
+    #[test]
+    fn projects_layout_and_overlay_round_trip() {
+        let dir = std::env::temp_dir().join(format!(
+            "labdesk-cfg-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        let paths = AppPaths {
+            config_dir: dir.clone(),
+            data_dir: dir.join("data"),
+        };
+        paths.ensure_dirs().unwrap();
+        let mut cfg = load_or_default(&paths).unwrap();
+        assert_eq!(cfg.general.projects_layout, "table");
+        assert_eq!(cfg.general.progress_overlay_color, "#2ecc71");
+        assert_eq!(cfg.general.progress_overlay_alpha, 70);
+
+        set_projects_layout(&paths, "cards").unwrap();
+        set_progress_overlay(&paths, "#ff0000", 120).unwrap();
+        cfg = load_or_default(&paths).unwrap();
+        assert_eq!(cfg.general.projects_layout, "cards");
+        assert_eq!(cfg.general.progress_overlay_color, "#ff0000");
+        assert_eq!(cfg.general.progress_overlay_alpha, 120);
+
+        assert!(set_projects_layout(&paths, "grid").is_err());
+        assert!(set_progress_overlay(&paths, "green", 10).is_err());
+        assert!(set_progress_overlay(&paths, "#gg0000", 10).is_err());
+
+        // Invalid writes must not corrupt the last good values.
+        cfg = load_or_default(&paths).unwrap();
+        assert_eq!(cfg.general.projects_layout, "cards");
+        assert_eq!(cfg.general.progress_overlay_color, "#ff0000");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

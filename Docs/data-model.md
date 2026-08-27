@@ -114,6 +114,9 @@ V1 Settings stays small; the file may grow ahead of the UI.
 | `active_account_id` | string | no | **config / connect flow** | Active account (PAT); **required** once ≥1 account exists; drives API auth |
 | `active_ui_view` | string | no | **View menu** (+ config) | Pluggable main view id (`projects`, `settings`, …); default `projects` |
 | `ui_shell` | string | no | **UI-exposed** | Main-window shell layout: `"classic"` \| `"sidebar"`; default `classic` |
+| `projects_layout` | string | no | **UI-exposed** | Projects list: `"table"` \| `"cards"`; default `table` |
+| `progress_overlay_color` | string | no | **UI-exposed** | Hex `#RRGGBB` fill for clone/push progress on the active project row/card; default `#2ecc71` |
+| `progress_overlay_alpha` | int | no | **UI-exposed** | 0–255 alpha for that fill; default `70` |
 
 ### 3.2 `[[instances]]` — Instance (GitLab host)
 
@@ -160,6 +163,9 @@ active_instance_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 active_account_id = "11111111-2222-3333-4444-555555555555"
 active_ui_view = "projects"
 ui_shell = "classic"
+projects_layout = "table"
+progress_overlay_color = "#2ecc71"
+progress_overlay_alpha = 70
 
 [[instances]]
 id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"

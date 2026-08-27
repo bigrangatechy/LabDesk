@@ -87,7 +87,9 @@ to switch; the Projects list follows the active account.
 ## 4. Settings & preferences
 
 - **Settings → Preferences:** clone folder, theme, window layout
-  (`classic` / `sidebar`), and whether to check for Flatpak updates.
+  (`classic` / `sidebar`), **Projects list layout** (`table` / `cards`),
+  clone/push progress fill colour + alpha, and whether to check for
+  Flatpak updates.
 - **View** menu: switch Projects / Settings and layout.
 - Do **not** put PATs or passwords in config files.
 - If startup hangs for a long time, LabDesk may restore the last good
@@ -103,7 +105,10 @@ to switch; the Projects list follows the active account.
   **active account** (and keeps a local copy for offline browsing).
   It also fills the **pipeline** status icon from each project’s
   default-branch latest pipeline (may take a moment on large lists).
-- **Clone** (HTTPS or SSH) into the default clone folder.
+- Choose **Table** or **Cards** in Settings for how projects are shown.
+- **Clone** (HTTPS or SSH) into the default clone folder. While cloning
+  or pushing, the matching project row/card fills left→right with the
+  configured translucent colour.
 - **Open local** / **Add existing…** attach an already-cloned folder.
 - Double-click a project or use Open local to open a **repo window**.
 

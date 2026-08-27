@@ -8,6 +8,7 @@ mod config;
 mod diff_engine;
 mod error;
 mod git_ops;
+mod git_progress;
 mod paths;
 mod secrets;
 mod tls;
@@ -76,6 +77,15 @@ fn config_to_dict(py: Python<'_>, cfg: &config::AppConfig) -> PyResult<PyObject>
     )?;
     general.set_item("active_ui_view", &cfg.general.active_ui_view)?;
     general.set_item("ui_shell", &cfg.general.ui_shell)?;
+    general.set_item("projects_layout", &cfg.general.projects_layout)?;
+    general.set_item(
+        "progress_overlay_color",
+        &cfg.general.progress_overlay_color,
+    )?;
+    general.set_item(
+        "progress_overlay_alpha",
+        cfg.general.progress_overlay_alpha,
+    )?;
     root.set_item("general", general)?;
 
     let instances = pyo3::types::PyList::empty(py);
@@ -582,7 +592,9 @@ fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<P
     let (ssl_insecure, ssl_ca_bundle) = ssl_git_opts(&inst.ssl_mode)?;
     let dest_owned = dest.clone();
     let url_owned = url.clone();
-    py.allow_threads(|| {
+    let proj_id = project.project_id;
+    git_progress::begin("clone", Some(proj_id));
+    let clone_result = py.allow_threads(|| {
         git_ops::clone_repository(&git_ops::CloneRequest {
             url: &url_owned,
             destination: &dest_owned,
@@ -591,7 +603,9 @@ fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<P
             ssl_insecure,
             ssl_ca_bundle: ssl_ca_bundle.as_deref(),
         })
-    })?;
+    });
+    git_progress::clear();
+    clone_result?;
 
     let local_id = cache::upsert_local_repo(
         &conn,
@@ -1235,7 +1249,14 @@ fn repo_push(py: Python<'_>, repo_path: String, force: bool) -> PyResult<()> {
     };
     let pat = secrets::load_pat(&acc.keyring_account).ok();
     let (ssl_insecure, ssl_ca_bundle) = ssl_git_opts(&inst.ssl_mode)?;
-    py.allow_threads(|| {
+    let mut project_id: Option<i64> = None;
+    if let Ok(conn) = cache::open(&paths) {
+        if let Ok(Some((_, pid, _))) = cache::find_local_repo_by_path(&conn, &repo_path) {
+            project_id = pid;
+        }
+    }
+    git_progress::begin("push", project_id);
+    let push_result = py.allow_threads(|| {
         let auth = git_ops::AuthOptions {
             pat_fallback: pat.as_deref(),
             ssl_insecure,
@@ -1243,7 +1264,9 @@ fn repo_push(py: Python<'_>, repo_path: String, force: bool) -> PyResult<()> {
             ssl_ca_bundle: ssl_ca_bundle.as_deref(),
         };
         git_ops::push(std::path::Path::new(&repo_path), "origin", force, &auth)
-    })?;
+    });
+    git_progress::clear();
+    push_result?;
 
     // Update last_push_at when we can match the path.
     if let Ok(conn) = cache::open(&paths) {
@@ -1654,6 +1677,37 @@ fn set_ui_shell(shell: String) -> PyResult<()> {
     Ok(())
 }
 
+#[pyfunction]
+fn set_projects_layout(layout: String) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    config::set_projects_layout(&paths, &layout)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn set_progress_overlay(color: String, alpha: u8) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    config::set_progress_overlay(&paths, &color, alpha)?;
+    Ok(())
+}
+
+/// Poll clone/push progress (for UI overlay). Empty/inactive when idle.
+#[pyfunction]
+fn get_git_op_progress(py: Python<'_>) -> PyResult<PyObject> {
+    let s = git_progress::snapshot();
+    let fraction = s.fraction();
+    let d = PyDict::new(py);
+    d.set_item("active", s.active)?;
+    d.set_item("kind", s.kind)?;
+    d.set_item("project_id", s.project_id)?;
+    d.set_item("received_objects", s.received_objects)?;
+    d.set_item("total_objects", s.total_objects)?;
+    d.set_item("indexed_objects", s.indexed_objects)?;
+    d.set_item("received_bytes", s.received_bytes)?;
+    d.set_item("fraction", fraction)?;
+    Ok(d.into())
+}
+
 #[pymodule]
 fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_paths, m)?)?;
@@ -1712,6 +1766,9 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_check_for_updates, m)?)?;
     m.add_function(wrap_pyfunction!(set_active_ui_view, m)?)?;
     m.add_function(wrap_pyfunction!(set_ui_shell, m)?)?;
+    m.add_function(wrap_pyfunction!(set_projects_layout, m)?)?;
+    m.add_function(wrap_pyfunction!(set_progress_overlay, m)?)?;
+    m.add_function(wrap_pyfunction!(get_git_op_progress, m)?)?;
     m.add_function(wrap_pyfunction!(validate_base_url, m)?)?;
     m.add_function(wrap_pyfunction!(revert_config_to_known_good, m)?)?;
     m.add_function(wrap_pyfunction!(parse_error_message, m)?)?;

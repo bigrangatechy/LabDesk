@@ -47,6 +47,8 @@ an `[[instances]]` array for a later multi-instance UI.
 3. User picks a project and clone destination (default clone dir from
    preferences).
 4. Clone via libgit2 (**HTTPS via credential helper**, or **SSH**).
+   Progress shows as a translucent fill on the project’s table row or
+   card (colour configurable in Settings).
 5. Open the repo in the main RepoView (**Changes** / **History**;
    Branches later). History lists local commits (newest first) with
    patch vs parent.

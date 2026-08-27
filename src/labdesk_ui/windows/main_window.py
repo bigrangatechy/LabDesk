@@ -750,6 +750,9 @@ class MainWindow(QMainWindow):
         run_in_background(self, work, on_success=on_ok, on_error=on_err)
 
 
+    def view_widget(self, view_id: str) -> QWidget | None:
+        return self._view_widgets.get(view_id)
+
     def switch_view(self, view_id: str, *, persist: bool = True) -> None:
         widget = self._view_widgets.get(view_id)
         if widget is None:

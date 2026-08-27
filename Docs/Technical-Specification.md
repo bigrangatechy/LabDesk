@@ -193,6 +193,9 @@ check_for_updates = true         # UI: Settings — Flatpak remote (Ranga/flatpa
 active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 active_ui_view = "projects"      # View menu (+ config); not Settings form
 ui_shell = "classic"             # UI: Settings / View — "classic" | "sidebar"
+projects_layout = "table"        # UI: Settings — "table" | "cards"
+progress_overlay_color = "#2ecc71"  # UI: Settings — clone/push row fill
+progress_overlay_alpha = 70      # UI: Settings — 0–255
 [[instances]]
 id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 name = "BigRanga Tech GitLab"
