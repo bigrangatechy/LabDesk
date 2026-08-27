@@ -181,12 +181,14 @@ def test_settings_save_snapshots_layout_before_shell_reload(qapp, monkeypatch, p
         def load_config():
             return {
                 "general": {
-                    "theme": "system",
-                    "ui_shell": "classic",
-                    "projects_layout": "table",  # disk still table mid-save
-                    "progress_overlay_color": "#2ecc71",
-                    "progress_overlay_alpha": 70,
-                    "check_for_updates": True,
+                    "theme": saved.get("theme", "system"),
+                    "ui_shell": saved.get("shell", "classic"),
+                    # Mid-save shell reload still sees disk table until set_projects_layout.
+                    # After save, reflect what was persisted.
+                    "projects_layout": saved.get("layout", "table"),
+                    "progress_overlay_color": saved.get("color", "#2ecc71"),
+                    "progress_overlay_alpha": saved.get("alpha", 70),
+                    "check_for_updates": saved.get("updates", True),
                     "default_clone_dir": "~/Projects",
                 }
             }
@@ -248,9 +250,12 @@ def test_settings_save_snapshots_layout_before_shell_reload(qapp, monkeypatch, p
             pass
 
         def set_ui_shell(self, shell: str, *, persist: bool = True) -> None:
-            # Mimic MainWindow: re-activating Settings reloads from disk (table).
+            # Mimic MainWindow: re-activating Settings reloads from disk.
+            # At this point layout is not yet written, so load still returns table.
             self.shell_calls += 1
+            assert saved.get("layout") is None
             view._load()
+            assert view.projects_layout.itemData(view.projects_layout.currentIndex()) == "table"
 
         def view_widget(self, view_id: str):
             return None
