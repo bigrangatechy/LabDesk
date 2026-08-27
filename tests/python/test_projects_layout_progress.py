@@ -168,6 +168,127 @@ def test_settings_save_reads_cards_item_data(qapp, monkeypatch, process_events):
     assert str(box.currentData() or "table") == "table"
 
 
+def test_settings_save_snapshots_layout_before_shell_reload(qapp, monkeypatch, process_events):
+    """Save must not re-read the combo after set_ui_shell triggers Settings._load."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from labdesk_ui.plugins.settings_view import SettingsView
+
+    saved: dict = {}
+
+    class FakeCore:
+        @staticmethod
+        def load_config():
+            return {
+                "general": {
+                    "theme": "system",
+                    "ui_shell": "classic",
+                    "projects_layout": "table",  # disk still table mid-save
+                    "progress_overlay_color": "#2ecc71",
+                    "progress_overlay_alpha": 70,
+                    "check_for_updates": True,
+                    "default_clone_dir": "~/Projects",
+                }
+            }
+
+        @staticmethod
+        def get_default_clone_dir():
+            return {"expanded": "/tmp/projects", "stored": "~/Projects"}
+
+        @staticmethod
+        def get_paths():
+            return {"config_toml": "/tmp/config.toml", "cache_db": "/tmp/cache.db"}
+
+        @staticmethod
+        def set_default_clone_dir(path):
+            saved["clone"] = path
+
+        @staticmethod
+        def set_theme(theme):
+            saved["theme"] = theme
+
+        @staticmethod
+        def set_ui_shell(shell):
+            saved["shell"] = shell
+
+        @staticmethod
+        def set_projects_layout(layout):
+            saved["layout"] = layout
+
+        @staticmethod
+        def set_progress_overlay(color, alpha):
+            saved["color"] = color
+            saved["alpha"] = alpha
+
+        @staticmethod
+        def set_check_for_updates(enabled):
+            saved["updates"] = enabled
+
+    class Ctx:
+        def __init__(self):
+            self.detail = ""
+            self.shell_calls = 0
+
+        def set_status(self, text: str) -> None:
+            pass
+
+        def set_detail(self, text: str) -> None:
+            self.detail = text
+
+        def open_repo_window(self, path: str, title: str | None = None) -> None:
+            pass
+
+        def show_connect_dialog(self, *, mode: str | None = None) -> None:
+            pass
+
+        def refresh_connection_banner(self) -> None:
+            pass
+
+        def switch_view(self, view_id: str, *, persist: bool = True) -> None:
+            pass
+
+        def set_ui_shell(self, shell: str, *, persist: bool = True) -> None:
+            # Mimic MainWindow: re-activating Settings reloads from disk (table).
+            self.shell_calls += 1
+            view._load()
+
+        def view_widget(self, view_id: str):
+            return None
+
+    import sys
+    import types
+
+    fake = types.ModuleType("labdesk_core")
+    for name in dir(FakeCore):
+        if not name.startswith("_"):
+            setattr(fake, name, getattr(FakeCore, name))
+    monkeypatch.setitem(sys.modules, "labdesk_core", fake)
+    monkeypatch.setattr(
+        "labdesk_ui.utils.theme.apply_theme", lambda theme: None, raising=False
+    )
+
+    ctx = Ctx()
+    view = SettingsView(None, ctx)
+    process_events()
+    view.clone_dir.setText("/tmp/projects")
+    view.projects_layout.blockSignals(True)
+    view.projects_layout.setCurrentIndex(view.projects_layout.findData("cards"))
+    view.projects_layout.blockSignals(False)
+    assert view.projects_layout.itemData(view.projects_layout.currentIndex()) == "cards"
+
+    monkeypatch.setattr(
+        QMessageBox, "information", staticmethod(lambda *a, **k: None)
+    )
+    view._save()
+    process_events()
+
+    assert ctx.shell_calls >= 1
+    assert saved.get("layout") == "cards", saved
+    assert view.projects_layout.itemData(view.projects_layout.currentIndex()) == "cards"
+    view.close()
+    process_events(20)
+
+
 def test_filter_still_works_with_cards_data():
     projects = [
         {"name": "a", "path_with_namespace": "ns/a", "name_with_namespace": "ns / a"},

@@ -247,27 +247,31 @@ class SettingsView(QWidget):
             if not clone:
                 QMessageBox.warning(self, "Settings", "Clone folder is required.")
                 return
+
+            # Snapshot form values first. set_ui_shell → switch_view → on_activated
+            # → _load() mid-save would otherwise reset the layout combo from disk
+            # (still "table") and then persist that overwrite.
+            theme = str(self.theme.currentData() or "system")
+            shell = str(self.ui_shell.itemData(self.ui_shell.currentIndex()) or "classic")
+            layout_choice = str(
+                self.projects_layout.itemData(self.projects_layout.currentIndex())
+                or "table"
+            )
+            progress_color = self._progress_color
+            progress_alpha = int(self.progress_alpha.value())
+            check_updates = self.check_updates.isChecked()
+
             labdesk_core.set_default_clone_dir(clone)
-            theme = self.theme.currentData()
-            labdesk_core.set_theme(str(theme))
+            labdesk_core.set_theme(theme)
             from labdesk_ui.utils.theme import apply_theme
 
-            apply_theme(str(theme))
-            shell = str(self.ui_shell.currentData() or "classic")
+            apply_theme(theme)
             labdesk_core.set_ui_shell(shell)
             if hasattr(self._ctx, "set_ui_shell"):
                 self._ctx.set_ui_shell(shell, persist=False)
-            # Prefer itemData — currentData() can be None in some PySide builds
-            # even when Cards is selected, which used to force "table" via `or`.
-            layout_choice = self.projects_layout.itemData(
-                self.projects_layout.currentIndex()
-            )
-            labdesk_core.set_projects_layout(str(layout_choice or "table"))
-            labdesk_core.set_progress_overlay(
-                self._progress_color,
-                int(self.progress_alpha.value()),
-            )
-            labdesk_core.set_check_for_updates(self.check_updates.isChecked())
+            labdesk_core.set_projects_layout(layout_choice)
+            labdesk_core.set_progress_overlay(progress_color, progress_alpha)
+            labdesk_core.set_check_for_updates(check_updates)
             projects = None
             if hasattr(self._ctx, "view_widget"):
                 projects = self._ctx.view_widget("projects")

@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **20:55:34  27/08/2026** — Save no longer forces Projects layout back to
+  table: form values are snapshotted before `set_ui_shell` re-enters
+  Settings and reloads from disk.
 - **20:53:08  27/08/2026** — Projects **Cards** layout sticks: Settings applies
   the choice immediately (not only via Save/Done), persists with `itemData`,
   and Projects switches via `QStackedWidget` instead of hide/show.
