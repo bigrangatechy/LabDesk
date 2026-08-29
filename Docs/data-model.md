@@ -256,6 +256,14 @@ LabDesk needs to remember working copies the user opened/cloned.
 If `path` no longer exists, mark missing in UI; do not auto-delete
 without user action (exact UX in user guide later).
 
+**Host switch (domain ↔ LAN):** When `active_instance_id` changes to a
+host with a different `base_url`, LabDesk may rewrite `origin` on rows
+in this table: only http(s) remotes whose host matched the **previous**
+instance, and only when `path_with_namespace` is present in the **new**
+account’s project cache. The row’s `account_id` / `project_id` /
+`clone_url` are updated to the new account. SSH remotes and clones that
+do not overlap the new account’s projects are not changed.
+
 **Note on `last_push_at`:** This is not a substitute for `git status` /
 ahead-behind. It answers “how long since I last got this onto the
 remote?” — useful when someone does not commit and push every change.

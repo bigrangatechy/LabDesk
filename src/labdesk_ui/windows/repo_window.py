@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QPalette, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -27,6 +27,10 @@ from PySide6.QtWidgets import (
 from labdesk_ui.utils.helpers import format_error
 from labdesk_ui.utils.open_external import open_path, open_url
 from labdesk_ui.windows.mr_dialog import MRDialog
+
+# Hard cap for Changes-tab tracked-file rows. Listing every blob in a large
+# monorepo has aborted Qt (QArrayData::allocate) after long-running sessions.
+_TRACKED_LIST_CAP = 200
 
 
 def _format_commit_time(epoch: int | float | None) -> str:
@@ -190,7 +194,9 @@ class RepoWindow(QMainWindow):
         self._mr_project_id: int | None = None
         self._busy = False
 
-        self.refresh()
+        # Defer initial load so the window can paint before scanning a large tree.
+        self.footer.setText("Loading repository…")
+        QTimer.singleShot(0, self.refresh)
         self.set_network_available(True)
 
     def set_network_available(self, available: bool) -> None:
@@ -312,13 +318,228 @@ class RepoWindow(QMainWindow):
         return page
 
     def refresh(self) -> None:
-        self._refresh_header()
-        self._refresh_changes()
-        self._refresh_history()
-        self._refresh_branches()
-        self._refresh_compare_refs()
+        """Reload local git panels (async) plus online pipeline/MR panels."""
+        self._refresh_local_async()
         self._refresh_pipelines()
         self._refresh_mrs()
+
+    def _refresh_local_async(self) -> None:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+        cap = _TRACKED_LIST_CAP
+
+        def work():
+            import labdesk_core
+
+            branch = labdesk_core.repo_branch(path)
+            summary = ""
+            try:
+                summary = labdesk_core.repo_head_summary(path)
+            except Exception:
+                summary = ""
+            sync = {}
+            try:
+                sync = dict(labdesk_core.repo_ahead_behind(path) or {})
+            except Exception:
+                sync = {}
+            changes = [dict(e) if hasattr(e, "items") else e for e in (labdesk_core.repo_status(path) or [])]
+            # Request one extra path so the UI can show a truncation marker.
+            tracked_raw = list(labdesk_core.repo_list_files(path, cap + 1) or [])
+            tracked_truncated = len(tracked_raw) > cap
+            tracked = tracked_raw[:cap]
+            commits = [
+                dict(c) if hasattr(c, "items") else c
+                for c in (labdesk_core.repo_log(path, 200) or [])
+            ]
+            branches = dict(labdesk_core.repo_list_branches(path) or {})
+            return {
+                "branch": branch,
+                "summary": summary,
+                "sync": sync,
+                "changes": changes,
+                "tracked": tracked,
+                "tracked_truncated": tracked_truncated,
+                "commits": commits,
+                "branches": branches,
+            }
+
+        def on_ok(data) -> None:
+            self._apply_local_refresh(data or {})
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self.footer.setText(f"[{code}] {msg}")
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_refresh],
+            status=self.footer.setText,
+            working_message="Loading repository…",
+        )
+
+    def _apply_local_refresh(self, data: dict) -> None:
+        branch = data.get("branch") or ""
+        summary = data.get("summary") or ""
+        sync = data.get("sync") or {}
+        head_line = f"{self.repo_path}  ({branch})"
+        if summary:
+            head_line += f"\nHEAD: {summary}"
+        try:
+            ahead = int(sync.get("ahead") or 0)
+            behind = int(sync.get("behind") or 0)
+            upstream = sync.get("upstream") or ""
+            if upstream:
+                parts = []
+                if ahead:
+                    parts.append(f"↑{ahead}")
+                if behind:
+                    parts.append(f"↓{behind}")
+                if not parts:
+                    parts.append("up to date")
+                head_line += f"\nUpstream {upstream}: {' '.join(parts)}"
+        except Exception:
+            pass
+        self.header.setText(head_line)
+
+        self._populate_changes(
+            branch=branch,
+            summary=summary,
+            changes=data.get("changes") or [],
+            tracked=data.get("tracked") or [],
+            tracked_truncated=bool(data.get("tracked_truncated")),
+        )
+        self._populate_history(data.get("commits") or [])
+        self._populate_branches(data.get("branches") or {})
+        try:
+            self._refresh_compare_refs()
+        except Exception:
+            pass
+
+    def _populate_changes(
+        self,
+        *,
+        branch: str,
+        summary: str,
+        changes: list,
+        tracked: list,
+        tracked_truncated: bool,
+    ) -> None:
+        self.files.clear()
+        self.diff.clear()
+        self.btn_editor.setEnabled(False)
+
+        if changes:
+            staged_only = [
+                e for e in changes if e.get("staged") and not e.get("unstaged")
+            ]
+            other = [
+                e for e in changes if not (e.get("staged") and not e.get("unstaged"))
+            ]
+            if staged_only:
+                sep = QListWidgetItem("— Staged —")
+                sep.setFlags(Qt.ItemFlag.NoItemFlags)
+                self.files.addItem(sep)
+                for e in staged_only:
+                    self._add_change_item(e)
+            if other:
+                sep = QListWidgetItem("— Changes —")
+                sep.setFlags(Qt.ItemFlag.NoItemFlags)
+                self.files.addItem(sep)
+                for e in other:
+                    self._add_change_item(e)
+
+        sep = QListWidgetItem(
+            "— Working tree clean —" if not changes else "— Tracked files —"
+        )
+        sep.setFlags(Qt.ItemFlag.NoItemFlags)
+        self.files.addItem(sep)
+
+        change_paths = {e.get("path") for e in changes}
+        for path in tracked:
+            if path in change_paths:
+                continue
+            item = QListWidgetItem(f"{'file':10}  {path}")
+            item.setData(
+                Qt.ItemDataRole.UserRole,
+                {"kind": "file", "path": path},
+            )
+            self.files.addItem(item)
+        if tracked_truncated:
+            more = QListWidgetItem(
+                f"— …and more tracked files (showing first {_TRACKED_LIST_CAP}) —"
+            )
+            more.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.files.addItem(more)
+
+        n_changes = len(changes)
+        if n_changes == 0:
+            note = (
+                f"Working tree clean · listing up to {_TRACKED_LIST_CAP} tracked files"
+                + (" (truncated)" if tracked_truncated else "")
+                + ". Use History for commits."
+            )
+            self.footer.setText(note)
+            self.diff.setPlainText(
+                "Working tree clean — no local changes.\n\n"
+                "Tracked files are listed on the left (capped for large repos).\n"
+                "Open the History tab for commit history.\n"
+                f"Branch: {branch}"
+                + (f"\nHEAD: {summary}" if summary else "")
+            )
+            for prefer in ("README.md", "README", "readme.md"):
+                matches = self.files.findItems(
+                    f"{'file':10}  {prefer}", Qt.MatchFlag.MatchExactly
+                )
+                if matches:
+                    self.files.setCurrentItem(matches[0])
+                    break
+        else:
+            n_staged = sum(1 for e in changes if e.get("staged"))
+            self.footer.setText(
+                f"{n_changes} changed path(s) · {n_staged} staged"
+                + (f" · tracked list capped at {_TRACKED_LIST_CAP}" if tracked_truncated else "")
+            )
+
+    def _populate_history(self, commits: list) -> None:
+        self.commits.clear()
+        self.commit_meta.setText("")
+        self.commit_diff.clear()
+        if not commits:
+            self.commits.addItem(QListWidgetItem("(no commits)"))
+            self.commit_meta.setText("This repository has no commits yet.")
+            return
+        for c in commits:
+            when = _format_commit_time(c.get("time"))
+            summary = (c.get("summary") or "(no subject)").replace("\n", " ")
+            short = c.get("short_oid") or ""
+            author = c.get("author_name") or ""
+            label = f"{short}  {summary}"
+            if author or when:
+                label += f"\n    {author}"
+                if when:
+                    label += f" · {when}"
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, c)
+            self.commits.addItem(item)
+        self.commits.setCurrentRow(0)
+        base = self.footer.text().rstrip(" ·")
+        hist = f"{len(commits)} commit(s) in History"
+        self.footer.setText(f"{base} · {hist}" if base else hist)
+
+    def _populate_branches(self, data: dict) -> None:
+        current = data.get("current") or ""
+        self.branches.clear()
+        for name in data.get("branches") or []:
+            label = f"* {name}" if name == current else f"  {name}"
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, name)
+            self.branches.addItem(item)
+            if name == current:
+                self.branches.setCurrentItem(item)
 
     def _build_changes_tab(self) -> QWidget:
         page = QWidget()
@@ -525,22 +746,7 @@ class RepoWindow(QMainWindow):
         )
 
     def _refresh_branches(self) -> None:
-        try:
-            import labdesk_core
-
-            data = labdesk_core.repo_list_branches(self.repo_path)
-            current = data.get("current") or ""
-            self.branches.clear()
-            for name in data.get("branches") or []:
-                label = f"* {name}" if name == current else f"  {name}"
-                item = QListWidgetItem(label)
-                item.setData(Qt.ItemDataRole.UserRole, name)
-                self.branches.addItem(item)
-                if name == current:
-                    self.branches.setCurrentItem(item)
-        except Exception as exc:
-            code, msg = format_error(exc)
-            self.footer.setText(f"[{code}] {msg}")
+        self._refresh_local_async()
 
     def _selected_branch_name(self) -> str | None:
         item = self.branches.currentItem()
@@ -687,94 +893,7 @@ class RepoWindow(QMainWindow):
         )
 
     def _refresh_changes(self) -> None:
-        try:
-            import labdesk_core
-
-            branch = labdesk_core.repo_branch(self.repo_path)
-            summary = ""
-            try:
-                summary = labdesk_core.repo_head_summary(self.repo_path)
-            except Exception:
-                summary = ""
-
-            changes = labdesk_core.repo_status(self.repo_path)
-            tracked = labdesk_core.repo_list_files(self.repo_path)
-
-            self.files.clear()
-            self.diff.clear()
-            self.btn_editor.setEnabled(False)
-
-            if changes:
-                staged_only = [
-                    e for e in changes if e.get("staged") and not e.get("unstaged")
-                ]
-                other = [
-                    e
-                    for e in changes
-                    if not (e.get("staged") and not e.get("unstaged"))
-                ]
-                if staged_only:
-                    sep = QListWidgetItem("— Staged —")
-                    sep.setFlags(Qt.ItemFlag.NoItemFlags)
-                    self.files.addItem(sep)
-                    for e in staged_only:
-                        self._add_change_item(e)
-                if other:
-                    sep = QListWidgetItem("— Changes —")
-                    sep.setFlags(Qt.ItemFlag.NoItemFlags)
-                    self.files.addItem(sep)
-                    for e in other:
-                        self._add_change_item(e)
-
-            sep = QListWidgetItem(
-                "— Working tree clean —" if not changes else "— Tracked files —"
-            )
-            sep.setFlags(Qt.ItemFlag.NoItemFlags)
-            self.files.addItem(sep)
-
-            change_paths = {e.get("path") for e in changes}
-            for path in tracked:
-                if path in change_paths:
-                    continue
-                item = QListWidgetItem(f"{'file':10}  {path}")
-                item.setData(
-                    Qt.ItemDataRole.UserRole,
-                    {"kind": "file", "path": path},
-                )
-                self.files.addItem(item)
-
-            n_changes = len(changes)
-            n_files = len(tracked)
-            if n_changes == 0:
-                self.footer.setText(
-                    f"Working tree clean · {n_files} tracked file(s). "
-                    "Use the History tab for commits."
-                )
-                self.diff.setPlainText(
-                    "Working tree clean — no local changes.\n\n"
-                    "Tracked files are listed on the left; select one to view contents.\n"
-                    "Open the History tab for commit history.\n"
-                    f"Branch: {branch}"
-                    + (f"\nHEAD: {summary}" if summary else "")
-                )
-                for prefer in ("README.md", "README", "readme.md"):
-                    matches = self.files.findItems(
-                        f"{'file':10}  {prefer}", Qt.MatchFlag.MatchExactly
-                    )
-                    if matches:
-                        self.files.setCurrentItem(matches[0])
-                        break
-            else:
-                n_staged = sum(1 for e in changes if e.get("staged"))
-                self.footer.setText(
-                    f"{n_changes} changed path(s) · {n_staged} staged · "
-                    f"{n_files} tracked file(s)"
-                )
-        except Exception as exc:
-            code, msg = format_error(exc)
-            self.footer.setText(f"[{code}] {msg}")
-            self.diff.setPlainText(f"[{code}] {msg}\n\n{exc}")
-            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+        self._refresh_local_async()
 
     def _add_change_item(self, e: dict) -> None:
         status = e.get("status") or "?"
@@ -810,8 +929,7 @@ class RepoWindow(QMainWindow):
 
             n = labdesk_core.repo_stage(self.repo_path, paths)
             self.footer.setText(f"Staged {n} path(s).")
-            self._refresh_changes()
-            self._refresh_header()
+            self._refresh_local_async()
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
@@ -826,8 +944,7 @@ class RepoWindow(QMainWindow):
 
             n = labdesk_core.repo_unstage(self.repo_path, paths)
             self.footer.setText(f"Unstaged {n} path(s).")
-            self._refresh_changes()
-            self._refresh_header()
+            self._refresh_local_async()
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
@@ -845,8 +962,7 @@ class RepoWindow(QMainWindow):
                 return
             n = labdesk_core.repo_stage(self.repo_path, paths)
             self.footer.setText(f"Staged {n} path(s).")
-            self._refresh_changes()
-            self._refresh_header()
+            self._refresh_local_async()
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
@@ -870,41 +986,7 @@ class RepoWindow(QMainWindow):
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
 
     def _refresh_history(self) -> None:
-        try:
-            import labdesk_core
-
-            commits = labdesk_core.repo_log(self.repo_path, 200)
-            self.commits.clear()
-            self.commit_meta.setText("")
-            self.commit_diff.clear()
-
-            if not commits:
-                self.commits.addItem(QListWidgetItem("(no commits)"))
-                self.commit_meta.setText("This repository has no commits yet.")
-                return
-
-            for c in commits:
-                when = _format_commit_time(c.get("time"))
-                summary = (c.get("summary") or "(no subject)").replace("\n", " ")
-                short = c.get("short_oid") or ""
-                author = c.get("author_name") or ""
-                label = f"{short}  {summary}"
-                if author or when:
-                    label += f"\n    {author}"
-                    if when:
-                        label += f" · {when}"
-                item = QListWidgetItem(label)
-                item.setData(Qt.ItemDataRole.UserRole, c)
-                self.commits.addItem(item)
-
-            self.commits.setCurrentRow(0)
-            base = self.footer.text().rstrip(" ·")
-            hist = f"{len(commits)} commit(s) in History"
-            self.footer.setText(f"{base} · {hist}" if base else hist)
-        except Exception as exc:
-            code, msg = format_error(exc)
-            self.commit_meta.setText(f"[{code}] {msg}")
-            self.commit_diff.setPlainText(str(exc))
+        self._refresh_local_async()
 
     def _on_file_selected(self, current: QListWidgetItem | None, _prev) -> None:
         if current is None:
@@ -1038,8 +1120,7 @@ class RepoWindow(QMainWindow):
                 "Push",
                 "Force push succeeded." if force else "Push succeeded.",
             )
-            self._refresh_history()
-            self._refresh_header()
+            self._refresh_local_async()
             if not force and self._network_available:
                 reply = QMessageBox.question(
                     self,

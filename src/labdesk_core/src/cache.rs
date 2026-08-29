@@ -420,6 +420,75 @@ pub fn find_local_repo_by_path(
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct LocalRepoRow {
+    pub path: String,
+    #[allow(dead_code)]
+    pub account_id: Option<String>,
+    #[allow(dead_code)]
+    pub project_id: Option<i64>,
+    #[allow(dead_code)]
+    pub clone_url: Option<String>,
+}
+
+/// All known local working copies (any account).
+pub fn list_local_repos(conn: &Connection) -> Result<Vec<LocalRepoRow>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT path, account_id, project_id, clone_url FROM local_repos ORDER BY path",
+        )
+        .map_err(cache_err)?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(LocalRepoRow {
+                path: row.get(0)?,
+                account_id: row.get(1)?,
+                project_id: row.get(2)?,
+                clone_url: row.get(3)?,
+            })
+        })
+        .map_err(cache_err)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(cache_err)?);
+    }
+    Ok(out)
+}
+
+/// Re-bind a local clone to another account / project / clone URL after host switch.
+pub fn update_local_repo_binding(
+    conn: &Connection,
+    path: &str,
+    account_id: &str,
+    project_id: Option<i64>,
+    clone_url: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE local_repos
+         SET account_id = ?1, project_id = ?2, clone_url = ?3, preferred_remote = 'origin'
+         WHERE path = ?4",
+        params![account_id, project_id, clone_url, path],
+    )
+    .map_err(cache_err)?;
+    Ok(())
+}
+
+/// Find a cached project by path_with_namespace (case-sensitive GitLab path).
+pub fn find_project_by_path(
+    conn: &Connection,
+    account_id: &str,
+    path_with_namespace: &str,
+) -> Result<Option<CachedProject>> {
+    let needle = path_with_namespace.trim().trim_matches('/');
+    if needle.is_empty() {
+        return Ok(None);
+    }
+    let projects = list_projects(conn, account_id)?;
+    Ok(projects
+        .into_iter()
+        .find(|p| p.path_with_namespace.trim().trim_matches('/') == needle))
+}
+
 fn normalize_git_url(url: &str) -> String {
     let u = url.trim().trim_end_matches('/').trim_end_matches(".git");
     u.to_lowercase()

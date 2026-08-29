@@ -581,11 +581,8 @@ class MainWindow(QMainWindow):
             self._switching = True
             self._fill_account_combo(accounts, iid, pick.get("id"))
             self._switching = False
-            labdesk_core.set_active_account(pick["id"])
-            self.refresh_connection_banner()
-            projects = self._view_widgets.get("projects")
-            if projects is not None and hasattr(projects, "on_activated"):
-                projects.on_activated()
+            result = labdesk_core.set_active_account(pick["id"])
+            self._after_account_switch(result)
         except Exception as exc:
             code, msg = format_error(exc)
             self.set_detail(f"[{code}] {msg}")
@@ -599,14 +596,40 @@ class MainWindow(QMainWindow):
         try:
             import labdesk_core
 
-            labdesk_core.set_active_account(aid)
-            self.refresh_connection_banner()
-            projects = self._view_widgets.get("projects")
-            if projects is not None and hasattr(projects, "on_activated"):
-                projects.on_activated()
+            result = labdesk_core.set_active_account(aid)
+            self._after_account_switch(result)
         except Exception as exc:
             code, msg = format_error(exc)
             self.set_detail(f"[{code}] {msg}")
+
+    def _after_account_switch(self, result) -> None:
+        self.refresh_connection_banner()
+        projects = self._view_widgets.get("projects")
+        if projects is not None and hasattr(projects, "on_activated"):
+            projects.on_activated()
+        retargeted = 0
+        base_url = ""
+        if isinstance(result, dict):
+            try:
+                retargeted = int(result.get("retargeted") or 0)
+            except (TypeError, ValueError):
+                retargeted = 0
+            base_url = str(result.get("base_url") or "")
+        if retargeted:
+            host = base_url or "the selected host"
+            self.set_detail(
+                f"Switched host. Updated origin on {retargeted} local "
+                f"clone(s) to use {host}."
+            )
+            self._prune_repo_windows_silent()
+            for win in list(self._repo_windows):
+                if self._repo_window_alive(win) and hasattr(win, "refresh"):
+                    try:
+                        win.refresh()
+                    except Exception:
+                        pass
+        elif base_url:
+            self.set_detail(f"Active host: {base_url}")
 
     def refresh_connection_banner(self) -> None:
         self.refresh_account_switchers()

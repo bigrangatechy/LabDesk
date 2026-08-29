@@ -1160,7 +1160,10 @@ fn commit_to_info(commit: &git2::Commit<'_>) -> CommitInfo {
 }
 
 /// Paths of blobs in HEAD (tracked files). Empty repo / no HEAD → empty list.
-pub fn list_tracked_files(repo_path: &Path) -> Result<Vec<String>> {
+///
+/// When `limit` is set, stop after that many paths (unsorted beyond the walk
+/// order). Used by the UI to avoid allocating huge QListWidgets.
+pub fn list_tracked_files(repo_path: &Path, limit: Option<usize>) -> Result<Vec<String>> {
     let repo = open_repo(repo_path)?;
     let Ok(head) = repo.head() else {
         return Ok(Vec::new());
@@ -1169,11 +1172,16 @@ pub fn list_tracked_files(repo_path: &Path) -> Result<Vec<String>> {
         return Ok(Vec::new());
     };
     let mut out = Vec::new();
-    tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+    let walk = tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
         if entry.kind() == Some(git2::ObjectType::Blob) {
             let name = entry.name().unwrap_or("");
             if name.is_empty() {
                 return git2::TreeWalkResult::Ok;
+            }
+            if let Some(lim) = limit {
+                if out.len() >= lim {
+                    return git2::TreeWalkResult::Abort;
+                }
             }
             let path = if root.is_empty() {
                 name.to_string()
@@ -1183,14 +1191,20 @@ pub fn list_tracked_files(repo_path: &Path) -> Result<Vec<String>> {
             out.push(path);
         }
         git2::TreeWalkResult::Ok
-    })
-    .map_err(|e| {
-        LabDeskError::App(
-            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
-                .with_detail(e.message().to_string()),
-        )
-    })?;
-    out.sort();
+    });
+    // libgit2 reports Abort as GIT_EUSER (-7); that is expected when we hit `limit`.
+    if let Err(e) = walk {
+        let hit_limit = limit.map(|lim| out.len() >= lim).unwrap_or(false);
+        if !(hit_limit && e.code() == git2::ErrorCode::User) {
+            return Err(LabDeskError::App(
+                ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                    .with_detail(e.message().to_string()),
+            ));
+        }
+    }
+    if limit.is_none() {
+        out.sort();
+    }
     Ok(out)
 }
 
@@ -1290,6 +1304,85 @@ pub fn remote_url(repo_path: &Path, remote_name: &str) -> Result<Option<String>>
         return Ok(None);
     };
     Ok(remote.url().map(|s| s.to_string()))
+}
+
+/// Set the URL of an existing remote (`origin`, etc.).
+pub fn set_remote_url(repo_path: &Path, remote_name: &str, url: &str) -> Result<()> {
+    let repo = open_repo(repo_path)?;
+    repo.remote_set_url(remote_name, url).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail(format!("set remote URL: {}", e.message())),
+        )
+    })?;
+    Ok(())
+}
+
+/// True when `remote_url` is http(s) and its host[:port] matches `base_url`.
+pub fn http_remote_matches_base(remote_url: &str, base_url: &str) -> bool {
+    let Ok(remote) = url::Url::parse(remote_url.trim()) else {
+        return false;
+    };
+    let Ok(base) = url::Url::parse(base_url.trim()) else {
+        return false;
+    };
+    if remote.scheme() != "http" && remote.scheme() != "https" {
+        return false;
+    }
+    if base.scheme() != "http" && base.scheme() != "https" {
+        return false;
+    }
+    authority_key(&remote) == authority_key(&base)
+}
+
+fn authority_key(u: &url::Url) -> String {
+    let host = u.host_str().unwrap_or("").to_ascii_lowercase();
+    let port = u.port_or_known_default().unwrap_or(0);
+    format!("{host}:{port}")
+}
+
+/// Repo path_with_namespace from an http(s) remote under `base_url`, if any.
+///
+/// `https://git.example/a/b.git` + base `https://git.example` → `a/b`
+pub fn path_with_namespace_under_base(remote_url: &str, base_url: &str) -> Option<String> {
+    if !http_remote_matches_base(remote_url, base_url) {
+        return None;
+    }
+    let remote = url::Url::parse(remote_url.trim()).ok()?;
+    let mut path = remote.path().trim_start_matches('/').to_string();
+    if path.is_empty() {
+        return None;
+    }
+    if let Some(stripped) = path.strip_suffix(".git") {
+        path = stripped.to_string();
+    }
+    path = path.trim_end_matches('/').to_string();
+    if path.is_empty() {
+        None
+    } else {
+        Some(path)
+    }
+}
+
+/// Build `{to_base}/{path_with_namespace}.git` (no trailing slash on base).
+pub fn http_clone_url_for(base_url: &str, path_with_namespace: &str) -> String {
+    let base = base_url.trim().trim_end_matches('/');
+    let path = path_with_namespace
+        .trim()
+        .trim_start_matches('/')
+        .trim_end_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    format!("{base}/{path}.git")
+}
+
+/// If `remote_url` lives on `from_base`, return the same path on `to_base`.
+pub fn retarget_http_remote_url(
+    remote_url: &str,
+    from_base: &str,
+    to_base: &str,
+) -> Option<String> {
+    let path = path_with_namespace_under_base(remote_url, from_base)?;
+    Some(http_clone_url_for(to_base, &path))
 }
 
 fn make_callbacks(
@@ -1450,6 +1543,107 @@ mod tests {
         assert_eq!(cmp.behind, 0);
         assert!(!cmp.commits.is_empty());
         assert!(cmp.diff_text.contains("two") || cmp.diff_text.contains("+"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn list_tracked_files_respects_limit() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("labdesk-tracked-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-b", "main"]);
+        for i in 0..12 {
+            let name = format!("f{i:02}.txt");
+            fs::write(root.join(&name), format!("{i}\n")).unwrap();
+            git(&root, &["add", &name]);
+        }
+        git(&root, &["commit", "-m", "many files"]);
+        let all = list_tracked_files(&root, None).expect("all");
+        assert_eq!(all.len(), 12);
+        let capped = list_tracked_files(&root, Some(5)).expect("capped");
+        assert_eq!(capped.len(), 5);
+        let probe = list_tracked_files(&root, Some(13)).expect("probe");
+        assert_eq!(probe.len(), 12);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// Regression: unlimited walks on big trees previously fed huge QListWidgets
+    /// (Qt `QArrayData::allocate` ABRT). Cap must stop early without erroring.
+    #[test]
+    fn list_tracked_files_large_tree_cap_does_not_error() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("labdesk-tracked-big-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-b", "main"]);
+        for i in 0..250 {
+            let name = format!("blob_{i:04}.txt");
+            fs::write(root.join(&name), format!("{i}\n")).unwrap();
+            git(&root, &["add", &name]);
+        }
+        git(&root, &["commit", "-m", "250 files"]);
+        let capped = list_tracked_files(&root, Some(200)).expect("capped walk");
+        assert_eq!(capped.len(), 200);
+        let over = list_tracked_files(&root, Some(201)).expect("probe truncate");
+        assert_eq!(over.len(), 201);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn retarget_http_remote_domain_to_lan() {
+        let from = "https://gitlab.example.com";
+        let to = "http://192.168.0.214:8929";
+        let remote = "https://gitlab.example.com/Ranga/labdesk.git";
+        assert!(http_remote_matches_base(remote, from));
+        assert_eq!(
+            path_with_namespace_under_base(remote, from).as_deref(),
+            Some("Ranga/labdesk")
+        );
+        assert_eq!(
+            retarget_http_remote_url(remote, from, to).as_deref(),
+            Some("http://192.168.0.214:8929/Ranga/labdesk.git")
+        );
+        assert!(retarget_http_remote_url(remote, to, from).is_none());
+        assert!(retarget_http_remote_url("git@gitlab.example.com:Ranga/labdesk.git", from, to)
+            .is_none());
+    }
+
+    #[test]
+    fn set_remote_url_updates_origin() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("labdesk-remote-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-b", "main"]);
+        fs::write(root.join("a.txt"), "x\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "init"]);
+        git(
+            &root,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://gitlab.example.com/g/p.git",
+            ],
+        );
+        set_remote_url(
+            &root,
+            "origin",
+            "http://10.0.0.2:8929/g/p.git",
+        )
+        .expect("set url");
+        assert_eq!(
+            remote_url(&root, "origin").unwrap().as_deref(),
+            Some("http://10.0.0.2:8929/g/p.git")
+        );
         let _ = fs::remove_dir_all(root);
     }
 }

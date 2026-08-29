@@ -9,6 +9,7 @@ mod diff_engine;
 mod error;
 mod git_ops;
 mod git_progress;
+mod host_remotes;
 mod paths;
 mod secrets;
 mod tls;
@@ -350,14 +351,45 @@ fn list_accounts(py: Python<'_>, instance_id: Option<String>) -> PyResult<PyObje
 }
 
 /// Switch the active account (and its host).
+///
+/// When the host `base_url` changes (e.g. public domain ↔ LAN), retarget
+/// `origin` on known local clones whose remote still points at the previous
+/// host **and** whose path matches a project on the newly active account.
+/// Unrelated hosts / accounts without overlapping projects are left alone.
 #[pyfunction]
-fn set_active_account(account_id: String) -> PyResult<()> {
+fn set_active_account(py: Python<'_>, account_id: String) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let mut cfg = config::load_or_default(&paths)?;
+    let old_base = cfg
+        .active_instance()
+        .map(|i| i.base_url.clone())
+        .unwrap_or_default();
     config::set_active_account(&mut cfg, &account_id)?;
     config::save(&paths, &mut cfg)?;
     let _ = config::save_known_good(&paths);
-    Ok(())
+    let new_base = cfg
+        .active_instance()
+        .map(|i| i.base_url.clone())
+        .unwrap_or_default();
+    let mut retargeted = 0usize;
+    if !old_base.is_empty()
+        && !new_base.is_empty()
+        && config::normalize_base_url(&old_base) != config::normalize_base_url(&new_base)
+    {
+        if let Ok(conn) = cache::open(&paths).or_else(|_| cache::rebuild(&paths)) {
+            retargeted = host_remotes::retarget_local_remotes_for_host_switch(
+                &conn,
+                &old_base,
+                &new_base,
+                &account_id,
+            )
+            .unwrap_or(0);
+        }
+    }
+    let out = pyo3::types::PyDict::new(py);
+    out.set_item("retargeted", retargeted)?;
+    out.set_item("base_url", &new_base)?;
+    Ok(out.into())
 }
 
 fn refresh_projects_inner(
@@ -829,8 +861,13 @@ fn repo_diff(repo_path: String, rel_path: String) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn repo_list_files(py: Python<'_>, repo_path: String) -> PyResult<PyObject> {
-    let files = git_ops::list_tracked_files(std::path::Path::new(&repo_path))?;
+#[pyo3(signature = (repo_path, limit=None))]
+fn repo_list_files(
+    py: Python<'_>,
+    repo_path: String,
+    limit: Option<usize>,
+) -> PyResult<PyObject> {
+    let files = git_ops::list_tracked_files(std::path::Path::new(&repo_path), limit)?;
     let list = pyo3::types::PyList::empty(py);
     for f in files {
         list.append(f)?;

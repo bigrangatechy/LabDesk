@@ -82,6 +82,15 @@ You can connect **several GitLab machines** and **several accounts** on
 the same machine. Use the host and account selectors in the main window
 to switch; the Projects list follows the active account.
 
+**Same server, domain vs LAN:** add both URLs as separate hosts (each
+with its own account/PAT). When you switch **Host**, LabDesk retargets
+`origin` on local clones that still point at the previous host **and**
+whose project path exists under the newly selected account. Unrelated
+hosts, SSH remotes, and accounts without that project are left alone.
+GitLab’s own `http_url_to_repo` often stays on the public hostname even
+when you talk to the LAN address — LabDesk builds the new remote from
+the selected host’s Base URL.
+
 ---
 
 ## 4. Settings & preferences

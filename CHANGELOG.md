@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **02:28:01  30/08/2026** — Opening a large local repo no longer SIGABRTs in Qt
+  (`QArrayData::allocate`): tracked-file listing is capped, and repo status /
+  history load off the UI thread after the window paints.
 - **21:03:10  27/08/2026** — Intermittent `LD-AUTH-003` Secret Service crypto
   failures (`message decryption failed`): serialize keyring access, retry
   transient errors with a fresh session, and cache the PAT in-process after
@@ -55,6 +58,11 @@ bullets without a stamp predate this convention.
 
 ### Changed
 
+- **02:44:09  30/08/2026** — Switching **Host** (e.g. public domain ↔ LAN)
+  retargets `origin` on local clones that still point at the previous host
+  when the project path exists under the newly selected account; SSH and
+  non-overlapping accounts are left alone. Regression tests cover the
+  tracked-file cap and host-switch remotes.
 - **21:04:31  13/08/2026** — Packaging polish: richer AppStream/desktop
   metadata, `StartupWMClass` aligned with Flatpak desktop id, LabDesk
   logo SVGs for app icon + About wordmark, About shows Flatpak vs
