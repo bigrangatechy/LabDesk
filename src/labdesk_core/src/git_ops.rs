@@ -98,11 +98,25 @@ pub struct FileStatusEntry {
     pub unstaged: bool,
 }
 
+/// Soft cap on status rows returned to the UI (dirty + untracked).
+/// Huge untracked trees previously inflated this into a Qt allocate ABRT.
+pub const STATUS_LIST_CAP: usize = 500;
+
 pub fn repo_status(repo_path: &Path) -> Result<Vec<FileStatusEntry>> {
+    repo_status_limited(repo_path, Some(STATUS_LIST_CAP))
+}
+
+pub fn repo_status_limited(
+    repo_path: &Path,
+    limit: Option<usize>,
+) -> Result<Vec<FileStatusEntry>> {
     let repo = open_repo(repo_path)?;
     let mut opts = StatusOptions::new();
+    // Do not recurse into untracked directories: a single `build/` or
+    // `node_modules/` entry beats enumerating tens of thousands of paths
+    // (memory + Qt list pressure in Flatpak).
     opts.include_untracked(true)
-        .recurse_untracked_dirs(true)
+        .recurse_untracked_dirs(false)
         .include_ignored(false);
 
     let statuses = repo.statuses(Some(&mut opts)).map_err(|e| {
@@ -114,6 +128,11 @@ pub fn repo_status(repo_path: &Path) -> Result<Vec<FileStatusEntry>> {
 
     let mut out = Vec::new();
     for entry in statuses.iter() {
+        if let Some(lim) = limit {
+            if out.len() >= lim {
+                break;
+            }
+        }
         let path = entry.path().unwrap_or("").to_string();
         if path.is_empty() {
             continue;
@@ -355,6 +374,30 @@ pub fn commit_index(repo_path: &Path, message: &str) -> Result<String> {
     Ok(oid.to_string())
 }
 
+/// Cap for text pushed into Qt viewers (diffs / file contents).
+pub const TEXT_VIEW_MAX_CHARS: usize = 200_000;
+
+fn append_diff_line(buf: &mut String, line: &git2::DiffLine<'_>) -> bool {
+    if buf.len() >= TEXT_VIEW_MAX_CHARS {
+        return false;
+    }
+    let origin = line.origin();
+    if origin == '+' || origin == '-' || origin == ' ' || origin == '@' {
+        buf.push(origin);
+    }
+    buf.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
+    true
+}
+
+fn finish_diff_buf(mut buf: String, empty_msg: &str) -> String {
+    if buf.len() >= TEXT_VIEW_MAX_CHARS {
+        buf.push_str("\n\n… (diff truncated)\n");
+    } else if buf.is_empty() {
+        buf = empty_msg.into();
+    }
+    buf
+}
+
 /// Unified diff text for a path (workdir vs HEAD / index as appropriate).
 pub fn file_diff(repo_path: &Path, rel_path: &str) -> Result<String> {
     let repo = open_repo(repo_path)?;
@@ -375,14 +418,7 @@ pub fn file_diff(repo_path: &Path, rel_path: &str) -> Result<String> {
     })?;
 
     let mut buf = String::new();
-    diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
-        let origin = line.origin();
-        if origin == '+' || origin == '-' || origin == ' ' {
-            buf.push(origin);
-        }
-        buf.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
-        true
-    })
+    diff.print(DiffFormat::Patch, |_delta, _hunk, line| append_diff_line(&mut buf, &line))
     .map_err(|e| {
         LabDeskError::App(
             ErrorInfo::new("LD-GIT-001", "Git operation failed.")
@@ -390,10 +426,7 @@ pub fn file_diff(repo_path: &Path, rel_path: &str) -> Result<String> {
         )
     })?;
 
-    if buf.is_empty() {
-        buf = "(no textual diff for this path)\n".into();
-    }
-    Ok(buf)
+    Ok(finish_diff_buf(buf, "(no textual diff for this path)\n"))
 }
 
 pub fn fetch(repo_path: &Path, remote_name: &str, auth: &AuthOptions<'_>) -> Result<()> {
@@ -816,7 +849,6 @@ pub struct BranchCompare {
 }
 
 const COMPARE_COMMIT_LIMIT: usize = 50;
-const COMPARE_DIFF_MAX_CHARS: usize = 200_000;
 
 /// Tip-to-tip compare: ahead/behind of `other` vs `base`, commits on other, unified diff.
 pub fn compare_branches(repo_path: &Path, base_ref: &str, other_ref: &str) -> Result<BranchCompare> {
@@ -891,23 +923,9 @@ pub fn compare_branches(repo_path: &Path, base_ref: &str, other_ref: &str) -> Re
         .diff_tree_to_tree(Some(&base_tree), Some(&other_tree), Some(&mut opts))
         .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
     let mut buf = String::new();
-    diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
-        if buf.len() >= COMPARE_DIFF_MAX_CHARS {
-            return false;
-        }
-        let origin = line.origin();
-        if origin == '+' || origin == '-' || origin == ' ' || origin == '@' {
-            buf.push(origin);
-        }
-        buf.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
-        true
-    })
-    .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
-    if buf.len() >= COMPARE_DIFF_MAX_CHARS {
-        buf.push_str("\n\n… (diff truncated)\n");
-    } else if buf.is_empty() {
-        buf = "(no textual diff between tips)\n".into();
-    }
+    diff.print(DiffFormat::Patch, |_delta, _hunk, line| append_diff_line(&mut buf, &line))
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let buf = finish_diff_buf(buf, "(no textual diff between tips)\n");
 
     Ok(BranchCompare {
         base_ref: base_ref.to_string(),
@@ -1113,25 +1131,15 @@ pub fn commit_diff(repo_path: &Path, oid_str: &str) -> Result<String> {
         })?;
 
     let mut buf = String::new();
-    diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
-        let origin = line.origin();
-        if origin == '+' || origin == '-' || origin == ' ' {
-            buf.push(origin);
-        }
-        buf.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
-        true
-    })
-    .map_err(|e| {
-        LabDeskError::App(
-            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
-                .with_detail(e.message().to_string()),
-        )
-    })?;
+    diff.print(DiffFormat::Patch, |_delta, _hunk, line| append_diff_line(&mut buf, &line))
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                    .with_detail(e.message().to_string()),
+            )
+        })?;
 
-    if buf.is_empty() {
-        buf = "(no textual diff for this commit)\n".into();
-    }
-    Ok(buf)
+    Ok(finish_diff_buf(buf, "(no textual diff for this commit)\n"))
 }
 
 fn commit_to_info(commit: &git2::Commit<'_>) -> CommitInfo {
@@ -1220,6 +1228,20 @@ pub fn show_file(repo_path: &Path, rel_path: &str) -> Result<String> {
 
     let work = repo_path.join(rel);
     if work.is_file() {
+        let meta = std::fs::metadata(&work).map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                    .with_detail(format!("stat {}: {e}", work.display())),
+            )
+        })?;
+        // Avoid reading multi-GB blobs into memory for the viewer.
+        let max_bytes = TEXT_VIEW_MAX_CHARS.saturating_mul(4);
+        if meta.len() as usize > max_bytes {
+            return Ok(format!(
+                "(file too large to preview — {} bytes; open in external editor)\n",
+                meta.len()
+            ));
+        }
         let bytes = std::fs::read(&work).map_err(|e| {
             LabDeskError::App(
                 ErrorInfo::new("LD-GIT-001", "Git operation failed.")
@@ -1251,14 +1273,28 @@ pub fn show_file(repo_path: &Path, rel_path: &str) -> Result<String> {
                 .with_detail(e.message().to_string()),
         )
     })?;
-    Ok(decode_file_bytes(blob.content()))
+    let content = blob.content();
+    let max_bytes = TEXT_VIEW_MAX_CHARS.saturating_mul(4);
+    if content.len() > max_bytes {
+        return Ok(format!(
+            "(file too large to preview — {} bytes; open in external editor)\n",
+            content.len()
+        ));
+    }
+    Ok(decode_file_bytes(content))
 }
 
 fn decode_file_bytes(bytes: &[u8]) -> String {
     if looks_binary(bytes) {
         return format!("(binary file, {} bytes — not shown)\n", bytes.len());
     }
-    String::from_utf8_lossy(bytes).into_owned()
+    let text = String::from_utf8_lossy(bytes);
+    if text.len() > TEXT_VIEW_MAX_CHARS {
+        let mut out = text[..TEXT_VIEW_MAX_CHARS].to_string();
+        out.push_str("\n\n… (file truncated for preview)\n");
+        return out;
+    }
+    text.into_owned()
 }
 
 fn looks_binary(bytes: &[u8]) -> bool {
@@ -1591,6 +1627,55 @@ mod tests {
         assert_eq!(capped.len(), 200);
         let over = list_tracked_files(&root, Some(201)).expect("probe truncate");
         assert_eq!(over.len(), 201);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn status_does_not_recurse_untracked_dirs() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("labdesk-status-untracked-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-b", "main"]);
+        fs::write(root.join("tracked.txt"), "ok\n").unwrap();
+        git(&root, &["add", "tracked.txt"]);
+        git(&root, &["commit", "-m", "init"]);
+        let junk = root.join("build");
+        fs::create_dir_all(&junk).unwrap();
+        for i in 0..80 {
+            fs::write(junk.join(format!("out_{i}.o")), b"x").unwrap();
+        }
+        let statuses = repo_status(&root).expect("status");
+        // One untracked directory entry, not 80 nested files.
+        assert!(
+            statuses.iter().any(|e| e.path == "build" || e.path == "build/"),
+            "expected untracked dir entry, got {statuses:?}"
+        );
+        assert!(
+            !statuses.iter().any(|e| e.path.contains("out_")),
+            "must not recurse untracked dirs: {statuses:?}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn show_file_truncates_large_text() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("labdesk-show-big-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-b", "main"]);
+        let big = "x".repeat(TEXT_VIEW_MAX_CHARS + 5_000);
+        fs::write(root.join("fat.txt"), &big).unwrap();
+        git(&root, &["add", "fat.txt"]);
+        git(&root, &["commit", "-m", "fat"]);
+        let text = show_file(&root, "fat.txt").expect("show");
+        assert!(text.contains("truncated") || text.len() <= TEXT_VIEW_MAX_CHARS + 80);
+        assert!(text.len() < big.len());
         let _ = fs::remove_dir_all(root);
     }
 

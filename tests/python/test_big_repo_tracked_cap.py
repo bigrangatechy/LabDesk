@@ -6,13 +6,54 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QListWidget
 
-from labdesk_ui.windows.repo_window import RepoWindow, _TRACKED_LIST_CAP
+from labdesk_ui.windows.repo_window import (
+    RepoWindow,
+    _CHANGES_LIST_CAP,
+    _TRACKED_LIST_CAP,
+)
 
 
 def test_tracked_list_cap_is_finite_and_small():
     """Guard against raising the UI cap back into 'allocate the world' territory."""
     assert isinstance(_TRACKED_LIST_CAP, int)
     assert 1 <= _TRACKED_LIST_CAP <= 500
+    assert isinstance(_CHANGES_LIST_CAP, int)
+    assert 1 <= _CHANGES_LIST_CAP <= 2000
+
+
+def test_populate_changes_truncates_change_rows(qapp):
+    win = RepoWindow.__new__(RepoWindow)
+    win.files = QListWidget()
+    win.diff = type(
+        "D",
+        (),
+        {
+            "setPlainText": lambda self, *_a, **_k: None,
+            "clear": lambda self: None,
+        },
+    )()
+    win.btn_editor = type("B", (), {"setEnabled": lambda self, *_a, **_k: None})()
+    win.footer = type("F", (), {"setText": lambda self, *_a, **_k: None})()
+
+    changes = [
+        {"path": f"u{i}.txt", "status": "untracked", "staged": False, "unstaged": True}
+        for i in range(_CHANGES_LIST_CAP)
+    ]
+    RepoWindow._populate_changes(
+        win,
+        branch="main",
+        summary="abc",
+        changes=changes,
+        changes_truncated=True,
+        tracked=[],
+        tracked_truncated=False,
+    )
+    markers = sum(
+        1
+        for i in range(win.files.count())
+        if "more changes" in (win.files.item(i).text() or "")
+    )
+    assert markers == 1
 
 
 def test_populate_changes_truncates_tracked_rows(qapp):

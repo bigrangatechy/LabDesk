@@ -39,6 +39,8 @@ from labdesk_ui.windows.mr_dialog import MRDialog
 # Hard cap for Changes-tab tracked-file rows. Listing every blob in a large
 # monorepo has aborted Qt (QArrayData::allocate) after long-running sessions.
 _TRACKED_LIST_CAP = 200
+# Cap for dirty/untracked status rows (core also stops recursing untracked dirs).
+_CHANGES_LIST_CAP = 500
 
 
 def _format_commit_time(epoch: int | float | None) -> str:
@@ -381,7 +383,12 @@ class RepoWindow(QMainWindow):
                 sync = dict(labdesk_core.repo_ahead_behind(path) or {})
             except Exception:
                 sync = {}
-            changes = [dict(e) if hasattr(e, "items") else e for e in (labdesk_core.repo_status(path) or [])]
+            changes_raw = [
+                dict(e) if hasattr(e, "items") else e
+                for e in (labdesk_core.repo_status(path) or [])
+            ]
+            changes_truncated = len(changes_raw) > _CHANGES_LIST_CAP
+            changes = changes_raw[:_CHANGES_LIST_CAP]
             # Request one extra path so the UI can show a truncation marker.
             tracked_raw = list(labdesk_core.repo_list_files(path, cap + 1) or [])
             tracked_truncated = len(tracked_raw) > cap
@@ -396,6 +403,7 @@ class RepoWindow(QMainWindow):
                 "summary": summary,
                 "sync": sync,
                 "changes": changes,
+                "changes_truncated": changes_truncated,
                 "tracked": tracked,
                 "tracked_truncated": tracked_truncated,
                 "commits": commits,
@@ -447,6 +455,7 @@ class RepoWindow(QMainWindow):
             branch=branch,
             summary=summary,
             changes=data.get("changes") or [],
+            changes_truncated=bool(data.get("changes_truncated")),
             tracked=data.get("tracked") or [],
             tracked_truncated=bool(data.get("tracked_truncated")),
         )
@@ -465,6 +474,7 @@ class RepoWindow(QMainWindow):
         changes: list,
         tracked: list,
         tracked_truncated: bool,
+        changes_truncated: bool = False,
     ) -> None:
         self.files.clear()
         self.diff.clear()
@@ -489,6 +499,12 @@ class RepoWindow(QMainWindow):
                 self.files.addItem(sep)
                 for e in other:
                     self._add_change_item(e)
+            if changes_truncated:
+                more = QListWidgetItem(
+                    f"— …and more changes (showing first {_CHANGES_LIST_CAP}) —"
+                )
+                more.setFlags(Qt.ItemFlag.NoItemFlags)
+                self.files.addItem(more)
 
         sep = QListWidgetItem(
             "— Working tree clean —" if not changes else "— Tracked files —"
@@ -539,7 +555,16 @@ class RepoWindow(QMainWindow):
             n_staged = sum(1 for e in changes if e.get("staged"))
             self.footer.setText(
                 f"{n_changes} changed path(s) · {n_staged} staged"
-                + (f" · tracked list capped at {_TRACKED_LIST_CAP}" if tracked_truncated else "")
+                + (
+                    f" · changes list capped at {_CHANGES_LIST_CAP}"
+                    if changes_truncated
+                    else ""
+                )
+                + (
+                    f" · tracked list capped at {_TRACKED_LIST_CAP}"
+                    if tracked_truncated
+                    else ""
+                )
             )
 
     def _populate_history(self, commits: list) -> None:

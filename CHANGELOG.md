@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **03:36:06  30/08/2026** — Large-repo Flatpak follow-up: do not recurse into
+  untracked directories for status, cap Changes-list rows, and truncate file /
+  diff / commit text fed to Qt viewers (avoids another `QArrayData` / OOM path
+  when `build/` or huge lockfiles appear).
 - **02:28:01  30/08/2026** — Opening a large local repo no longer SIGABRTs in Qt
   (`QArrayData::allocate`): tracked-file listing is capped, and repo status /
   history load off the UI thread after the window paints.
