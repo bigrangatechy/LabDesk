@@ -24,6 +24,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from labdesk_ui.utils.forge_labels import (
+    ci_tab_label,
+    forge_info,
+    forge_name,
+    open_in_label,
+    pr_label,
+    pr_label_plural,
+)
 from labdesk_ui.utils.helpers import format_error
 from labdesk_ui.utils.open_external import open_path, open_url
 from labdesk_ui.windows.mr_dialog import MRDialog
@@ -206,42 +214,28 @@ class RepoWindow(QMainWindow):
 
     def _apply_forge_labels(self) -> None:
         """Rename MR/CI tabs and buttons for the active forge."""
-        info = {
-            "forge": "gitlab",
-            "display_name": "GitLab",
-            "pull_request_label": "Merge request",
-            "pull_request_label_plural": "Merge requests",
-            "ci_tab_label": "Pipelines",
-            "supports_play_job": True,
-            "open_in_label": "Open in GitLab",
-        }
-        try:
-            import labdesk_core
-
-            if hasattr(labdesk_core, "active_forge_info"):
-                info.update(dict(labdesk_core.active_forge_info() or {}))
-        except Exception:
-            pass
-        plural = info.get("pull_request_label_plural") or "Merge requests"
-        ci = info.get("ci_tab_label") or "Pipelines"
-        open_lbl = info.get("open_in_label") or f"Open in {info.get('display_name') or 'forge'}"
+        info = forge_info()
         self._forge_info = info
+        plural = pr_label_plural(info)
+        singular = pr_label(info)
+        ci = ci_tab_label(info)
+        open_lbl = open_in_label(info)
         try:
-            self.tabs.setTabText(self._pipelines_tab_index, str(ci))
-            self.tabs.setTabText(self._mrs_tab_index, str(plural))
+            self.tabs.setTabText(self._pipelines_tab_index, ci)
+            self.tabs.setTabText(self._mrs_tab_index, plural)
         except Exception:
             pass
         if hasattr(self, "btn_mr_open"):
-            self.btn_mr_open.setText(str(open_lbl))
+            self.btn_mr_open.setText(open_lbl)
         if hasattr(self, "btn_pipeline_open"):
-            self.btn_pipeline_open.setText(str(open_lbl))
+            self.btn_pipeline_open.setText(open_lbl)
         if hasattr(self, "btn_job_play"):
             playable = bool(info.get("supports_play_job", True))
-            self.btn_job_play.setEnabled(playable and self.btn_job_play.isEnabled())
             self.btn_job_play.setVisible(playable)
         if hasattr(self, "btn_mr"):
-            singular = info.get("pull_request_label") or "Merge request"
             self.btn_mr.setText(f"Create {singular.lower()}…")
+        if hasattr(self, "mr_summary") and "No " in (self.mr_summary.text() or ""):
+            self.mr_summary.setText(f"No {plural.lower()} loaded yet.")
 
     def set_network_available(self, available: bool) -> None:
         self._network_available = available
@@ -854,34 +848,38 @@ class RepoWindow(QMainWindow):
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
 
     def _create_mr(self) -> None:
+        info = getattr(self, "_forge_info", None) or forge_info()
+        kind = pr_label(info)
+        create_title = f"Create {kind.lower()}"
         if not self._network_available:
             QMessageBox.information(
                 self,
-                "Create merge request",
-                "Working offline — cannot create a merge request.",
+                create_title,
+                f"Working offline — cannot create a {kind.lower()}.",
             )
             return
         try:
             import labdesk_core
 
-            info = labdesk_core.resolve_repo_project(self.repo_path)
+            project = labdesk_core.resolve_repo_project(self.repo_path)
             dlg = MRDialog(
-                source_branch=info.get("current_branch")
+                source_branch=project.get("current_branch")
                 or labdesk_core.repo_branch(self.repo_path),
-                target_branch=info.get("default_branch") or "main",
-                project_label=info.get("path_with_namespace") or "",
+                target_branch=project.get("default_branch") or "main",
+                project_label=project.get("path_with_namespace") or "",
                 parent=self,
+                kind_label=kind,
             )
             if dlg.exec() != MRDialog.DialogCode.Accepted:
                 return
             source, target, title, description = dlg.values()
             if not title:
-                QMessageBox.warning(self, "Create merge request", "Title is required.")
+                QMessageBox.warning(self, create_title, "Title is required.")
                 return
             if not source or not target:
                 QMessageBox.warning(
                     self,
-                    "Create merge request",
+                    create_title,
                     "Source and target branches are required.",
                 )
                 return
@@ -892,7 +890,7 @@ class RepoWindow(QMainWindow):
 
         from labdesk_ui.utils.async_jobs import run_in_background
 
-        project_id = int(info["project_id"])
+        project_id = int(project["project_id"])
         desc = description or None
 
         def work():
@@ -909,9 +907,9 @@ class RepoWindow(QMainWindow):
             self.footer.setText(f"Created !{iid}")
             reply = QMessageBox.information(
                 self,
-                "Merge request created",
+                f"{kind} created",
                 f"Created !{iid}: {(mr or {}).get('title') or title}\n\n"
-                f"{(getattr(self, '_forge_info', {}) or {}).get('open_in_label') or 'Open in forge'}?",
+                f"{open_in_label(info)}?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes,
             )
@@ -934,7 +932,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=self._network_busy_widgets(),
             status=self.footer.setText,
-            working_message="Creating merge request…",
+            working_message=f"Creating {kind.lower()}…",
         )
 
     def _refresh_changes(self) -> None:
@@ -1167,10 +1165,13 @@ class RepoWindow(QMainWindow):
             )
             self._refresh_local_async()
             if not force and self._network_available:
+                info = getattr(self, "_forge_info", None) or forge_info()
+                kind = pr_label(info)
                 reply = QMessageBox.question(
                     self,
-                    "Create merge request?",
-                    "Push succeeded. Create a merge request on GitLab now?",
+                    f"Create {kind.lower()}?",
+                    f"Push succeeded. Create a {kind.lower()} on "
+                    f"{forge_name(info)} now?",
                 )
                 if reply == QMessageBox.StandardButton.Yes:
                     self._create_mr()
@@ -1247,7 +1248,7 @@ class RepoWindow(QMainWindow):
                 try:
                     info = labdesk_core.resolve_repo_project(path)
                     pid = int(info["project_id"])
-                    # Check the other tip's branch name on GitLab.
+                    # Check the other tip's branch name on the forge.
                     branch = other.split("/", 1)[-1] if other.startswith("origin/") else other
                     remote = labdesk_core.remote_branch_exists(pid, branch)
                 except Exception as exc:
@@ -1267,9 +1268,14 @@ class RepoWindow(QMainWindow):
                 if "exists" in remote:
                     exists = remote.get("exists")
                     br = remote.get("branch") or other
+                    host = forge_name(getattr(self, "_forge_info", None))
                     lines.append(
                         f"Remote branch '{br}': "
-                        + ("present on GitLab" if exists else "not found on GitLab")
+                        + (
+                            f"present on {host}"
+                            if exists
+                            else f"not found on {host}"
+                        )
                     )
                 elif remote.get("error"):
                     lines.append(f"Remote check skipped: {remote.get('error')}")
@@ -1311,7 +1317,8 @@ class RepoWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, mr)
             self.mr_list.addItem(item)
         n = len(mrs)
-        meta = f"Opened MRs ({n}"
+        plural = pr_label_plural(getattr(self, "_forge_info", None))
+        meta = f"Opened {plural.lower()} ({n}"
         if cached:
             meta += ", cached"
         if fetched_at:
@@ -1333,11 +1340,13 @@ class RepoWindow(QMainWindow):
             cached = labdesk_core.cached_merge_requests(project_id)
             return {"project_id": project_id, "cached": cached}
 
+        plural = pr_label_plural(getattr(self, "_forge_info", None)).lower()
+
         def on_ok(data) -> None:
             self._mr_project_id = (data or {}).get("project_id")
             cached = (data or {}).get("cached")
             if not cached:
-                self.mr_summary.setText("Offline — no cached merge requests.")
+                self.mr_summary.setText(f"Offline — no cached {plural}.")
                 self.mr_list.clear()
                 return
             self._apply_mrs_view(
@@ -1347,7 +1356,9 @@ class RepoWindow(QMainWindow):
             )
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
-            self.mr_summary.setText(f"Offline — could not load MR cache [{code}]: {msg}")
+            self.mr_summary.setText(
+                f"Offline — could not load {plural} cache [{code}]: {msg}"
+            )
 
         run_in_background(
             self,
@@ -1356,7 +1367,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=[self.btn_mr_refresh] if hasattr(self, "btn_mr_refresh") else None,
             status=self.footer.setText,
-            working_message="Loading cached MRs…",
+            working_message=f"Loading cached {plural}…",
         )
 
     def _refresh_mrs(self) -> None:
@@ -1396,7 +1407,9 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=[self.btn_mr_refresh] if hasattr(self, "btn_mr_refresh") else None,
             status=self.footer.setText,
-            working_message="Loading merge requests…",
+            working_message=(
+                f"Loading {pr_label_plural(getattr(self, '_forge_info', None)).lower()}…"
+            ),
         )
 
     def _on_mr_selected(self, current, _previous) -> None:

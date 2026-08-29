@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from labdesk_ui.plugins import ensure_builtin_views, list_views
+from labdesk_ui.utils.forge_labels import instance_label, pr_label
 from labdesk_ui.utils.helpers import format_error
 from labdesk_ui.utils.theme import apply_theme
 from labdesk_ui.windows.instance_config import InstanceConfigDialog
@@ -529,7 +530,7 @@ class MainWindow(QMainWindow):
             self.combo_instance.blockSignals(True)
             self.combo_instance.clear()
             for inst in instances:
-                label = f"{inst.get('name') or 'GitLab'} — {inst.get('base_url') or ''}"
+                label = instance_label(inst)
                 self.combo_instance.addItem(label, inst.get("id"))
             if active_iid:
                 idx = self.combo_instance.findData(active_iid)
@@ -641,7 +642,7 @@ class MainWindow(QMainWindow):
             accounts = cfg.get("accounts") or []
             if not accounts:
                 self.status.setText(
-                    "No GitLab account configured yet.\n"
+                    "No forge account configured yet.\n"
                     "Add a self-hosted host and account to get started."
                 )
                 self.detail.setText("")
@@ -674,9 +675,11 @@ class MainWindow(QMainWindow):
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
             if code == "LD-NET-001":
+                kind = pr_label()
                 self.status.setText(
                     f"Working offline — [{code}] {msg}\n"
-                    "Local git still works; push / MR / project refresh are disabled."
+                    f"Local git still works; push / {kind.lower()} / "
+                    "project refresh are disabled."
                 )
                 self.detail.setText(str(exc))
                 self.set_network_available(False, detail=str(exc))
@@ -723,7 +726,7 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(
             self,
             "Welcome to LabDesk",
-            "No GitLab account is configured yet.\n\n"
+            "No forge account is configured yet.\n\n"
             "Add a self-hosted host and account to get started?",
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -914,7 +917,7 @@ class MainWindow(QMainWindow):
         pack = "Flatpak" if is_flatpak() else "unpackaged (dev)"
         text = (
             f"LabDesk {APP_VERSION} ({pack})\n"
-            "Desktop client for self-hosted GitLab.\n"
+            "Desktop client for self-hosted GitLab, Gitea, Forgejo, and OneDev.\n"
             f"Linux · GPLv2+{core_line}\n"
             "Updates: Flatpak remote from Ranga/flatpaks"
         )

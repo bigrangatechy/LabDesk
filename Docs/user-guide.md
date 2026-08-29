@@ -12,7 +12,7 @@ This guide is also available in the app under **Help → User Guide…**.
 - Linux desktop client for **self-hosted** GitLab, Gitea, Forgejo, and
   OneDev (not public SaaS forges).
 - Local git (commit, branch, diff) plus forge features (project list,
-  merge requests, pipeline status).
+  merge/pull requests, CI / pipeline status).
 - Distributed as a **Flatpak**.
 - **Help → About** shows the version (`YYYY.MM.DD` on Flatpak builds;
   `dev` when run unpackaged) and whether you are on Flatpak.
@@ -81,18 +81,18 @@ Under Flatpak, LabDesk keeps its files under:
 5. The PAT is stored in the **system keyring**, not in plain config
    files.
 
-You can connect **several GitLab machines** and **several accounts** on
-the same machine. Use the host and account selectors in the main window
-to switch; the Projects list follows the active account.
+You can connect **several forge hosts** and **several accounts** on the
+same machine. Use the host and account selectors in the main window to
+switch; the Projects list follows the active account.
 
 **Same server, domain vs LAN:** add both URLs as separate hosts (each
 with its own account/PAT). When you switch **Host**, LabDesk retargets
 `origin` on local clones that still point at the previous host **and**
 whose project path exists under the newly selected account. Unrelated
 hosts, SSH remotes, and accounts without that project are left alone.
-GitLab’s own `http_url_to_repo` often stays on the public hostname even
-when you talk to the LAN address — LabDesk builds the new remote from
-the selected host’s Base URL.
+Some forges’ clone URLs stay on the public hostname even when you talk
+to the LAN address — LabDesk builds the new remote from the selected
+host’s Base URL.
 
 ---
 
@@ -113,10 +113,10 @@ the selected host’s Base URL.
 
 - **Filter projects…** narrows the list by name or namespace path
   (local cache only).
-- **Refresh projects** loads your project list from GitLab for the
+- **Refresh projects** loads your project list from the forge for the
   **active account** (and keeps a local copy for offline browsing).
-  It also fills the **pipeline** status icon from each project’s
-  default-branch latest pipeline (may take a moment on large lists).
+  It also fills the **pipeline / CI** status icon from each project’s
+  default-branch latest run (may take a moment on large lists).
 - Choose **Table** or **Cards** in Settings for how projects are shown.
 - **Clone** (HTTPS or SSH) into the default clone folder. While cloning
   or pushing, the matching project row/card fills left→right with the
@@ -136,23 +136,26 @@ In the repo window:
   only; if there are conflicts, resolve them outside LabDesk).
 - **Compare:** pick two branches (local or `origin/…`), see ahead/behind,
   recent commits, and a read-only tip diff. When online, LabDesk can
-  check whether the other branch exists on GitLab.
-- **Merge requests:** opened MRs for this project (refresh while online;
-  last list kept for offline viewing). **Open in GitLab** for the
-  selected row.
+  check whether the other branch exists on the forge.
+- **Merge / pull requests:** opened items for this project (tab label
+  follows the forge; refresh while online; last list kept for offline
+  viewing). **Open in …** opens the selected row in the browser.
 - **Fetch / Pull / Push** and ahead/behind vs upstream in the header.
 - **Force push…** only after an explicit confirmation.
 - After a successful (non-force) push, LabDesk may offer to **create a
-  merge request**.
+  merge or pull request** (wording matches the active forge).
 
 ---
 
-## 7. Pipelines
+## 7. Pipelines / CI
 
-- **Pipelines** tab: latest pipeline for the **current branch**.
-- Status chip in the header; **Open in GitLab** opens the pipeline URL.
-- Job list shows stage, name, and status. Rows marked **▶** are waiting
-  for manual start — select one and **Play manual job…** (confirm first).
+- **Pipelines** (or forge-equivalent) tab: latest run for the **current
+  branch**.
+- Status chip in the header; **Open in …** opens the run URL in the
+  browser.
+- Job list shows stage, name, and status. On GitLab, rows marked **▶**
+  are waiting for manual start — select one and **Play manual job…**
+  (confirm first). Other forges hide Play when unsupported.
 - After an online refresh, the last status and jobs are kept so you can
   still see them offline. **Play is disabled offline.**
 
@@ -160,12 +163,13 @@ In the repo window:
 
 ## 8. Working offline
 
-- A banner shows **Working offline** when GitLab cannot be reached.
+- A banner shows **Working offline** when the forge cannot be reached.
 - Still works: local Changes / History / Branches / Compare / commit /
-  open editor; last project list; last pipeline status and opened MRs
-  (if you refreshed earlier).
+  open editor; last project list; last CI status and opened merge/pull
+  requests (if you refreshed earlier).
 - Disabled: refreshing projects from the server, clone, pull/push/force
-  push, create MR, play CI jobs, live remote branch check.
+  push, create merge/pull request, play CI jobs, live remote branch
+  check.
 
 ---
 
@@ -195,7 +199,7 @@ In the repo window:
 - API PAT → OS keyring only.
 - Git HTTPS passwords → Git credential helper.
 - Never paste PATs into chat, issues, or screenshots.
-- LAN `http://` GitLab: the PAT travels in cleartext — trusted networks
+- LAN `http://` forge: the PAT travels in cleartext — trusted networks
   only.
 
 ---

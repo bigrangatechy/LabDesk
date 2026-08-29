@@ -1,4 +1,4 @@
-"""Create merge request dialog."""
+"""Create merge / pull request dialog (forge-aware title)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from labdesk_ui.utils.forge_labels import forge_info, pr_label
+
 
 class MRDialog(QDialog):
     def __init__(
@@ -21,9 +23,11 @@ class MRDialog(QDialog):
         target_branch: str,
         project_label: str = "",
         parent=None,
+        kind_label: str | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Create merge request")
+        label = kind_label or pr_label(forge_info())
+        self.setWindowTitle(f"Create {label.lower()}")
         self.resize(480, 360)
 
         layout = QVBoxLayout(self)

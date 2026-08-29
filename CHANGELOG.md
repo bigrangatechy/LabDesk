@@ -64,6 +64,12 @@ bullets without a stamp predate this convention.
 
 ### Changed
 
+- **03:29:25  30/08/2026** — Forge-aware UI copy: merge/pull request dialogs,
+  repo tabs/buttons, push→create prompt, compare remote check, offline
+  banners, About, and host combo fallbacks follow the active forge (no more
+  hard-coded “GitLab” / “merge request” where the host is Gitea/Forgejo/
+  OneDev). User guide wording updated to match.
+
 - **02:44:09  30/08/2026** — Switching **Host** (e.g. public domain ↔ LAN)
   retargets `origin` on local clones that still point at the previous host
   when the project path exists under the newly selected account; SSH and

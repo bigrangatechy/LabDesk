@@ -1,4 +1,4 @@
-"""Connect dialog — new GitLab host or add account on an existing host."""
+"""Connect dialog — new forge host or add account on an existing host."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from labdesk_ui.utils.forge_labels import instance_label
 
 
 class InstanceConfigDialog(QDialog):
@@ -128,8 +130,7 @@ class InstanceConfigDialog(QDialog):
         except Exception:
             self._instances = []
         for inst in self._instances:
-            label = f"{inst.get('name') or 'GitLab'} — {inst.get('base_url') or ''}"
-            self.host_pick.addItem(label, inst.get("id"))
+            self.host_pick.addItem(instance_label(inst), inst.get("id"))
         if not self._instances:
             # Disable add-account mode when no hosts exist.
             add_idx = self.mode.findData(self.MODE_ADD_ACCOUNT)
