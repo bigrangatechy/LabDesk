@@ -1,13 +1,18 @@
 # API Contract — LabDesk ↔ GitLab REST API v4
 
-**Status:** Draft (docs stage)  
+**Status:** Living (GitLab backend)  
 **Related:** ADR-001, ADR-006, ADR-008, Technical Specification §3 / §5 / §6,  
 `security-credentials.md`
 
-This document defines how LabDesk’s Rust `api_client` talks to a
-**self-hosted** GitLab instance. It is not a full mirror of GitLab’s
-upstream docs — only the endpoints, parameters, headers, and fields
-LabDesk commits to for V1 (plus explicitly marked nice-to-haves).
+This document defines how LabDesk’s **GitLab** Rust backend talks to a
+**self-hosted** GitLab instance. Sibling contracts:
+
+- [`api-contract-gitea.md`](api-contract-gitea.md)
+- [`api-contract-forgejo.md`](api-contract-forgejo.md)
+- [`api-contract-onedev.md`](api-contract-onedev.md)
+
+The shared UI uses forge-neutral labels (“Open in …”, merge vs pull
+request); field names below remain GitLab’s where the API returns them.
 
 Git clone / push / force-push are **not** REST API calls; they use
 libgit2 + credential helper or SSH (ADR-006, ADR-008).

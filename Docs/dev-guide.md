@@ -192,7 +192,8 @@ when needed, then runs `tests/python/`.
 |------|------|---------|
 | Async UI bridge | `test_async_jobs.py` | Worker-thread widget updates (Qt Gui SIGSEGV) |
 | Repo reopen | `test_repo_windows.py` | “Internal C++ object already deleted” after close |
-| Large-repo Changes tab | `test_big_repo_tracked_cap.py` | Tracked-file list cap (Qt allocate ABRT) |
+| Large-repo Changes tab | `test_big_repo_tracked_cap.py` | Tracked + changes list caps; core `limit` arity |
+| Forge-aware UI labels | `test_forge_labels.py` | MR/PR / Open in … / host combo helpers |
 | Host ↔ LAN remotes | `test_host_switch_remotes.py` | Host switch retarget feedback |
 | Multi-forge connect | `test_multi_forge.py` | Forge picker + SaaS reject list |
 | LAN / SaaS URLs | `test_config_urls.py` | HTTP allowlist + gitlab.com reject |

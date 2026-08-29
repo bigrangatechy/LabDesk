@@ -68,6 +68,11 @@ bullets without a stamp predate this convention.
 
 ### Changed
 
+- **04:00:43  30/08/2026** — Docs refresh for multi-forge + large-repo
+  behaviour: user guide (Changes caps / truncated previews), technical
+  spec / journeys / data-model / README / API contract index, and
+  dev-guide test table (`test_forge_labels`, expanded big-repo coverage).
+
 - **03:29:25  30/08/2026** — Forge-aware UI copy: merge/pull request dialogs,
   repo tabs/buttons, push→create prompt, compare remote check, offline
   banners, About, and host combo fallbacks follow the active forge (no more

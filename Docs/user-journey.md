@@ -4,29 +4,32 @@
 **Audience:** Product / UX reference; feeds the future **user guide**  
 **Platform:** Linux only (Flatpak primary)
 
-These journeys describe what a person does in V1. They are not UI mock
-pixel specs. Implementation stays documentation-first (ADR-007);
-`src/` is placeholder until journeys and related specs are stable.
+These journeys describe what a person does with LabDesk today. They are
+not UI mock pixel specs.
 
 ---
 
-## Journey A — First run: connect a self-hosted instance
+## Journey A — First run: connect a self-hosted forge
 
-**Goal:** Point LabDesk at a self-hosted GitLab and prove the API PAT works.
+**Goal:** Point LabDesk at a self-hosted GitLab, Gitea, Forgejo, or
+OneDev host and prove the API token works.
 
 1. Launch LabDesk (Flatpak or unpackaged dev build).
-2. Open **Add instance** (first-run empty state prompts this).
-3. Enter display name, base URL, and **API PAT**.
+2. Open **Add / connect** (first-run empty state prompts this).
+3. Choose **Forge**, display name, base URL, and **API PAT** (or
+   OneDev access token).
 4. Choose TLS mode if needed (`strict` default; self-signed / imported
    CA only when the user opts in — see security-credentials).
-5. Save → LabDesk validates with `GET /user` using **`PRIVATE-TOKEN`**.
-6. On success: API PAT stored in **system keyring**; non-secret settings
-   in `config.toml`.
+5. Save → LabDesk validates with the forge’s current-user endpoint
+   (GitLab: `GET /user` + **`PRIVATE-TOKEN`**).
+6. On success: token stored in **system keyring**; non-secret settings
+   in `config.toml` (including `[[instances]].forge`).
 7. On failure: clear message (bad token, unreachable host, bad cert);
    no silent plaintext fallback.
 
-**Reject path:** If the URL is `gitlab.com` / `github.com` (SaaS),
-show that LabDesk is self-hosted only and **do not** save.
+**Reject path:** If the URL is a known public SaaS host (`gitlab.com`,
+`github.com`, `gitea.com`, `codeberg.org`, `code.onedev.io`, …), show
+that LabDesk is self-hosted only and **do not** save (`LD-CFG-004`).
 
 **Git HTTPS later:** username/password (or PAT-as-password) is supplied
 through the **Git credential helper** when cloning/pushing over HTTPS
@@ -70,7 +73,7 @@ to SSH.
 
 ## Journey C — Daily local work (offline-friendly)
 
-**Goal:** See changes, commit, without needing GitLab up.
+**Goal:** See changes, commit, without needing the forge up.
 
 1. Open an already cloned repo (**Open local**, **Add existing…**, or
    **File → Open repository…**).
@@ -90,9 +93,9 @@ edit a selected file outside LabDesk.
 
 ---
 
-## Journey D — Push, force push, and open a merge request
+## Journey D — Push, force push, and open a merge / pull request
 
-**Goal:** Publish a branch and create an MR on the self-hosted instance.
+**Goal:** Publish a branch and create an MR/PR on the self-hosted forge.
 
 1. From RepoView, **Push** (SSH agent/keys, or HTTPS via credential
    helper).
@@ -101,24 +104,26 @@ edit a selected file outside LabDesk.
 3. **Force push** (V1): available as an explicit action; show a
    confirmation dialog that includes the **branch name** before
    proceeding.
-4. **Create merge request:** fill title, description, source/target
-   branch → API `POST /merge_requests` with **`PRIVATE-TOKEN`**.
-5. On success, offer **Open in GitLab** in the browser.
+4. **Create merge / pull request:** fill title, description,
+   source/target branch → forge create API (GitLab uses
+   **`PRIVATE-TOKEN`**; other forges use their token header). Dialog
+   and button labels follow the active forge.
+5. On success, offer **Open in …** (forge name) in the browser.
 
-Requires network. If offline, disable push / force push / MR actions
-with a clear reason.
+Requires network. If offline, disable push / force push / create
+actions with a clear reason.
 
 ---
 
 ## Journey E — Working while the instance is down
 
-**Goal:** Keep coding when GitLab is unreachable.
+**Goal:** Keep coding when the forge is unreachable.
 
 1. LabDesk detects unreachable API / git remote.
 2. Banner or status: working offline; cached project list may be shown
    with a staleness hint.
 3. Local git workflows (Journey C) remain available.
-4. Push, project refresh, and MR creation stay disabled until
+4. Push, project refresh, and MR/PR creation stay disabled until
    connectivity returns.
 
 ---

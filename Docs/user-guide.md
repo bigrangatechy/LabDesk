@@ -130,13 +130,18 @@ host’s Base URL.
 
 In the repo window:
 
-- **Changes:** stage / unstage / commit; read-only diffs.
+- **Changes:** stage / unstage / commit; read-only diffs. On large
+  repos LabDesk caps how many rows it lists (tracked files and dirty
+  paths) and treats an untracked directory (for example `build/` or
+  `node_modules/`) as **one** entry instead of every file inside.
+  Very large file or diff previews are truncated — use **Open in
+  editor** for the full content.
 - **Open in editor:** opens the selected file with the desktop default.
 - **Branches:** list, switch, create, merge into current (clean merges
   only; if there are conflicts, resolve them outside LabDesk).
 - **Compare:** pick two branches (local or `origin/…`), see ahead/behind,
-  recent commits, and a read-only tip diff. When online, LabDesk can
-  check whether the other branch exists on the forge.
+  recent commits, and a read-only tip diff (truncated if huge). When
+  online, LabDesk can check whether the other branch exists on the forge.
 - **Merge / pull requests:** opened items for this project (tab label
   follows the forge; refresh while online; last list kept for offline
   viewing). **Open in …** opens the selected row in the browser.

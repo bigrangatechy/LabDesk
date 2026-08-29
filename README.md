@@ -1,23 +1,28 @@
 # LabDesk
 
-**Linux-only** desktop client for **self-hosted GitLab** (not GitLab.com).
+**Linux-only** desktop client for **self-hosted** GitLab, Gitea, Forgejo,
+and OneDev (not public SaaS forges).
 
 LabDesk combines local git (libgit2) with forge workflows: projects, clone,
-branches, merge requests, and push/pull — distributed as **Flatpak** for
-releases. Stack: **PySide6** UI + **Rust** core via PyO3/Maturin. License:
-**GPLv2+**.
+branches, merge/pull requests, CI status, and push/pull — distributed as
+**Flatpak** for releases. Stack: **PySide6** UI + **Rust** core via
+PyO3/Maturin. License: **GPLv2+**.
 
-> Self-hosted only. SaaS hosts such as `gitlab.com` are rejected at setup
+> Self-hosted only. SaaS hosts such as `gitlab.com`, `gitea.com`,
+> `codeberg.org`, and `code.onedev.io` are rejected at setup
 > (see [ADR-001](Docs/adr/adr-001-self-hosted-only.md)).
 
 ## Features (current slice)
 
-- Connect to a self-hosted GitLab instance (API PAT in the system keyring)
+- Connect a self-hosted forge (forge picker; API token in the system keyring)
 - Browse projects; clone or open an existing local repo
-- Changes: stage / unstage / commit; read-only diffs (`QTextEdit`)
-- Branches: list, create, switch, clean local merge
+- Changes: stage / unstage / commit; read-only diffs (`QTextEdit`);
+  large-repo list and preview caps
+- Branches: list, create, switch, clean local merge; Compare tab
 - Fetch / pull / push (force push only with confirmation); ahead/behind
-- Create merge requests; open files in an external editor
+- Create merge / pull requests (wording follows the forge); open files
+  externally
+- Pipelines / CI tab (play manual jobs on GitLab when supported)
 - Offline banner when the instance is unreachable
 - Settings for theme, clone folder, UI shell, Flatpak update checks
 

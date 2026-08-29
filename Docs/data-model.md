@@ -273,9 +273,9 @@ push.
 
 ### 4.5 `merge_requests` (shipped — opened per project)
 
-Caches **opened** merge requests for a project so the repo **Merge
-requests** tab can show a thin list offline. Refresh replaces all rows
-for that `(account_id, project_id)`.
+Caches **opened** merge/pull requests for a project so the repo MR/PR
+tab (label follows the active forge) can show a thin list offline.
+Refresh replaces all rows for that `(account_id, project_id)`.
 
 | Column | Type | Notes |
 |--------|------|--------|
@@ -334,8 +334,13 @@ Lifecycle: `security-credentials.md`.
 
 Derived via libgit2 from `local_repos.path`:
 
-- Working tree status (staged / unstaged / untracked)
-- Diff text for `QTextEdit`
+- Working tree status (staged / unstaged / untracked). Status does **not**
+  recurse into untracked directories; row counts returned to the UI are
+  **capped** (see `STATUS_LIST_CAP` / `_CHANGES_LIST_CAP`).
+- Diff / file preview text for `QTextEdit` (**truncated** for large
+  content — `TEXT_VIEW_MAX_CHARS`).
+- Tracked-file listing for the Changes tab (**capped** —
+  `_TRACKED_LIST_CAP`).
 - Local branches, ahead/behind (after fetch)
 - Merge conflict presence (boolean / detection only)
 

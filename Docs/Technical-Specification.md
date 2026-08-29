@@ -7,9 +7,9 @@ Gitea, Forgejo, and OneDev. It provides GitHub Desktop-style
 functionality (clone, branch, commit, push/pull, diff view, merge/pull
 request creation) for users who run their own forge.
 
-**V1 (GitLab vertical slice) is complete.** Post-V1 includes multi-forge
-backends (dedicated API modules per forge, shared UI), LAN `http://`
-base URLs, and forge CI surfaces where available.
+**V1 (GitLab vertical slice) is complete.** Multi-forge backends
+(dedicated API modules per forge, shared forge-aware UI), LAN `http://`
+base URLs, and forge CI surfaces (where available) are also in tree.
 
 Public SaaS hosts (`gitlab.com`, `github.com`, `gitea.com`,
 `codeberg.org`, `code.onedev.io`, …) are **not supported** and must be
@@ -29,13 +29,13 @@ rejected at instance setup (see ADR-001).
 │  ├── View plugins (Projects, Settings; more later)          │
 │  ├── RepoWindow (Changes, History, Branches, Pipelines)     │
 │  ├── DiffViewer (read-only QTextEdit)                       │
-│  ├── InstanceConfigDialog (URL + PAT; git auth via helper)  │
-│  └── MRDialog (Merge request creation form)                 │
+│  ├── InstanceConfigDialog (forge + URL + PAT; git auth via helper) │
+│  └── MRDialog (merge / pull request form; forge-aware title)       │
 │                                                             │
 │  ──── PyO3 Bridge ────────────────────────────────────      │
 │                                                             │
 │  Core Layer (Rust)                                          │
-│  ├── git_ops (libgit2 + credential helper; SSH)             │
+│  ├── git_ops (libgit2 + credential helper; SSH; list/diff caps) │
 │  ├── api / forge backends (GitLab, Gitea, Forgejo, OneDev)   │
 │  ├── cache (SQLite read/write, sync logic)                  │
 │  ├── diff_engine (libgit2 diff → text for QTextEdit)        │
@@ -104,18 +104,26 @@ User          UI Layer         Core (Rust)              GitLab / Git
  │               │                  │                        │
  │── Force push ──→ push(--force) ──→ after explicit confirm │
  │               │                  │                        │
- │── Create MR ───→ create_mr() ────→ POST /merge_requests ─→│
- │               │                  │ (PRIVATE-TOKEN)        │
- │               │←── mr_web_url ────←── 201 Created ────────│
+ │── Create MR/PR → create_mr() ───→ forge POST (MR or PR) ──→│
+ │               │                  │ (forge token header)   │
+ │               │←── web_url ───────←── 201 Created ────────│
  │               │                  │                        │
- │── Open in GitLab → open_url() ───→ (xdg-open)             │
+ │── Open in forge → open_url() ───→ (xdg-open)              │
 ```
 
 Editing is **always external** in V1. Diff view is read-only. Any
 future in-app editor would be built from scratch (not QScintilla).
 
-API calls use header **`PRIVATE-TOKEN`** (ADR-008). Git HTTPS uses the
-**credential helper**; SSH uses agent/keys.
+UI strings for merge/pull requests, CI tabs, and “Open in …” follow the
+active host’s forge (`active_forge_info` / `forge_labels`).
+
+API auth uses the forge’s token header (GitLab **`PRIVATE-TOKEN`**; see
+per-forge `api-contract-*.md`). Git HTTPS uses the **credential helper**;
+SSH uses agent/keys.
+
+Large local repos: tracked-file and status lists are **capped**; status
+does **not** recurse into untracked directories; file/diff text shown in
+Qt is **truncated** (see changelog / `git_ops` constants).
 
 ### 3.2 Offline Behavior
 
@@ -130,8 +138,8 @@ API calls use header **`PRIVATE-TOKEN`** (ADR-008). Git HTTPS uses the
 | Push/Pull              | Yes               | Disable button, show warning                   |
 | Force push             | Yes               | Disabled offline; confirm dialog when used     |
 | List remote projects   | Yes               | Show cached list with staleness indicator      |
-| Create MR              | Yes               | Disable, show "requires connection"            |
-| View pipeline status   | Yes               | Post-V1: latest for current branch; play manual jobs |
+| Create MR / PR         | Yes               | Disable, show "requires connection"            |
+| View pipeline / CI     | Yes               | Show cached latest; play disabled offline      |
 
 ## 4. Configuration Model
 
@@ -233,13 +241,15 @@ active instance in the UI. See `data-model.md`.
 | Force push           | push (force)        | explicit confirm; not default    | P0       |
 | Branch create/switch | branch APIs         | —                                | P0       |
 | Local merge (clean)  | merge               | —                                    | P0       |
-| Create MR            | —                   | `POST /merge_requests`               | P0       |
-| Open in GitLab       | —                   | `xdg-open` / portal                  | P0       |
-| Pipeline status + play manual jobs | —          | `GET /pipelines`, jobs, `POST …/play` | Post-V1 |
-| Branch comparison    | compare             | remote branch verify                 | Nice-to-have |
-| LAN HTTP base URL    | —                   | loopback + RFC1918 only              | Post-V1 |
-| Build-date version   | —                   | `YYYY.MM.DD` in About / User-Agent   | Post-V1 |
-| Background UI work   | —                   | Qt workers for clone/push/API        | Post-V1 |
+| Create MR / PR       | —                   | forge create endpoint (label follows forge)  | P0       |
+| Open in forge        | —                   | `xdg-open` / portal (label follows forge)    | P0       |
+| Pipeline / CI status | —                   | per-forge runs API; play job where supported | P0       |
+| Branch comparison    | compare (truncated) | remote branch verify                         | P0       |
+| Large-repo list/diff caps | status / list / show | —                                      | P0       |
+| LAN HTTP base URL    | —                   | loopback + RFC1918 only                      | P0       |
+| Build-date version   | —                   | `YYYY.MM.DD` in About / User-Agent           | P0       |
+| Background UI work   | —                   | Qt workers for clone/push/API                | P0       |
+| Multi-forge backends | —                   | GitLab / Gitea / Forgejo / OneDev            | P0       |
 
 ## 6. Error Handling Strategy
 
@@ -248,7 +258,7 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
 
 | Scenario             | Code (primary) | User-Facing Response                         | Internal Action                    |
 |----------------------|----------------|----------------------------------------------|------------------------------------|
-| SaaS URL rejected    | `LD-CFG-004`   | "LabDesk supports self-hosted GitLab only."  | Block save; do not store           |
+| SaaS URL rejected    | `LD-CFG-004`   | "LabDesk supports self-hosted GitLab, Gitea, Forgejo, and OneDev only." | Block save; do not store |
 | Invalid PAT          | `LD-AUTH-001`  | "Authentication failed. Check your token."   | Clear keyring entry; prompt re-entry |
 | Git auth failed      | `LD-GIT-002`   | "Git authentication failed. Check credentials or SSH keys." | Prompt helper / guide to SSH or PAT |
 | 2FA blocks password  | `LD-GIT-003`   | "Password git auth blocked. Use SSH or a PAT." | Point to ADR-008 options        |
