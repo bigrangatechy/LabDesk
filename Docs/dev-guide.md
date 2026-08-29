@@ -194,6 +194,7 @@ when needed, then runs `tests/python/`.
 | Repo reopen | `test_repo_windows.py` | “Internal C++ object already deleted” after close |
 | Large-repo Changes tab | `test_big_repo_tracked_cap.py` | Tracked-file list cap (Qt allocate ABRT) |
 | Host ↔ LAN remotes | `test_host_switch_remotes.py` | Host switch retarget feedback |
+| Multi-forge connect | `test_multi_forge.py` | Forge picker + SaaS reject list |
 | LAN / SaaS URLs | `test_config_urls.py` | HTTP allowlist + gitlab.com reject |
 | Version / errors | `test_version_and_helpers.py` | `APP_VERSION`, `format_error` |
 | Packaging | `test_packaging_sanity.py` | CI YAML / Flatpak manifest basics |

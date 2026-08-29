@@ -1,42 +1,42 @@
-# ADR-001: Self-Hosted GitLab Only Policy
+# ADR-001: Self-Hosted Forges Only Policy
 
-**Status:** Accepted  
+**Status:** Accepted (supersedes original GitLab-only wording)  
 **Date:** 2026-07-01  
-**Updated:** 2026-08-07 (auth details moved to ADR-008)
+**Updated:** 2026-08-30 (multi-forge: GitLab, Gitea, Forgejo, OneDev)
 
 ## Context
 
-Existing Git GUI clients with forge integration (e.g., GitHub Desktop) are
-tightly coupled to specific SaaS providers (`github.com`, `gitlab.com`).
-While generic Git clients exist, they lack the workflow automation
-(MR creation, pipeline status, branch tracking) that makes the desktop
-experience valuable. There is currently no open-source, native Linux GUI
-client specifically designed for self-hosted GitLab instances that offers
-this level of integration.
+LabDesk began as a Linux desktop client for self-hosted GitLab. Users also
+run Gitea, Forgejo, and OneDev on their own infrastructure and want the
+same local-git + forge workflow without depending on public SaaS
+products that already have first-party clients.
 
 ## Decision
 
-The application will support **only user-configured self-hosted GitLab
-instances**.
+LabDesk supports **self-hosted** instances of:
 
-- Known public SaaS hosts — including **`gitlab.com`** and
-  **`github.com`** — are **not supported** and must be **rejected** at
-  instance-setup time (not merely left without special handling).
-- All API endpoints will be constructed dynamically based on the
-  user-provided base URL.
-- Instance type detection or automatic routing to public SaaS endpoints
-  will not be implemented.
-- **How** users authenticate (API PAT, git credential helper, SSH) is
-  defined in **ADR-008**, not here.
+- **GitLab**
+- **Gitea**
+- **Forgejo**
+- **OneDev**
+
+Each forge has a **dedicated Rust API backend** (tightly coupled to that
+product’s REST API) with its own regression tests. The PySide6 UI and
+local git layer are shared and consume forge-neutral DTOs. The active
+host’s `forge` field in config selects the backend.
+
+Known **public SaaS** hosts — including but not limited to
+`gitlab.com`, `github.com`, `gitea.com`, `codeberg.org`, and
+`code.onedev.io` — are **rejected** at instance setup (`LD-CFG-004`).
+
+- All API endpoints are built from the user-provided base URL.
+- Authentication remains API PAT (or forge-equivalent access token) in
+  the system keyring plus git credential helper / SSH (ADR-008).
 
 ## Consequences
 
-- **Positive:** Drastically reduced complexity (no OAuth flows, no
-  multi-provider abstraction layers). Focus remains entirely on the
-  self-hosted use case. Stability is anchored to the version the
-  administrator controls, not a remote SaaS release cycle.
-- **Negative:** Users of GitLab.com SaaS cannot use this tool; they
-  must use existing alternatives. The total addressable market is
-  smaller, but highly targeted.
-- **Maintenance:** Easier to test and verify compatibility since the
-  target environment is always a user-controlled instance.
+- **Positive:** Clear product boundary (self-hosted only); forge-specific
+  quirks stay isolated; UI stays one codebase.
+- **Negative:** Each new forge is ongoing maintenance; feature parity
+  (especially CI “play job”) may lag per forge.
+- **Migration:** Existing configs without `forge` default to `gitlab`.

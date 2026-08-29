@@ -26,7 +26,7 @@ class InstanceConfigDialog(QDialog):
 
     def __init__(self, parent=None, *, mode: str | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Connect self-hosted GitLab")
+        self.setWindowTitle("Connect self-hosted forge")
         self.setMinimumWidth(460)
 
         layout = QVBoxLayout(self)
@@ -41,12 +41,23 @@ class InstanceConfigDialog(QDialog):
         form.addRow("Host", self.host_pick)
 
         self.host_name = QLineEdit()
-        self.host_name.setPlaceholderText("My GitLab")
+        self.host_name.setPlaceholderText("My GitLab / Gitea / Forgejo / OneDev")
         form.addRow("Host display name", self.host_name)
+
+        self.forge = QComboBox()
+        self.forge.addItem("GitLab", "gitlab")
+        self.forge.addItem("Gitea", "gitea")
+        self.forge.addItem("Forgejo", "forgejo")
+        self.forge.addItem("OneDev", "onedev")
+        self.forge.setToolTip(
+            "Which forge software this host runs. LabDesk uses a dedicated "
+            "API backend for each; pick the correct one for connect/refresh."
+        )
+        form.addRow("Forge", self.forge)
 
         self.base_url = QLineEdit()
         self.base_url.setPlaceholderText(
-            "https://gitlab.example.com  or  http://192.168.x.x:port (LAN)"
+            "https://git.example.com  or  http://192.168.x.x:port (LAN)"
         )
         self.base_url.setToolTip(
             "HTTPS required for public DNS names.\n"
@@ -138,6 +149,8 @@ class InstanceConfigDialog(QDialog):
         # Form labels stay; hide URL/TLS/host name when adding to existing.
         self.host_name.setVisible(not add)
         self.host_name.setEnabled(not add)
+        self.forge.setVisible(not add)
+        self.forge.setEnabled(not add)
         self.base_url.setVisible(not add)
         self.base_url.setEnabled(not add)
         self.ssl_mode.setVisible(not add)
@@ -233,7 +246,7 @@ class InstanceConfigDialog(QDialog):
                 or "Account",
                 "pat": self.pat.text().strip(),
             }
-        host = self.host_name.text().strip() or "GitLab"
+        host = self.host_name.text().strip() or "Forge"
         account = self.account_name.text().strip() or host
         return {
             "mode": self.MODE_NEW_HOST,
@@ -242,4 +255,5 @@ class InstanceConfigDialog(QDialog):
             "base_url": self.base_url.text().strip().rstrip("/"),
             "pat": self.pat.text().strip(),
             "ssl_mode": str(self.ssl_mode.currentData()),
+            "forge": str(self.forge.currentData() or "gitlab"),
         }

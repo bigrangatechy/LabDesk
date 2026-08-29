@@ -57,7 +57,7 @@ Examples: `LD-AUTH-001`, `LD-CFG-010`, `LD-API-429`.
 | `LD-CFG-001` | `config.toml` missing; creating defaults | (usually silent / info) | Write default config |
 | `LD-CFG-002` | TOML parse failure | "Config file is invalid and could not be read." | Keep last known good if present; otherwise safe defaults; show error |
 | `LD-CFG-003` | Required field missing / invalid type | "Config value invalid: {field}." | Reject apply for that field; preserve rest |
-| `LD-CFG-004` | SaaS / unsupported host in `base_url` | "LabDesk supports self-hosted GitLab only." | Do not save instance |
+| `LD-CFG-004` | SaaS / unsupported host in `base_url` | "LabDesk supports self-hosted GitLab, Gitea, Forgejo, and OneDev only." | Do not save instance |
 | `LD-CFG-010` | **Startup hang detected**; config reverted | "Startup hung; config reset to last known good. {detail}" | Restore snapshot; relaunch; show this code |
 | `LD-CFG-011` | No known-good snapshot available after hang/corrupt | "Startup failed and no good config backup was found." | Safe defaults; guided setup |
 | `LD-CFG-012` | Failed to write config (permissions, disk) | "Could not save settings." | Keep in-memory; retry guidance |

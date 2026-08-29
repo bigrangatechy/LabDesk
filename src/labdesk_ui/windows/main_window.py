@@ -493,6 +493,7 @@ class MainWindow(QMainWindow):
                     vals["base_url"],
                     vals["pat"],
                     vals["ssl_mode"],
+                    vals.get("forge") or "gitlab",
                 )
             user = result.get("user") or {}
             count = result.get("project_count", 0)

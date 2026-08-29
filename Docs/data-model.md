@@ -124,6 +124,7 @@ V1 Settings stays small; the file may grow ahead of the UI.
 |-----|------|----------|--------|
 | `id` | string | yes | Stable id (UUID) |
 | `name` | string | yes | Display name for the host |
+| `forge` | string | yes | `"gitlab"` \| `"gitea"` \| `"forgejo"` \| `"onedev"` (default `gitlab`) |
 | `base_url` | string | yes | Origin only; no `/api/v4`. SaaS hosts rejected. HTTPS required except loopback/RFC1918 may use `http://` |
 | `api_version` | string | yes | `"v4"` |
 | `ssl_mode` | string | yes | `"strict"` \| `"allow_self_signed"` \| `"imported_ca"` |

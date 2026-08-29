@@ -14,6 +14,12 @@ const SAAS_HOSTS: &[&str] = &[
     "www.gitlab.com",
     "github.com",
     "www.github.com",
+    "gitea.com",
+    "www.gitea.com",
+    "codeberg.org",
+    "www.codeberg.org",
+    "code.onedev.io",
+    "www.code.onedev.io",
 ];
 
 #[derive(Debug, Clone)]
@@ -35,12 +41,14 @@ pub struct GeneralConfig {
     pub progress_overlay_alpha: u8,
 }
 
-/// GitLab host (machine).
+/// Forge host (machine).
 #[derive(Debug, Clone)]
 pub struct InstanceConfig {
     pub id: String,
     pub name: String,
     pub base_url: String,
+    /// `gitlab` | `gitea` | `forgejo` | `onedev` (default gitlab).
+    pub forge: String,
     pub api_version: String,
     pub ssl_mode: String,
     pub created_at: String,
@@ -131,7 +139,7 @@ pub fn validate_base_url(base_url: &str) -> Result<()> {
     if SAAS_HOSTS.iter().any(|h| host == *h) {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-CFG-004",
-            "LabDesk supports self-hosted GitLab only.",
+            "LabDesk supports self-hosted GitLab, Gitea, Forgejo, and OneDev only.",
         )));
     }
     let scheme = parsed.scheme();
@@ -353,6 +361,29 @@ fn read_instances_and_accounts(
             .and_then(|v| v.as_str())
             .unwrap_or("v4")
             .to_string();
+        let forge_raw = table
+            .get("forge")
+            .and_then(|v| v.as_str())
+            .unwrap_or("gitlab")
+            .to_string();
+        let forge = match crate::forge_types::ForgeKind::parse(&forge_raw) {
+            Some(k) => k.as_str().to_string(),
+            None => {
+                return Err(LabDeskError::App(
+                    ErrorInfo::new("LD-CFG-003", "Config value invalid: forge").with_detail(
+                        format!("unknown forge {forge_raw:?}; use gitlab, gitea, forgejo, or onedev"),
+                    ),
+                ));
+            }
+        };
+        let api_version = if table.get("api_version").and_then(|v| v.as_str()).is_none() {
+            crate::forge_types::ForgeKind::parse(&forge)
+                .unwrap_or(crate::forge_types::ForgeKind::Gitlab)
+                .default_api_version()
+                .to_string()
+        } else {
+            api_version
+        };
 
         // Legacy: keyring lived on the instance row.
         let legacy_keyring = table
@@ -411,6 +442,7 @@ fn read_instances_and_accounts(
             id,
             name,
             base_url,
+            forge,
             api_version,
             ssl_mode,
             created_at,
@@ -580,6 +612,7 @@ fn sync_document(cfg: &mut AppConfig) {
         t["id"] = value(&inst.id);
         t["name"] = value(&inst.name);
         t["base_url"] = value(&inst.base_url);
+        t["forge"] = value(&inst.forge);
         t["api_version"] = value(&inst.api_version);
         t["ssl_mode"] = value(&inst.ssl_mode);
         t["created_at"] = value(&inst.created_at);
@@ -620,14 +653,24 @@ pub fn upsert_instance(
     name: String,
     base_url: String,
     ssl_mode: String,
+    forge: String,
 ) -> Result<InstanceConfig> {
     let base_url = normalize_base_url(&base_url);
     reject_saas_url(&base_url)?;
+    let forge_kind = crate::forge_types::ForgeKind::parse(&forge).ok_or_else(|| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-CFG-003", "Config value invalid: forge")
+                .with_detail(format!("unknown forge {forge:?}; use gitlab, gitea, forgejo, or onedev")),
+        )
+    })?;
+    let forge = forge_kind.as_str().to_string();
     let now = iso8601_now();
 
     if let Some(existing) = cfg.instances.iter_mut().find(|i| i.base_url == base_url) {
         existing.name = name;
         existing.ssl_mode = ssl_mode;
+        existing.forge = forge;
+        existing.api_version = forge_kind.default_api_version().to_string();
         return Ok(existing.clone());
     }
 
@@ -635,7 +678,8 @@ pub fn upsert_instance(
         id: Uuid::new_v4().to_string(),
         name,
         base_url,
-        api_version: "v4".into(),
+        forge,
+        api_version: forge_kind.default_api_version().to_string(),
         ssl_mode,
         created_at: now,
     };
@@ -688,8 +732,9 @@ pub fn connect_account(
     account_name: String,
     base_url: String,
     ssl_mode: String,
+    forge: String,
 ) -> Result<(InstanceConfig, AccountConfig)> {
-    let inst = upsert_instance(cfg, host_name, base_url, ssl_mode)?;
+    let inst = upsert_instance(cfg, host_name, base_url, ssl_mode, forge)?;
     let acc = add_account(cfg, &inst.id, account_name)?;
     Ok((inst, acc))
 }
@@ -939,6 +984,9 @@ mod tests {
     #[test]
     fn saas_rejected() {
         assert!(validate_base_url("https://gitlab.com").is_err());
+        assert!(validate_base_url("https://gitea.com").is_err());
+        assert!(validate_base_url("https://codeberg.org").is_err());
+        assert!(validate_base_url("https://code.onedev.io").is_err());
     }
 
     #[test]
@@ -1023,6 +1071,7 @@ created_at = "2026-01-01T00:00:00Z"
             "Lab".into(),
             "https://gitlab.example.com".into(),
             "strict".into(),
+            "gitlab".into(),
         )
         .unwrap();
         let a1 = add_account(&mut cfg, &inst.id, "Work".into()).unwrap();
@@ -1042,6 +1091,7 @@ created_at = "2026-01-01T00:00:00Z"
             "A".into(),
             "https://a.example.com".into(),
             "strict".into(),
+            "gitlab".into(),
         )
         .unwrap();
         upsert_instance(
@@ -1049,6 +1099,7 @@ created_at = "2026-01-01T00:00:00Z"
             "B".into(),
             "https://b.example.com".into(),
             "strict".into(),
+            "gitea".into(),
         )
         .unwrap();
         assert_eq!(cfg.instances.len(), 2);

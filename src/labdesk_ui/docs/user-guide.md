@@ -9,7 +9,8 @@ This guide is also available in the app under **Help → User Guide…**.
 
 ## 1. What LabDesk is
 
-- Linux desktop client for **self-hosted GitLab** only (not GitLab.com).
+- Linux desktop client for **self-hosted** GitLab, Gitea, Forgejo, and
+  OneDev (not public SaaS forges).
 - Local git (commit, branch, diff) plus forge features (project list,
   merge requests, pipeline status).
 - Distributed as a **Flatpak**.
@@ -62,14 +63,16 @@ Under Flatpak, LabDesk keeps its files under:
 ## 3. First-time setup
 
 1. On first launch with no hosts, LabDesk offers **Add / connect**.
-2. Choose **New host** (base URL + TLS) or **Add account** to an
-   existing host, then enter an account label and API **personal access
-   token**.
+2. Choose **New host** (forge type + base URL + TLS) or **Add account**
+   to an existing host, then enter an account label and API **personal
+   access token** (or OneDev access token).
+   - Pick the correct **Forge** (GitLab / Gitea / Forgejo / OneDev).
    - Prefer **`https://…`**.
    - On a trusted LAN you may use **`http://192.168.x.x:port`** (or
      other private / loopback addresses). Public host names still need
      HTTPS.
-3. SaaS hosts (`gitlab.com`, `github.com`, …) are rejected.
+3. SaaS hosts (`gitlab.com`, `github.com`, `gitea.com`, `codeberg.org`,
+   `code.onedev.io`, …) are rejected.
 4. Choose a TLS mode: **Strict** (default), **Allow self-signed**, or
    **Imported CA**. For Imported CA, use **Import CA…** to add a
    PEM/CRT into LabDesk’s `trusted_certs/` folder (used for API and

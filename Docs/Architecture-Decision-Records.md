@@ -5,7 +5,7 @@ This file is an **index only**. Each decision lives in its own file under
 
 | ID | Title | Status | Date | File |
 |----|-------|--------|------|------|
-| ADR-001 | Self-Hosted GitLab Only Policy | Accepted | 2026-07-01 | [adr-001-self-hosted-only.md](adr/adr-001-self-hosted-only.md) |
+| ADR-001 | Self-Hosted Forges Only Policy | Accepted | 2026-07-01 (upd. 2026-08-30) | [adr-001-self-hosted-only.md](adr/adr-001-self-hosted-only.md) |
 | ADR-002 | Qt + Python/Rust Hybrid Stack | Accepted | 2026-07-01 | [adr-002-qt-python-rust-stack.md](adr/adr-002-qt-python-rust-stack.md) |
 | ADR-003 | GPLv2+ Licensing | Accepted | 2026-07-01 | [adr-003-gplv2-plus.md](adr/adr-003-gplv2-plus.md) |
 | ADR-004 | Flatpak-First Distribution Strategy | Accepted | 2026-07-01 | [adr-004-flatpak-first.md](adr/adr-004-flatpak-first.md) |

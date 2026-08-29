@@ -2,17 +2,17 @@
 
 ## 1. Overview
 
-LabDesk is a native Linux desktop client for self-hosted GitLab
-instances. It provides GitHub Desktop-style functionality (clone,
-branch, commit, push/pull, diff view, merge request creation) targeted
-exclusively at users who run their own GitLab infrastructure.
+LabDesk is a native Linux desktop client for **self-hosted** GitLab,
+Gitea, Forgejo, and OneDev. It provides GitHub Desktop-style
+functionality (clone, branch, commit, push/pull, diff view, merge/pull
+request creation) for users who run their own forge.
 
-**V1 (1.0.0) is complete** — connect → projects → local git → MR →
-Flatpak. That feature set is frozen. Post-V1 work includes LAN
-`http://` base URLs, build-date versioning, background UI workers, and
-pipeline status / manual job play.
+**V1 (GitLab vertical slice) is complete.** Post-V1 includes multi-forge
+backends (dedicated API modules per forge, shared UI), LAN `http://`
+base URLs, and forge CI surfaces where available.
 
-Public SaaS hosts such as `gitlab.com` are **not supported** and must be
+Public SaaS hosts (`gitlab.com`, `github.com`, `gitea.com`,
+`codeberg.org`, `code.onedev.io`, …) are **not supported** and must be
 rejected at instance setup (see ADR-001).
 
 ## 2. System Architecture
@@ -36,7 +36,7 @@ rejected at instance setup (see ADR-001).
 │                                                             │
 │  Core Layer (Rust)                                          │
 │  ├── git_ops (libgit2 + credential helper; SSH)             │
-│  ├── api_client (GitLab REST API v4, PRIVATE-TOKEN)         │
+│  ├── api / forge backends (GitLab, Gitea, Forgejo, OneDev)   │
 │  ├── cache (SQLite read/write, sync logic)                  │
 │  ├── diff_engine (libgit2 diff → text for QTextEdit)        │
 │  ├── config (TOML parser, instance management)              │

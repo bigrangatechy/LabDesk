@@ -36,6 +36,12 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **03:20:21  30/08/2026** — Multi-forge backends: self-hosted **Gitea**,
+  **Forgejo**, and **OneDev** alongside GitLab (dedicated Rust API modules +
+  shared UI). Connect dialog forge picker; `[[instances]].forge`; SaaS reject
+  list extended (`gitea.com`, `codeberg.org`, `code.onedev.io`). ADR-001
+  updated; API contract stubs per forge.
+
 - **20:26:22  27/08/2026** — Projects **table/cards** layout option; clone/push
   progress as a translucent fill on the matching row/card (colour + alpha
   in Settings). Core exposes `get_git_op_progress`.

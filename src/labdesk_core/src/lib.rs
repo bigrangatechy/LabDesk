@@ -7,9 +7,16 @@ mod cache;
 mod config;
 mod diff_engine;
 mod error;
+mod forge;
+mod forge_types;
+mod forgejo;
+mod onedev;
 mod git_ops;
 mod git_progress;
+mod gitea;
+mod gitlab;
 mod host_remotes;
+mod http_client;
 mod paths;
 mod secrets;
 mod tls;
@@ -18,6 +25,23 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict};
 
 use crate::error::{ErrorInfo, LabDeskError};
+use crate::forge_types::ForgeKind;
+
+fn forge_kind_of(inst: &config::InstanceConfig) -> ForgeKind {
+    ForgeKind::parse(&inst.forge).unwrap_or(ForgeKind::Gitlab)
+}
+
+fn project_path_hint(
+    paths: &paths::AppPaths,
+    account_id: &str,
+    project_id: i64,
+) -> Option<String> {
+    let conn = cache::open(paths).ok()?;
+    cache::get_cached_project(&conn, account_id, project_id)
+        .ok()
+        .flatten()
+        .map(|p| p.path_with_namespace)
+}
 
 fn ssl_git_opts(ssl_mode: &str) -> Result<(bool, Option<std::path::PathBuf>), LabDeskError> {
     match ssl_mode {
@@ -95,6 +119,7 @@ fn config_to_dict(py: Python<'_>, cfg: &config::AppConfig) -> PyResult<PyObject>
         d.set_item("id", &inst.id)?;
         d.set_item("name", &inst.name)?;
         d.set_item("base_url", &inst.base_url)?;
+        d.set_item("forge", &inst.forge)?;
         d.set_item("api_version", &inst.api_version)?;
         d.set_item("ssl_mode", &inst.ssl_mode)?;
         d.set_item("created_at", &inst.created_at)?;
@@ -135,6 +160,7 @@ fn instance_to_dict(py: Python<'_>, inst: &config::InstanceConfig) -> PyResult<P
     d.set_item("id", &inst.id)?;
     d.set_item("name", &inst.name)?;
     d.set_item("base_url", &inst.base_url)?;
+    d.set_item("forge", &inst.forge)?;
     d.set_item("api_version", &inst.api_version)?;
     d.set_item("ssl_mode", &inst.ssl_mode)?;
     d.set_item("created_at", &inst.created_at)?;
@@ -143,20 +169,21 @@ fn instance_to_dict(py: Python<'_>, inst: &config::InstanceConfig) -> PyResult<P
 
 /// Back-compat: same display name for host + account until UI is updated.
 #[pyfunction]
-#[pyo3(signature = (name, base_url, pat, ssl_mode="strict"))]
+#[pyo3(signature = (name, base_url, pat, ssl_mode="strict", forge="gitlab"))]
 fn connect_instance(
     py: Python<'_>,
     name: String,
     base_url: String,
     pat: String,
     ssl_mode: &str,
+    forge: &str,
 ) -> PyResult<PyObject> {
-    connect_account(py, name.clone(), name, base_url, pat, ssl_mode)
+    connect_account(py, name.clone(), name, base_url, pat, ssl_mode, forge)
 }
 
 /// Connect account: find/create host, add account, validate PAT, store + save.
 #[pyfunction]
-#[pyo3(signature = (host_name, account_name, base_url, pat, ssl_mode="strict"))]
+#[pyo3(signature = (host_name, account_name, base_url, pat, ssl_mode="strict", forge="gitlab"))]
 fn connect_account(
     py: Python<'_>,
     host_name: String,
@@ -164,6 +191,7 @@ fn connect_account(
     base_url: String,
     pat: String,
     ssl_mode: &str,
+    forge: &str,
 ) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let mut cfg = config::load_or_default(&paths)?;
@@ -183,13 +211,15 @@ fn connect_account(
         account_name,
         base_url,
         ssl_mode.to_string(),
+        forge.to_string(),
     )?;
     let account_id = acc.id.clone();
     let keyring = acc.keyring_account.clone();
     let base_url = inst.base_url.clone();
     let instance_id = inst.id.clone();
+    let forge = forge_kind_of(&inst);
 
-    let user = match api_client::get_user(&base_url, &pat, ssl_mode) {
+    let user = match forge::get_user(forge, &base_url, &pat, ssl_mode) {
         Ok(u) => u,
         Err(e) => {
             if e.info().code == "LD-AUTH-001" {
@@ -204,7 +234,7 @@ fn connect_account(
     if let Some(active) = cfg.active_account_mut() {
         active.username = Some(user.username.clone());
         config::touch_last_connected(active);
-        if let Ok(Some(ver)) = api_client::get_version(&base_url, &pat, ssl_mode) {
+        if let Ok(Some(ver)) = forge::get_version(forge, &base_url, &pat, ssl_mode) {
             active.gitlab_version = ver.version;
             active.gitlab_revision = ver.revision;
         }
@@ -214,16 +244,23 @@ fn connect_account(
     config::save_known_good(&paths)?;
 
     // Best-effort project refresh after connect (failures don't undo connect).
-    let project_count =
-        match refresh_projects_inner(&paths, &account_id, &base_url, &pat, ssl_mode) {
-            Ok(n) => n,
-            Err(_) => 0,
-        };
+    let project_count = match refresh_projects_inner(
+        &paths,
+        &account_id,
+        forge,
+        &base_url,
+        &pat,
+        ssl_mode,
+    ) {
+        Ok(n) => n,
+        Err(_) => 0,
+    };
 
     let out = PyDict::new(py);
     out.set_item("account_id", &account_id)?;
     out.set_item("instance_id", &instance_id)?;
     out.set_item("base_url", &base_url)?;
+    out.set_item("forge", forge.as_str())?;
     out.set_item("keyring_account", &keyring)?;
     let u = PyDict::new(py);
     u.set_item("id", user.id)?;
@@ -269,12 +306,13 @@ fn add_account(
         })?;
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(&inst);
 
     let acc = config::add_account(&mut cfg, &instance_id, account_name)?;
     let account_id = acc.id.clone();
     let keyring = acc.keyring_account.clone();
 
-    let user = match api_client::get_user(&base_url, &pat, &ssl_mode) {
+    let user = match forge::get_user(forge, &base_url, &pat, &ssl_mode) {
         Ok(u) => u,
         Err(e) => {
             if e.info().code == "LD-AUTH-001" {
@@ -289,7 +327,7 @@ fn add_account(
     if let Some(active) = cfg.active_account_mut() {
         active.username = Some(user.username.clone());
         config::touch_last_connected(active);
-        if let Ok(Some(ver)) = api_client::get_version(&base_url, &pat, &ssl_mode) {
+        if let Ok(Some(ver)) = forge::get_version(forge, &base_url, &pat, &ssl_mode) {
             active.gitlab_version = ver.version;
             active.gitlab_revision = ver.revision;
         }
@@ -298,16 +336,23 @@ fn add_account(
     config::save(&paths, &mut cfg)?;
     config::save_known_good(&paths)?;
 
-    let project_count =
-        match refresh_projects_inner(&paths, &account_id, &base_url, &pat, &ssl_mode) {
-            Ok(n) => n,
-            Err(_) => 0,
-        };
+    let project_count = match refresh_projects_inner(
+        &paths,
+        &account_id,
+        forge,
+        &base_url,
+        &pat,
+        &ssl_mode,
+    ) {
+        Ok(n) => n,
+        Err(_) => 0,
+    };
 
     let out = PyDict::new(py);
     out.set_item("account_id", &account_id)?;
     out.set_item("instance_id", &instance_id)?;
     out.set_item("base_url", &base_url)?;
+    out.set_item("forge", forge.as_str())?;
     out.set_item("keyring_account", &keyring)?;
     let u = PyDict::new(py);
     u.set_item("id", user.id)?;
@@ -395,11 +440,12 @@ fn set_active_account(py: Python<'_>, account_id: String) -> PyResult<PyObject> 
 fn refresh_projects_inner(
     paths: &paths::AppPaths,
     account_id: &str,
+    forge: ForgeKind,
     base_url: &str,
     pat: &str,
     ssl_mode: &str,
 ) -> Result<usize, LabDeskError> {
-    let projects = api_client::list_membership_projects(base_url, pat, ssl_mode)?;
+    let projects = forge::list_membership_projects(forge, base_url, pat, ssl_mode)?;
     let conn = cache::open(paths).or_else(|_| cache::rebuild(paths))?;
     if cache::replace_projects(&conn, account_id, &projects).is_err() {
         let conn = cache::rebuild(paths)?;
@@ -416,7 +462,15 @@ fn refresh_projects_inner(
         else {
             continue;
         };
-        match api_client::latest_pipeline(base_url, pat, ssl_mode, p.id as i64, branch) {
+        match forge::latest_pipeline(
+            forge,
+            base_url,
+            pat,
+            ssl_mode,
+            p.id as i64,
+            branch,
+            Some(p.path_with_namespace.as_str()),
+        ) {
             Ok(Some(pipe)) => {
                 let _ = cache::set_project_pipeline_status(
                     &conn,
@@ -457,12 +511,13 @@ fn fetch_current_user(py: Python<'_>) -> PyResult<PyObject> {
     };
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
     let keyring = acc.keyring_account.clone();
     let instance_name = inst.name.clone();
     let account_name = acc.name.clone();
     let user = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
-        api_client::get_user(&base_url, &pat, &ssl_mode)
+        forge::get_user(forge, &base_url, &pat, &ssl_mode)
     })?;
     let u = PyDict::new(py);
     u.set_item("id", user.id)?;
@@ -472,6 +527,7 @@ fn fetch_current_user(py: Python<'_>) -> PyResult<PyObject> {
     u.set_item("instance_name", instance_name)?;
     u.set_item("account_name", account_name)?;
     u.set_item("base_url", base_url)?;
+    u.set_item("forge", forge.as_str())?;
     Ok(u.into())
 }
 
@@ -490,10 +546,11 @@ fn refresh_projects(py: Python<'_>) -> PyResult<PyObject> {
     let account_id = acc.id.clone();
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
     let keyring = acc.keyring_account.clone();
     let count = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
-        refresh_projects_inner(&paths, &account_id, &base_url, &pat, &ssl_mode)
+        refresh_projects_inner(&paths, &account_id, forge, &base_url, &pat, &ssl_mode)
     })?;
     let d = PyDict::new(py);
     d.set_item("count", count)?;
@@ -994,10 +1051,21 @@ fn remote_branch_exists(py: Python<'_>, project_id: i64, branch: String) -> PyRe
     };
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
+    let account_id = acc.id.clone();
     let keyring = acc.keyring_account.clone();
+    let hint = project_path_hint(&paths, &account_id, project_id);
     let exists = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
-        api_client::remote_branch_exists(&base_url, &pat, &ssl_mode, project_id, &branch)
+        forge::remote_branch_exists(
+            forge,
+            &base_url,
+            &pat,
+            &ssl_mode,
+            project_id,
+            &branch,
+            hint.as_deref(),
+        )
     })?;
     let d = PyDict::new(py);
     d.set_item("exists", exists)?;
@@ -1103,8 +1171,12 @@ fn create_merge_request(
     })?;
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
+    let account_id = acc.id.clone();
+    let hint = project_path_hint(&paths, &account_id, project_id);
     let mr = py.allow_threads(|| {
-        api_client::create_merge_request(
+        forge::create_merge_request(
+            forge,
             &base_url,
             &pat,
             &ssl_mode,
@@ -1113,6 +1185,7 @@ fn create_merge_request(
             &target_branch,
             &title,
             description.as_deref(),
+            hint.as_deref(),
         )
     })?;
     let d = PyDict::new(py);
@@ -1138,10 +1211,19 @@ fn refresh_merge_requests(py: Python<'_>, project_id: i64) -> PyResult<PyObject>
     let account_id = acc.id.clone();
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
     let keyring = acc.keyring_account.clone();
+    let hint = project_path_hint(&paths, &account_id, project_id);
     let rows = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
-        let mrs = api_client::list_project_merge_requests(&base_url, &pat, &ssl_mode, project_id)?;
+        let mrs = forge::list_project_merge_requests(
+            forge,
+            &base_url,
+            &pat,
+            &ssl_mode,
+            project_id,
+            hint.as_deref(),
+        )?;
         let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
         if cache::replace_merge_requests(&conn, &account_id, project_id, &mrs).is_err() {
             let conn = cache::rebuild(&paths)?;
@@ -1330,10 +1412,21 @@ fn latest_pipeline(py: Python<'_>, project_id: i64, ref_name: String) -> PyResul
     };
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
+    let account_id = acc.id.clone();
     let keyring = acc.keyring_account.clone();
+    let hint = project_path_hint(&paths, &account_id, project_id);
     let pipe = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
-        api_client::latest_pipeline(&base_url, &pat, &ssl_mode, project_id, &ref_name)
+        forge::latest_pipeline(
+            forge,
+            &base_url,
+            &pat,
+            &ssl_mode,
+            project_id,
+            &ref_name,
+            hint.as_deref(),
+        )
     })?;
     match pipe {
         None => Ok(py.None()),
@@ -1364,10 +1457,21 @@ fn list_pipeline_jobs(py: Python<'_>, project_id: i64, pipeline_id: u64) -> PyRe
     };
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
+    let account_id = acc.id.clone();
     let keyring = acc.keyring_account.clone();
+    let hint = project_path_hint(&paths, &account_id, project_id);
     let jobs = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
-        api_client::list_pipeline_jobs(&base_url, &pat, &ssl_mode, project_id, pipeline_id)
+        forge::list_pipeline_jobs(
+            forge,
+            &base_url,
+            &pat,
+            &ssl_mode,
+            project_id,
+            pipeline_id,
+            hint.as_deref(),
+        )
     })?;
     let list = pyo3::types::PyList::empty(py);
     for j in jobs {
@@ -1565,10 +1669,11 @@ fn play_job(py: Python<'_>, project_id: i64, job_id: u64) -> PyResult<PyObject> 
     };
     let base_url = inst.base_url.clone();
     let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
     let keyring = acc.keyring_account.clone();
     let j = py.allow_threads(|| {
         let pat = secrets::load_pat(&keyring)?;
-        api_client::play_job(&base_url, &pat, &ssl_mode, project_id, job_id)
+        forge::play_job(forge, &base_url, &pat, &ssl_mode, project_id, job_id)
     })?;
     let d = PyDict::new(py);
     d.set_item("id", j.id)?;
@@ -1577,6 +1682,32 @@ fn play_job(py: Python<'_>, project_id: i64, job_id: u64) -> PyResult<PyObject> 
     d.set_item("stage", j.stage)?;
     d.set_item("when", j.when)?;
     d.set_item("web_url", j.web_url)?;
+    Ok(d.into())
+}
+
+/// Metadata for forge-aware UI labels (MR vs PR, Pipelines vs Actions, …).
+#[pyfunction]
+fn active_forge_info(py: Python<'_>) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let forge = cfg
+        .active_instance()
+        .map(forge_kind_of)
+        .unwrap_or(ForgeKind::Gitlab);
+    let d = PyDict::new(py);
+    d.set_item("forge", forge.as_str())?;
+    d.set_item("display_name", forge.forge_display_name())?;
+    d.set_item("pull_request_label", forge.pull_request_label())?;
+    d.set_item(
+        "pull_request_label_plural",
+        forge.pull_request_label_plural(),
+    )?;
+    d.set_item("ci_tab_label", forge.ci_tab_label())?;
+    d.set_item("supports_play_job", forge.supports_play_job())?;
+    d.set_item(
+        "open_in_label",
+        format!("Open in {}", forge.forge_display_name()),
+    )?;
     Ok(d.into())
 }
 
@@ -1807,6 +1938,7 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_progress_overlay, m)?)?;
     m.add_function(wrap_pyfunction!(get_git_op_progress, m)?)?;
     m.add_function(wrap_pyfunction!(validate_base_url, m)?)?;
+    m.add_function(wrap_pyfunction!(active_forge_info, m)?)?;
     m.add_function(wrap_pyfunction!(revert_config_to_known_good, m)?)?;
     m.add_function(wrap_pyfunction!(parse_error_message, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

@@ -181,8 +181,12 @@ class RepoWindow(QMainWindow):
         self.tabs.addTab(self._build_history_tab(), "History")
         self.tabs.addTab(self._build_branches_tab(), "Branches")
         self.tabs.addTab(self._build_compare_tab(), "Compare")
-        self.tabs.addTab(self._build_pipelines_tab(), "Pipelines")
-        self.tabs.addTab(self._build_mrs_tab(), "Merge requests")
+        self._pipelines_tab_index = self.tabs.addTab(
+            self._build_pipelines_tab(), "Pipelines"
+        )
+        self._mrs_tab_index = self.tabs.addTab(
+            self._build_mrs_tab(), "Merge requests"
+        )
         layout.addWidget(self.tabs, stretch=1)
 
         self.footer = QLabel("")
@@ -193,11 +197,51 @@ class RepoWindow(QMainWindow):
         self._pipeline_web_url: str | None = None
         self._mr_project_id: int | None = None
         self._busy = False
+        self._apply_forge_labels()
 
         # Defer initial load so the window can paint before scanning a large tree.
         self.footer.setText("Loading repository…")
         QTimer.singleShot(0, self.refresh)
         self.set_network_available(True)
+
+    def _apply_forge_labels(self) -> None:
+        """Rename MR/CI tabs and buttons for the active forge."""
+        info = {
+            "forge": "gitlab",
+            "display_name": "GitLab",
+            "pull_request_label": "Merge request",
+            "pull_request_label_plural": "Merge requests",
+            "ci_tab_label": "Pipelines",
+            "supports_play_job": True,
+            "open_in_label": "Open in GitLab",
+        }
+        try:
+            import labdesk_core
+
+            if hasattr(labdesk_core, "active_forge_info"):
+                info.update(dict(labdesk_core.active_forge_info() or {}))
+        except Exception:
+            pass
+        plural = info.get("pull_request_label_plural") or "Merge requests"
+        ci = info.get("ci_tab_label") or "Pipelines"
+        open_lbl = info.get("open_in_label") or f"Open in {info.get('display_name') or 'forge'}"
+        self._forge_info = info
+        try:
+            self.tabs.setTabText(self._pipelines_tab_index, str(ci))
+            self.tabs.setTabText(self._mrs_tab_index, str(plural))
+        except Exception:
+            pass
+        if hasattr(self, "btn_mr_open"):
+            self.btn_mr_open.setText(str(open_lbl))
+        if hasattr(self, "btn_pipeline_open"):
+            self.btn_pipeline_open.setText(str(open_lbl))
+        if hasattr(self, "btn_job_play"):
+            playable = bool(info.get("supports_play_job", True))
+            self.btn_job_play.setEnabled(playable and self.btn_job_play.isEnabled())
+            self.btn_job_play.setVisible(playable)
+        if hasattr(self, "btn_mr"):
+            singular = info.get("pull_request_label") or "Merge request"
+            self.btn_mr.setText(f"Create {singular.lower()}…")
 
     def set_network_available(self, available: bool) -> None:
         self._network_available = available
@@ -866,7 +910,8 @@ class RepoWindow(QMainWindow):
             reply = QMessageBox.information(
                 self,
                 "Merge request created",
-                f"Created !{iid}: {(mr or {}).get('title') or title}\n\nOpen in GitLab?",
+                f"Created !{iid}: {(mr or {}).get('title') or title}\n\n"
+                f"{(getattr(self, '_forge_info', {}) or {}).get('open_in_label') or 'Open in forge'}?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes,
             )
