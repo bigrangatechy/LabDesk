@@ -76,10 +76,14 @@ class BrowseFilesDialog(QDialog):
         layout.addWidget(split, stretch=1)
 
         row = QHBoxLayout()
-        self.btn_open = QPushButton("Open in editor")
+        self.btn_open = QPushButton("Edit in LabDesk")
         self.btn_open.setEnabled(False)
-        self.btn_open.clicked.connect(self._open_external)
+        self.btn_open.clicked.connect(self._open_in_app)
         row.addWidget(self.btn_open)
+        self.btn_external = QPushButton("Open external")
+        self.btn_external.setEnabled(False)
+        self.btn_external.clicked.connect(self._open_external)
+        row.addWidget(self.btn_external)
         self.btn_more = QPushButton("Load more…")
         self.btn_more.clicked.connect(self._load_more)
         row.addWidget(self.btn_more)
@@ -156,6 +160,8 @@ class BrowseFilesDialog(QDialog):
     def _on_selected(self, current, _prev) -> None:
         rel = self.proxy.data(current, Qt.ItemDataRole.DisplayRole) if current.isValid() else None
         self.btn_open.setEnabled(bool(rel))
+        if hasattr(self, "btn_external"):
+            self.btn_external.setEnabled(bool(rel))
         if not rel:
             self.preview.clear()
             return
@@ -187,6 +193,14 @@ class BrowseFilesDialog(QDialog):
             status=lambda _t: None,
             working_message="",
         )
+
+    def _open_in_app(self) -> None:
+        rel = self._current_path()
+        if not rel:
+            return
+        from labdesk_ui.widgets.code_editor import open_code_editor
+
+        open_code_editor(Path(self.repo_path) / rel, parent=self)
 
     def _open_external(self) -> None:
         rel = self._current_path()

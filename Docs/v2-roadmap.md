@@ -34,8 +34,8 @@ admin, localization, review, and git-extension surfaces. Delivery is
 | F | MR merge via API + read-only notes | Done |
 | G | SSH host-switch + richer diffs | Done |
 | H | Notifications + V1 completeness pack | Done |
-| I | Full in-app code editor (from scratch on Qt; no QScintilla) | Next |
-| J | Admin / runner management | — |
+| I | Full in-app code editor (from scratch on Qt; no QScintilla) | Done |
+| J | Admin / runner management | Next |
 | K | Side-by-side fancy diff editor | — |
 | L | Localization | — |
 | M | MR comment replies / full review workflows | — |
@@ -47,8 +47,9 @@ admin, localization, review, and git-extension surfaces. Delivery is
 - **I — In-app editor:** Full in-app code editor built **from scratch**
   on PySide6/Qt (`QPlainTextEdit` / `QTextEdit` + highlighters and
   chrome). Riverbank **QScintilla remains rejected** (ADR-002, ADR-003).
-  Prefer a maintainable subset (open/save, undo, find, line numbers,
-  basic highlight, large-file caps) over Scintilla feature parity.
+  Shipped subset: open/save, undo/redo, find/replace, line numbers,
+  basic language highlight, large/binary file policy; **Open external**
+  remains available. Not Scintilla feature parity.
 - **J — Admin/runners:** Instance admin and CI runner management UIs
   (forge-aware; capability-gated like play-job).
 - **K — Fancy diff:** Side-by-side (and related) diff product beyond

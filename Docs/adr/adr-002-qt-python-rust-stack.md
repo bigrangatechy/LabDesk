@@ -39,10 +39,11 @@ We will use a hybrid architecture:
   equivalent) for add/delete/context line styling and light syntax
   highlighting — no Riverbank QScintilla.
 - **In-app code editor (Slice I):** Built **from scratch** on PySide6 /
-  Qt primitives (e.g. `QPlainTextEdit` / `QTextEdit` + highlighters,
-  line numbers, find/replace, and related chrome as needed). Do **not**
-  add QScintilla or other GPLv3-only editor widgets. Share styling /
-  highlighter patterns with the read-only diff viewer where practical.
+  Qt primitives (`QPlainTextEdit` + highlighters, line numbers,
+  find/replace, and related chrome). Do **not** add QScintilla or other
+  GPLv3-only editor widgets. Share styling / highlighter patterns with
+  the read-only diff viewer where practical. First ship is a maintainable
+  subset (not Scintilla parity); **Open external** remains available.
 - **Interoperability:** The Rust backend is exposed as a Python module,
   allowing the UI to call high-performance functions without GIL
   contention where possible.

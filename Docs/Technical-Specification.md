@@ -89,7 +89,8 @@ User          UI Layer         Core (Rust)              GitLab / Git
  │── Clone Repo ──→ clone(url,path) → libgit2.clone()        │
  │               │←── success ───────│                        │
  │               │                  │                        │
- │── Edit Files ──→ open external editor (xdg-open / portal) │
+ │── Edit Files ──→ Edit in LabDesk (QPlainTextEdit editor)  │
+ │               │   or open external (xdg-open / portal)    │
  │               │                  │                        │
  │── View Changes → status() ───────→ libgit2.status()       │
  │               │←── file_list ─────│ (local)                │
@@ -111,8 +112,9 @@ User          UI Layer         Core (Rust)              GitLab / Git
  │── Open in forge → open_url() ───→ (xdg-open)              │
 ```
 
-Editing is **always external** in V1. Diff view is read-only. Any
-future in-app editor would be built from scratch (not QScintilla).
+Diff and conflict previews remain read-only `QTextEdit`. **Slice I**
+adds a from-scratch in-app editor (`QPlainTextEdit` + chrome); Riverbank
+QScintilla is not used (ADR-002, ADR-003). **Open external** remains.
 
 UI strings for merge/pull requests, CI tabs, and “Open in …” follow the
 active host’s forge (`active_forge_info` / `forge_labels`).
@@ -300,14 +302,14 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
   passwords are not stored in `config.toml` either.
 - **Force push** is available behind an explicit confirmation dialog;
   it is not the default recovery from a rejected push.
-- **No in-app code editing (through Slice H).** Diff and conflict
-  previews use read-only `QTextEdit` (plus structured ours/theirs
-  actions). Open files with an external editor via `xdg-open` / portal.
-  **Slice I** adds a full in-app editor built **from scratch** on
-  PySide6/Qt — not Riverbank QScintilla (ADR-002, ADR-003). See
-  [`v2-roadmap.md`](v2-roadmap.md).
+- **In-app code editing (Slice I):** from-scratch editor on PySide6/Qt
+  (`QPlainTextEdit` + line numbers / find / basic highlight). Diff and
+  conflict previews stay read-only `QTextEdit`. External editor via
+  `xdg-open` / portal remains available. **Not** Riverbank QScintilla
+  (ADR-002, ADR-003). See [`v2-roadmap.md`](v2-roadmap.md).
 - **Conflict resolution (V2):** structured in-app resolve is supported;
-  users may still resolve externally. See ADR-006 and `Docs/v2-roadmap.md`.
+  users may still resolve externally or in the LabDesk editor. See ADR-006
+  and `Docs/v2-roadmap.md`.
 - **Admin/runners, fancy side-by-side diff, localization, MR reply
   posting, submodule/LFS UIs:** planned as Slices J–N; not before then.
 - **No OAuth/SSO** for the API in this roadmap; PAT / forge tokens only.

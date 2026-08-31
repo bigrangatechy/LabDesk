@@ -236,10 +236,14 @@ class RepoWindow(QMainWindow):
         self.btn_mr.clicked.connect(self._create_mr)
         row.addWidget(self.btn_mr)
 
-        self.btn_editor = QPushButton("Open in editor")
+        self.btn_editor = QPushButton("Edit in LabDesk")
         self.btn_editor.clicked.connect(self._open_in_editor)
         self.btn_editor.setEnabled(False)
         row.addWidget(self.btn_editor)
+        self.btn_external = QPushButton("Open external")
+        self.btn_external.clicked.connect(self._open_external)
+        self.btn_external.setEnabled(False)
+        row.addWidget(self.btn_external)
         row.addStretch(1)
         layout.addLayout(row)
 
@@ -660,6 +664,8 @@ class RepoWindow(QMainWindow):
         self.files.clear()
         self.diff.clear()
         self.btn_editor.setEnabled(False)
+        if hasattr(self, "btn_external"):
+            self.btn_external.setEnabled(False)
 
         if changes:
             staged_only = [
@@ -1046,7 +1052,19 @@ class RepoWindow(QMainWindow):
     def _open_in_editor(self) -> None:
         rel = self._selected_file_path()
         if not rel:
-            QMessageBox.information(self, "Open in editor", "Select a file first.")
+            QMessageBox.information(self, "Edit in LabDesk", "Select a file first.")
+            return
+        from labdesk_ui.widgets.code_editor import open_code_editor
+
+        abs_path = Path(self.repo_path) / rel
+        win = open_code_editor(abs_path, parent=self)
+        if win is not None:
+            self.footer.setText(f"Editing {rel} in LabDesk.")
+
+    def _open_external(self) -> None:
+        rel = self._selected_file_path()
+        if not rel:
+            QMessageBox.information(self, "Open external", "Select a file first.")
             return
         abs_path = Path(self.repo_path) / rel
         try:
@@ -1263,14 +1281,21 @@ class RepoWindow(QMainWindow):
     def _on_file_selected(self, current: QListWidgetItem | None, _prev) -> None:
         if current is None:
             self.btn_editor.setEnabled(False)
+            if hasattr(self, "btn_external"):
+                self.btn_external.setEnabled(False)
             return
         data = current.data(Qt.ItemDataRole.UserRole)
         if not isinstance(data, dict):
             self.btn_editor.setEnabled(False)
+            if hasattr(self, "btn_external"):
+                self.btn_external.setEnabled(False)
             return
         rel = data.get("path") or ""
         kind = data.get("kind") or "change"
-        self.btn_editor.setEnabled(bool(rel))
+        can_open = bool(rel)
+        self.btn_editor.setEnabled(can_open)
+        if hasattr(self, "btn_external"):
+            self.btn_external.setEnabled(can_open)
         if not rel:
             return
         try:

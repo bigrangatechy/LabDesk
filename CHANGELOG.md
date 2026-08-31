@@ -18,8 +18,12 @@ bullets without a stamp predate this convention.
 
 ## [Unreleased]
 
-### Added
+ ### Added
 
+- **00:59:16  01/09/2026** — Slice I from-scratch in-app editor:
+  `QPlainTextEdit` + line numbers, find/replace, basic syntax highlight,
+  save/undo, large/binary caps; **Edit in LabDesk** from Changes /
+  Browse / conflicts; **Open external** retained. No QScintilla.
 - **00:54:36  01/09/2026** — Slice H notifications + V1 completeness:
   notify chip wires pipeline failure + MR list changes; **File → Recent
   repositories**; touch `last_opened_at` on open; post-push **Set

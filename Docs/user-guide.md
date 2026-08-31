@@ -145,11 +145,16 @@ In the repo window:
   directories (for example `build/` or `node_modules/`) appear as **one**
   entry — **Stage** / **Stage all** still add all files under that
   directory (like `git add <dir>/`). Very large file or diff previews
-  are truncated — use **Open in editor** for the full content.
-- **Open in editor:** opens the selected file with the desktop default.
+  are truncated — use **Edit in LabDesk** or **Open external** for the
+  full content.
+- **Edit in LabDesk:** opens the selected file in LabDesk’s built-in
+  editor (save, undo, find/replace, line numbers, light syntax
+  highlight). Very large files open read-only; binary files offer the
+  desktop default instead. **Open external** still uses `xdg-open` /
+  portal.
 - **Branches:** list, switch, create, merge into current, **Delete…**,
   **Set upstream**. On conflict, use the conflict resolve panel (or open
-  files externally). After a successful push with no upstream, LabDesk
+  files in LabDesk / externally). After a successful push with no upstream, LabDesk
   may offer to set `origin/<branch>`.
 - **Sync:** header shows ↑ahead / ↓behind / diverged. With fetch-on-focus
   enabled (default), LabDesk fetches when you open or refresh a repo

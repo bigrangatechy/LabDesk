@@ -70,6 +70,9 @@ class ConflictDialog(QDialog):
         self.btn_external = QPushButton("Open external")
         self.btn_external.clicked.connect(self._open_external)
         actions.addWidget(self.btn_external)
+        self.btn_edit = QPushButton("Edit in LabDesk")
+        self.btn_edit.clicked.connect(self._open_in_app)
+        actions.addWidget(self.btn_edit)
         self.btn_mark = QPushButton("Mark resolved")
         self.btn_mark.clicked.connect(self._mark_resolved)
         actions.addWidget(self.btn_mark)
@@ -103,6 +106,7 @@ class ConflictDialog(QDialog):
             self.btn_ours,
             self.btn_theirs,
             self.btn_external,
+            self.btn_edit,
             self.btn_mark,
         ):
             btn.setEnabled(enabled)
@@ -206,6 +210,14 @@ class ConflictDialog(QDialog):
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
+
+    def _open_in_app(self) -> None:
+        rel = self._selected_path()
+        if not rel:
+            return
+        from labdesk_ui.widgets.code_editor import open_code_editor
+
+        open_code_editor(Path(self.repo_path) / rel, parent=self)
 
     def _mark_resolved(self) -> None:
         rel = self._selected_path()

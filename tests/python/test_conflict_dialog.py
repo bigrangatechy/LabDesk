@@ -30,6 +30,7 @@ def test_conflict_dialog_has_structured_actions(monkeypatch, qapp, tmp_path):
     assert dlg.btn_ours.isEnabled()
     assert dlg.btn_theirs.isEnabled()
     assert dlg.btn_external.isEnabled()
+    assert dlg.btn_edit.isEnabled()
     assert dlg.btn_mark.isEnabled()
     assert not dlg.btn_continue.isEnabled()  # conflicts remain
     assert dlg.btn_abort.isEnabled()

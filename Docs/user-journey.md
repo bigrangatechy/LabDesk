@@ -79,18 +79,17 @@ to SSH.
    **File → Open repository…**).
 2. **Changes:** view status; **stage / unstage**; read-only **diff** in
    `QTextEdit`.
-3. To edit files: open with an **external** editor (`xdg-open` /
-   portal). No in-app editor in V1.
+3. To edit files: **Edit in LabDesk** (from-scratch Qt editor) or
+   **Open external** (`xdg-open` / portal).
 4. Enter commit message → **commit** locally (libgit2; uses git
    `user.name` / `user.email`).
 5. Create / switch branches locally (**Branches** tab).
 6. Optional: local **merge** when clean. On conflict, LabDesk opens the
-   **conflict resolve** panel (ours / theirs / open external / mark
-   resolved; continue or abort). You may still resolve entirely outside
-   LabDesk.
+   **conflict resolve** panel (ours / theirs / Edit in LabDesk / open
+   external / mark resolved; continue or abort). You may still resolve
+   entirely outside LabDesk.
 
-Network is not required for this journey. Use **Open in editor** to
-edit a selected file outside LabDesk.
+Network is not required for this journey.
 
 ---
 
