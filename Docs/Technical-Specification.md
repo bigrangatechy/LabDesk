@@ -122,8 +122,15 @@ per-forge `api-contract-*.md`). Git HTTPS uses the **credential helper**;
 SSH uses agent/keys.
 
 Large local repos: tracked-file and status lists are **capped**; status
-does **not** recurse into untracked directories; file/diff text shown in
-Qt is **truncated** (see changelog / `git_ops` constants).
+does **not** recurse into untracked directories (Stage / Stage all still
+expand a selected directory like `git add <dir>/`); file/diff text shown
+in Qt is **truncated** (see changelog / `git_ops` constants).
+
+**Active host URLs:** HTTPS clone, Open-in, and MR/pipeline browser links
+are built or rebased onto the **active instance `base_url`**. Forge APIs
+often return a public hostname even when LabDesk is talking to a LAN
+URL; switching Host also rewrites cached project http/web URLs and
+matching local `origin` remotes.
 
 ### 3.2 Offline Behavior
 

@@ -259,11 +259,14 @@ without user action (exact UX in user guide later).
 
 **Host switch (domain ↔ LAN):** When `active_instance_id` changes to a
 host with a different `base_url`, LabDesk may rewrite `origin` on rows
-in this table: only http(s) remotes whose host matched the **previous**
-instance, and only when `path_with_namespace` is present in the **new**
-account’s project cache. The row’s `account_id` / `project_id` /
-`clone_url` are updated to the new account. SSH remotes and clones that
-do not overlap the new account’s projects are not changed.
+in `local_repos` whose remote still points at the previous host **and**
+whose project path exists under the newly selected account. Only http(s)
+remotes whose host matched the **previous** instance are considered; the
+row’s `account_id` / `project_id` / `clone_url` are updated to the new
+account. Cached `projects.http_url_to_repo` / `web_url` (and pipeline
+web URLs) for that account are also rewritten onto the new Base URL so
+clone and Open-in follow the same host. SSH remotes and clones that do
+not overlap the new account’s projects are not changed.
 
 **Note on `last_push_at`:** This is not a substitute for `git status` /
 ahead-behind. It answers “how long since I last got this onto the

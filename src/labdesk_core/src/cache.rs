@@ -270,6 +270,44 @@ pub fn set_project_pipeline_status(
     Ok(())
 }
 
+/// Rewrite cached project http/web (and pipeline web) URLs onto `base_url`.
+///
+/// Keeps forge API public-hostname rows from leaking into clone / Open-in
+/// after a domain ↔ LAN host switch.
+pub fn rebase_project_urls_to_base(
+    conn: &Connection,
+    account_id: &str,
+    base_url: &str,
+) -> Result<usize> {
+    let rows = list_projects(conn, account_id)?;
+    let mut n = 0usize;
+    for p in rows {
+        let http = crate::git_ops::http_clone_url_for(base_url, &p.path_with_namespace);
+        let web = format!(
+            "{}/{}",
+            base_url.trim().trim_end_matches('/'),
+            p.path_with_namespace.trim_start_matches('/')
+        );
+        let pipe = p
+            .pipeline_web_url
+            .as_deref()
+            .and_then(|u| crate::git_ops::rebase_http_url_to_base(u, base_url));
+        conn.execute(
+            r#"
+            UPDATE projects
+            SET http_url_to_repo = ?3,
+                web_url = ?4,
+                pipeline_web_url = COALESCE(?5, pipeline_web_url)
+            WHERE account_id = ?1 AND project_id = ?2
+            "#,
+            params![account_id, p.project_id, http, web, pipe],
+        )
+        .map_err(cache_err)?;
+        n += 1;
+    }
+    Ok(n)
+}
+
 pub fn get_cached_project(
     conn: &Connection,
     account_id: &str,

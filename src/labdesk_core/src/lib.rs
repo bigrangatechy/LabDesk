@@ -429,6 +429,8 @@ fn set_active_account(py: Python<'_>, account_id: String) -> PyResult<PyObject> 
                 &account_id,
             )
             .unwrap_or(0);
+            // Project list / Open-in / clone URLs must follow the new host too.
+            let _ = cache::rebase_project_urls_to_base(&conn, &account_id, &new_base);
         }
     }
     let out = pyo3::types::PyDict::new(py);
@@ -445,7 +447,12 @@ fn refresh_projects_inner(
     pat: &str,
     ssl_mode: &str,
 ) -> Result<usize, LabDeskError> {
-    let projects = forge::list_membership_projects(forge, base_url, pat, ssl_mode)?;
+    let mut projects = forge::list_membership_projects(forge, base_url, pat, ssl_mode)?;
+    // Forge APIs often return public-hostname clone/web URLs even when we
+    // talk to a LAN base_url — pin stored URLs to the active host.
+    for p in &mut projects {
+        git_ops::align_project_urls_to_base(p, base_url);
+    }
     let conn = cache::open(paths).or_else(|_| cache::rebuild(paths))?;
     if cache::replace_projects(&conn, account_id, &projects).is_err() {
         let conn = cache::rebuild(paths)?;
@@ -472,12 +479,16 @@ fn refresh_projects_inner(
             Some(p.path_with_namespace.as_str()),
         ) {
             Ok(Some(pipe)) => {
+                let web = pipe
+                    .web_url
+                    .as_deref()
+                    .and_then(|u| git_ops::rebase_http_url_to_base(u, base_url));
                 let _ = cache::set_project_pipeline_status(
                     &conn,
                     account_id,
                     p.id as i64,
                     pipe.status.as_deref(),
-                    pipe.web_url.as_deref(),
+                    web.as_deref().or(pipe.web_url.as_deref()),
                 );
             }
             Ok(None) => {
@@ -565,32 +576,44 @@ fn list_projects(py: Python<'_>, allow_stale: bool) -> PyResult<PyObject> {
     let _ = allow_stale;
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some((acc, _inst)) = cfg.active_connection() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
         ))
         .into());
     };
+    let base_url = inst.base_url.clone();
 
     let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
     let rows = cache::list_projects(&conn, &acc.id)?;
     let list = pyo3::types::PyList::empty(py);
     for p in rows {
+        let http = git_ops::http_clone_url_for(&base_url, &p.path_with_namespace);
+        let web = format!(
+            "{}/{}",
+            base_url.trim_end_matches('/'),
+            p.path_with_namespace.trim_start_matches('/')
+        );
+        let pipe_web = p
+            .pipeline_web_url
+            .as_deref()
+            .and_then(|u| git_ops::rebase_http_url_to_base(u, &base_url))
+            .or(p.pipeline_web_url.clone());
         let d = PyDict::new(py);
         d.set_item("project_id", p.project_id)?;
         d.set_item("name", p.name)?;
         d.set_item("name_with_namespace", p.name_with_namespace)?;
         d.set_item("path_with_namespace", p.path_with_namespace)?;
-        d.set_item("http_url_to_repo", p.http_url_to_repo)?;
+        d.set_item("http_url_to_repo", http)?;
         d.set_item("ssh_url_to_repo", p.ssh_url_to_repo)?;
-        d.set_item("web_url", p.web_url)?;
+        d.set_item("web_url", web)?;
         d.set_item("default_branch", p.default_branch)?;
         d.set_item("visibility", p.visibility)?;
         d.set_item("last_activity_at", p.last_activity_at)?;
         d.set_item("fetched_at", p.fetched_at)?;
         d.set_item("pipeline_status", p.pipeline_status)?;
-        d.set_item("pipeline_web_url", p.pipeline_web_url)?;
+        d.set_item("pipeline_web_url", pipe_web)?;
         list.append(d)?;
     }
     Ok(list.into())
@@ -663,12 +686,9 @@ fn clone_project(py: Python<'_>, project_id: i64, transport: &str) -> PyResult<P
         })?;
         (url, git_ops::CloneTransport::Ssh)
     } else {
-        let url = project.http_url_to_repo.clone().ok_or_else(|| {
-            LabDeskError::App(
-                ErrorInfo::new("LD-GIT-030", "Clone failed.")
-                    .with_detail("no http_url_to_repo for project"),
-            )
-        })?;
+        // Always clone via the active host base_url — never the forge's
+        // public http_url_to_repo (often stays on the domain hostname).
+        let url = git_ops::http_clone_url_for(&inst.base_url, &project.path_with_namespace);
         (url, git_ops::CloneTransport::Https)
     };
 
@@ -1091,7 +1111,7 @@ fn repo_checkout_branch(repo_path: String, name: String) -> PyResult<()> {
 fn resolve_repo_project(py: Python<'_>, repo_path: String) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some((acc, _inst)) = cfg.active_connection() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Err(LabDeskError::App(ErrorInfo::new(
             "LD-AUTH-004",
             "No access token configured.",
@@ -1099,6 +1119,7 @@ fn resolve_repo_project(py: Python<'_>, repo_path: String) -> PyResult<PyObject>
         .into());
     };
     let account_id = acc.id.clone();
+    let base_url = inst.base_url.clone();
     let conn = cache::open(&paths)?;
 
     let mut project_id: Option<i64> = None;
@@ -1134,12 +1155,23 @@ fn resolve_repo_project(py: Python<'_>, repo_path: String) -> PyResult<PyObject>
     };
 
     let current = git_ops::current_branch(std::path::Path::new(&repo_path)).unwrap_or_default();
+    let web = project
+        .web_url
+        .as_deref()
+        .and_then(|u| git_ops::rebase_http_url_to_base(u, &base_url))
+        .unwrap_or_else(|| {
+            format!(
+                "{}/{}",
+                base_url.trim_end_matches('/'),
+                project.path_with_namespace.trim_start_matches('/')
+            )
+        });
     let d = PyDict::new(py);
     d.set_item("project_id", project.project_id)?;
     d.set_item("name", project.name)?;
     d.set_item("path_with_namespace", project.path_with_namespace)?;
     d.set_item("default_branch", project.default_branch)?;
-    d.set_item("web_url", project.web_url)?;
+    d.set_item("web_url", web)?;
     d.set_item("current_branch", current)?;
     Ok(d.into())
 }
@@ -1188,11 +1220,16 @@ fn create_merge_request(
             hint.as_deref(),
         )
     })?;
+    let web = mr
+        .web_url
+        .as_deref()
+        .and_then(|u| git_ops::rebase_http_url_to_base(u, &base_url))
+        .or(mr.web_url.clone());
     let d = PyDict::new(py);
     d.set_item("iid", mr.iid)?;
     d.set_item("title", mr.title)?;
     d.set_item("state", mr.state)?;
-    d.set_item("web_url", mr.web_url)?;
+    d.set_item("web_url", web)?;
     Ok(d.into())
 }
 
@@ -1233,11 +1270,16 @@ fn refresh_merge_requests(py: Python<'_>, project_id: i64) -> PyResult<PyObject>
     })?;
     let list = pyo3::types::PyList::empty(py);
     for mr in rows {
+        let web = mr
+            .web_url
+            .as_deref()
+            .and_then(|u| git_ops::rebase_http_url_to_base(u, &base_url))
+            .or(mr.web_url.clone());
         let d = PyDict::new(py);
         d.set_item("iid", mr.iid)?;
         d.set_item("title", mr.title)?;
         d.set_item("state", mr.state)?;
-        d.set_item("web_url", mr.web_url)?;
+        d.set_item("web_url", web)?;
         d.set_item("source_branch", mr.source_branch)?;
         d.set_item("target_branch", mr.target_branch)?;
         d.set_item("updated_at", mr.updated_at)?;
@@ -1254,9 +1296,10 @@ fn refresh_merge_requests(py: Python<'_>, project_id: i64) -> PyResult<PyObject>
 fn cached_merge_requests(py: Python<'_>, project_id: i64) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
-    let Some((acc, _inst)) = cfg.active_connection() else {
+    let Some((acc, inst)) = cfg.active_connection() else {
         return Ok(py.None());
     };
+    let base_url = inst.base_url.clone();
     let conn = cache::open(&paths).or_else(|_| cache::rebuild(&paths))?;
     let rows = cache::list_cached_merge_requests(&conn, &acc.id, project_id)?;
     if rows.is_empty() {
@@ -1268,11 +1311,16 @@ fn cached_merge_requests(py: Python<'_>, project_id: i64) -> PyResult<PyObject> 
         if fetched_at.is_none() {
             fetched_at = Some(mr.fetched_at.clone());
         }
+        let web = mr
+            .web_url
+            .as_deref()
+            .and_then(|u| git_ops::rebase_http_url_to_base(u, &base_url))
+            .or(mr.web_url.clone());
         let d = PyDict::new(py);
         d.set_item("iid", mr.mr_iid)?;
         d.set_item("title", mr.title)?;
         d.set_item("state", mr.state)?;
-        d.set_item("web_url", mr.web_url)?;
+        d.set_item("web_url", web)?;
         d.set_item("source_branch", mr.source_branch)?;
         d.set_item("target_branch", mr.target_branch)?;
         d.set_item("updated_at", mr.updated_at)?;
@@ -1431,11 +1479,16 @@ fn latest_pipeline(py: Python<'_>, project_id: i64, ref_name: String) -> PyResul
     match pipe {
         None => Ok(py.None()),
         Some(p) => {
+            let web = p
+                .web_url
+                .as_deref()
+                .and_then(|u| git_ops::rebase_http_url_to_base(u, &base_url))
+                .or(p.web_url.clone());
             let d = PyDict::new(py);
             d.set_item("id", p.id)?;
             d.set_item("status", p.status)?;
             d.set_item("ref", p.ref_)?;
-            d.set_item("web_url", p.web_url)?;
+            d.set_item("web_url", web)?;
             d.set_item("updated_at", p.updated_at)?;
             d.set_item("created_at", p.created_at)?;
             Ok(d.into())
@@ -1718,6 +1771,18 @@ fn validate_base_url(base_url: String) -> PyResult<()> {
     Ok(())
 }
 
+/// Build `{base_url}/{path}.git` for HTTPS clone under the active host.
+#[pyfunction]
+fn http_clone_url_for(base_url: String, path_with_namespace: String) -> PyResult<String> {
+    Ok(git_ops::http_clone_url_for(&base_url, &path_with_namespace))
+}
+
+/// Rewrite an http(s) forge URL onto `base_url` (scheme/host/port); SSH → None.
+#[pyfunction]
+fn rebase_http_url_to_base(url: String, base_url: String) -> PyResult<Option<String>> {
+    Ok(git_ops::rebase_http_url_to_base(&url, &base_url))
+}
+
 /// Restore config.known-good.toml over config.toml (startup recovery helper).
 #[pyfunction]
 fn revert_config_to_known_good() -> PyResult<()> {
@@ -1938,6 +2003,8 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_progress_overlay, m)?)?;
     m.add_function(wrap_pyfunction!(get_git_op_progress, m)?)?;
     m.add_function(wrap_pyfunction!(validate_base_url, m)?)?;
+    m.add_function(wrap_pyfunction!(http_clone_url_for, m)?)?;
+    m.add_function(wrap_pyfunction!(rebase_http_url_to_base, m)?)?;
     m.add_function(wrap_pyfunction!(active_forge_info, m)?)?;
     m.add_function(wrap_pyfunction!(revert_config_to_known_good, m)?)?;
     m.add_function(wrap_pyfunction!(parse_error_message, m)?)?;

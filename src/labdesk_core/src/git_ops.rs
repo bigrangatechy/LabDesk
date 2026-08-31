@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use git2::{
     build::RepoBuilder, AutotagOption, Cred, CredentialType, DiffFormat, DiffOptions,
-    FetchOptions, PushOptions, RemoteCallbacks, Repository, StatusOptions,
+    FetchOptions, IndexAddOption, PushOptions, RemoteCallbacks, Repository, StatusOptions,
 };
 
 use crate::error::{ErrorInfo, LabDeskError, Result};
@@ -166,6 +166,8 @@ fn status_label(st: git2::Status, staged: bool, unstaged: bool) -> String {
         return "conflict".into();
     }
     if st.is_wt_new() && !staged {
+        // With recurse_untracked_dirs(false), directories appear as a single WT_NEW
+        // entry; keep the label distinct so Stage-all / Stage are clearer.
         return "untracked".into();
     }
     if staged && unstaged {
@@ -190,6 +192,9 @@ fn status_label(st: git2::Status, staged: bool, unstaged: bool) -> String {
 }
 
 /// Stage paths (add to index). Creates index entries for new files.
+///
+/// Directory paths (common when status does not recurse untracked dirs) are
+/// expanded like `git add <dir>/` via `Index::add_all`.
 pub fn stage_paths(repo_path: &Path, paths: &[String]) -> Result<usize> {
     let repo = open_repo(repo_path)?;
     let mut index = repo.index().map_err(|e| {
@@ -200,7 +205,7 @@ pub fn stage_paths(repo_path: &Path, paths: &[String]) -> Result<usize> {
     })?;
     let mut n = 0usize;
     for rel in paths {
-        let rel = rel.trim_start_matches('/');
+        let rel = rel.trim_start_matches('/').trim_end_matches('/');
         if rel.is_empty() || rel.contains("..") {
             continue;
         }
@@ -213,6 +218,24 @@ pub fn stage_paths(repo_path: &Path, paths: &[String]) -> Result<usize> {
                 )
             })?;
             n += 1;
+        } else if full.is_dir() {
+            // Untracked dirs are listed as a single status row; expand them.
+            let mut added = 0usize;
+            {
+                let mut cb = |_path: &std::path::Path, _matched: &[u8]| -> i32 {
+                    added += 1;
+                    0
+                };
+                index
+                    .add_all([rel], IndexAddOption::DEFAULT, Some(&mut cb))
+                    .map_err(|e| {
+                        LabDeskError::App(
+                            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                                .with_detail(format!("stage dir {rel}: {}", e.message())),
+                        )
+                    })?;
+            }
+            n += added;
         } else {
             // Deleted from worktree — stage the removal if it was tracked.
             match index.remove_path(std::path::Path::new(rel)) {
@@ -1411,6 +1434,69 @@ pub fn http_clone_url_for(base_url: &str, path_with_namespace: &str) -> String {
     format!("{base}/{path}.git")
 }
 
+/// Rewrite an http(s) URL so scheme/host/port match `base_url`, keeping path/query.
+///
+/// Used when the forge API returns public-hostname clone/web URLs while the
+/// user is connected via a LAN `base_url` (or the reverse). SSH URLs → `None`.
+pub fn rebase_http_url_to_base(url: &str, base_url: &str) -> Option<String> {
+    let url = url.trim();
+    let base_url = base_url.trim();
+    if url.is_empty() || base_url.is_empty() {
+        return None;
+    }
+    if url.starts_with("git@") || url.starts_with("ssh://") {
+        return None;
+    }
+    let parsed = url::Url::parse(url).ok()?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return None;
+    }
+    let base = url::Url::parse(base_url).ok()?;
+    if base.scheme() != "http" && base.scheme() != "https" {
+        return None;
+    }
+    if authority_key(&parsed) == authority_key(&base) {
+        let mut s = url.to_string();
+        while s.ends_with('/') && s.len() > 1 {
+            s.pop();
+        }
+        return Some(s);
+    }
+    let mut out = base;
+    out.set_path(parsed.path());
+    out.set_query(parsed.query());
+    out.set_fragment(None);
+    let mut s = out.to_string();
+    if s.ends_with('/') && !parsed.path().ends_with('/') {
+        s.pop();
+    }
+    Some(s)
+}
+
+/// Force project http/web URLs onto the active host `base_url`.
+pub fn align_project_urls_to_base(project: &mut crate::forge_types::ForgeProject, base_url: &str) {
+    let path = project.path_with_namespace.clone();
+    if !path.trim().is_empty() {
+        project.http_url_to_repo = Some(http_clone_url_for(base_url, &path));
+        project.web_url = Some(format!(
+            "{}/{}",
+            base_url.trim().trim_end_matches('/'),
+            path.trim().trim_start_matches('/')
+        ));
+    } else {
+        if let Some(http) = project.http_url_to_repo.clone() {
+            if let Some(rewritten) = rebase_http_url_to_base(&http, base_url) {
+                project.http_url_to_repo = Some(rewritten);
+            }
+        }
+        if let Some(web) = project.web_url.clone() {
+            if let Some(rewritten) = rebase_http_url_to_base(&web, base_url) {
+                project.web_url = Some(rewritten);
+            }
+        }
+    }
+}
+
 /// If `remote_url` lives on `from_base`, return the same path on `to_base`.
 pub fn retarget_http_remote_url(
     remote_url: &str,
@@ -1661,6 +1747,49 @@ mod tests {
     }
 
     #[test]
+    fn stage_paths_expands_untracked_directory() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("labdesk-stage-dir-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-b", "main"]);
+        fs::write(root.join("tracked.txt"), "ok\n").unwrap();
+        git(&root, &["add", "tracked.txt"]);
+        git(&root, &["commit", "-m", "init"]);
+        let nested = root.join("feature");
+        fs::create_dir_all(nested.join("deep")).unwrap();
+        fs::write(nested.join("a.rs"), "a\n").unwrap();
+        fs::write(nested.join("deep/b.rs"), "b\n").unwrap();
+
+        let statuses = repo_status(&root).expect("status");
+        assert!(
+            statuses.iter().any(|e| e.path == "feature" || e.path == "feature/"),
+            "expected untracked dir row, got {statuses:?}"
+        );
+
+        let n = stage_paths(&root, &["feature".into()]).expect("stage dir");
+        assert!(n >= 2, "expected nested files staged, got {n}");
+
+        let after = repo_status(&root).expect("after");
+        let staged_new: Vec<_> = after
+            .iter()
+            .filter(|e| e.staged && e.path.contains("feature"))
+            .map(|e| e.path.as_str())
+            .collect();
+        assert!(
+            staged_new.iter().any(|p| p.ends_with("a.rs")),
+            "a.rs should be staged: {after:?}"
+        );
+        assert!(
+            staged_new.iter().any(|p| p.ends_with("b.rs")),
+            "b.rs should be staged: {after:?}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn show_file_truncates_large_text() {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1696,6 +1825,50 @@ mod tests {
         assert!(retarget_http_remote_url(remote, to, from).is_none());
         assert!(retarget_http_remote_url("git@gitlab.example.com:Ranga/labdesk.git", from, to)
             .is_none());
+    }
+
+    #[test]
+    fn rebase_http_url_keeps_path_on_lan_base() {
+        let base = "http://192.168.0.214:8929";
+        assert_eq!(
+            rebase_http_url_to_base(
+                "https://gitlab.example.com/Ranga/labdesk/-/pipelines/9",
+                base
+            )
+            .as_deref(),
+            Some("http://192.168.0.214:8929/Ranga/labdesk/-/pipelines/9")
+        );
+        assert_eq!(
+            rebase_http_url_to_base("https://gitlab.example.com/Ranga/labdesk.git", base)
+                .as_deref(),
+            Some("http://192.168.0.214:8929/Ranga/labdesk.git")
+        );
+        assert!(rebase_http_url_to_base("git@gitlab.example.com:Ranga/labdesk.git", base).is_none());
+    }
+
+    #[test]
+    fn align_project_urls_to_base_overrides_api_host() {
+        let mut p = crate::forge_types::ForgeProject {
+            id: 1,
+            name: "labdesk".into(),
+            name_with_namespace: "Ranga / labdesk".into(),
+            path_with_namespace: "Ranga/labdesk".into(),
+            http_url_to_repo: Some("https://gitlab.example.com/Ranga/labdesk.git".into()),
+            ssh_url_to_repo: None,
+            web_url: Some("https://gitlab.example.com/Ranga/labdesk".into()),
+            default_branch: Some("main".into()),
+            visibility: None,
+            last_activity_at: None,
+        };
+        align_project_urls_to_base(&mut p, "http://10.0.0.5:8929");
+        assert_eq!(
+            p.http_url_to_repo.as_deref(),
+            Some("http://10.0.0.5:8929/Ranga/labdesk.git")
+        );
+        assert_eq!(
+            p.web_url.as_deref(),
+            Some("http://10.0.0.5:8929/Ranga/labdesk")
+        );
     }
 
     #[test]

@@ -193,6 +193,8 @@ when needed, then runs `tests/python/`.
 | Async UI bridge | `test_async_jobs.py` | Worker-thread widget updates (Qt Gui SIGSEGV) |
 | Repo reopen | `test_repo_windows.py` | “Internal C++ object already deleted” after close |
 | Large-repo Changes tab | `test_big_repo_tracked_cap.py` | Tracked + changes list caps; core `limit` arity |
+| Stage untracked dir | `test_stage_untracked_dir.py` | `repo_stage` expands dir rows (`git add <dir>/`) |
+| Active-host URLs | `test_active_host_urls.py` | Clone/Open-in helpers follow Base URL not public host |
 | Forge-aware UI labels | `test_forge_labels.py` | MR/PR / Open in … / host combo helpers |
 | Host ↔ LAN remotes | `test_host_switch_remotes.py` | Host switch retarget feedback |
 | Multi-forge connect | `test_multi_forge.py` | Forge picker + SaaS reject list |

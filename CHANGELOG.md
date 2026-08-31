@@ -20,6 +20,15 @@ bullets without a stamp predate this convention.
 
 ### Fixed
 
+- **23:30:07  31/08/2026** — Staging an untracked directory row (shown as a
+  single path after the large-repo status change) now expands like
+  `git add <dir>/` instead of treating the folder as a deletion path.
+  Regression: `test_stage_untracked_dir.py` + Rust `stage_paths_expands_*`.
+- **23:30:07  31/08/2026** — After switching to a LAN/local host, clone /
+  Open-in / MR / pipeline http(s) URLs follow the active Base URL (not
+  the forge’s public hostname); project cache is rebased on host switch.
+  Helpers `http_clone_url_for` / `rebase_http_url_to_base` exposed for
+  tests (`test_active_host_urls.py`).
 - **03:36:06  30/08/2026** — Large-repo Flatpak follow-up: do not recurse into
   untracked directories for status, cap Changes-list rows, and truncate file /
   diff / commit text fed to Qt viewers (avoids another `QArrayData` / OOM path

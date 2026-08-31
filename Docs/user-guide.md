@@ -88,11 +88,13 @@ switch; the Projects list follows the active account.
 **Same server, domain vs LAN:** add both URLs as separate hosts (each
 with its own account/PAT). When you switch **Host**, LabDesk retargets
 `origin` on local clones that still point at the previous host **and**
-whose project path exists under the newly selected account. Unrelated
-hosts, SSH remotes, and accounts without that project are left alone.
-Some forges’ clone URLs stay on the public hostname even when you talk
-to the LAN address — LabDesk builds the new remote from the selected
-host’s Base URL.
+whose project path exists under the newly selected account. It also
+rewrites cached project clone/web URLs onto the selected host’s Base
+URL, so **clone, fetch/pull/push, Open in …, and MR/pipeline links**
+all use that host — not only push. Unrelated hosts, SSH remotes, and
+accounts without that project are left alone. Some forges’ own clone
+URLs stay on the public hostname even when you talk to the LAN address —
+LabDesk prefers the selected host’s Base URL instead.
 
 ---
 
@@ -133,9 +135,10 @@ In the repo window:
 - **Changes:** stage / unstage / commit; read-only diffs. On large
   repos LabDesk caps how many rows it lists (tracked files and dirty
   paths) and treats an untracked directory (for example `build/` or
-  `node_modules/`) as **one** entry instead of every file inside.
-  Very large file or diff previews are truncated — use **Open in
-  editor** for the full content.
+  `node_modules/`) as **one** entry instead of every file inside —
+  **Stage** / **Stage all** still add all files under that directory
+  (like `git add <dir>/`). Very large file or diff previews are
+  truncated — use **Open in editor** for the full content.
 - **Open in editor:** opens the selected file with the desktop default.
 - **Branches:** list, switch, create, merge into current (clean merges
   only; if there are conflicts, resolve them outside LabDesk).
