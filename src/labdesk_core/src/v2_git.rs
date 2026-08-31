@@ -498,3 +498,160 @@ pub fn set_upstream(repo_path: &Path, remote_name: &str, branch: &str) -> Result
         .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn git(cwd: &Path, args: &[&str]) {
+        let st = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .status()
+            .expect("git");
+        assert!(st.success(), "git {args:?} failed");
+    }
+
+    fn temp_root(tag: &str) -> std::path::PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("labdesk-{tag}-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn stash_save_and_pop_roundtrip() {
+        let root = temp_root("stash");
+        git(&root, &["init", "-b", "main"]);
+        git(&root, &["config", "user.name", "Test"]);
+        git(&root, &["config", "user.email", "t@example.com"]);
+        fs::write(root.join("a.txt"), "base\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "base"]);
+        fs::write(root.join("a.txt"), "dirty\n").unwrap();
+        fs::write(root.join("untracked.txt"), "u\n").unwrap();
+
+        stash_save(&root, true).expect("stash");
+        assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "base\n");
+        assert!(!root.join("untracked.txt").exists());
+
+        stash_pop(&root).expect("pop");
+        assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "dirty\n");
+        assert!(root.join("untracked.txt").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn stash_without_untracked_leaves_new_file() {
+        let root = temp_root("stash-tracked");
+        git(&root, &["init", "-b", "main"]);
+        git(&root, &["config", "user.name", "Test"]);
+        git(&root, &["config", "user.email", "t@example.com"]);
+        fs::write(root.join("a.txt"), "base\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "base"]);
+        fs::write(root.join("a.txt"), "dirty\n").unwrap();
+        fs::write(root.join("new.txt"), "n\n").unwrap();
+
+        stash_save(&root, false).expect("stash tracked only");
+        assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "base\n");
+        assert!(root.join("new.txt").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rebase_onto_upstream_clean() {
+        let bare = temp_root("rebase-bare");
+        let clone = temp_root("rebase-clone");
+        git(&bare, &["init", "--bare", "-b", "main"]);
+
+        git(&clone, &["clone", bare.to_str().unwrap(), "."]);
+        git(&clone, &["config", "user.name", "Test"]);
+        git(&clone, &["config", "user.email", "t@example.com"]);
+        fs::write(clone.join("a.txt"), "one\n").unwrap();
+        git(&clone, &["add", "a.txt"]);
+        git(&clone, &["commit", "-m", "one"]);
+        git(&clone, &["push", "-u", "origin", "main"]);
+
+        // Advance origin/main via a second worktree.
+        let other = temp_root("rebase-other");
+        git(&other, &["clone", bare.to_str().unwrap(), "."]);
+        git(&other, &["config", "user.name", "Test"]);
+        git(&other, &["config", "user.email", "t@example.com"]);
+        fs::write(other.join("a.txt"), "one\nupstream\n").unwrap();
+        git(&other, &["add", "a.txt"]);
+        git(&other, &["commit", "-m", "upstream"]);
+        git(&other, &["push"]);
+
+        // Local commit on clone that can FF-rebase cleanly (no conflict).
+        fs::write(clone.join("b.txt"), "side\n").unwrap();
+        git(&clone, &["add", "b.txt"]);
+        git(&clone, &["commit", "-m", "local"]);
+        git(&clone, &["fetch"]);
+
+        let msg = rebase_onto_upstream(&clone, "origin").expect("rebase");
+        assert!(msg.to_lowercase().contains("rebase"));
+        assert_eq!(
+            fs::read_to_string(clone.join("a.txt")).unwrap(),
+            "one\nupstream\n"
+        );
+        assert!(clone.join("b.txt").exists());
+        let _ = fs::remove_dir_all(bare);
+        let _ = fs::remove_dir_all(clone);
+        let _ = fs::remove_dir_all(other);
+    }
+
+    #[test]
+    fn abort_rebase_after_conflict() {
+        let bare = temp_root("abort-bare");
+        let clone = temp_root("abort-clone");
+        git(&bare, &["init", "--bare", "-b", "main"]);
+
+        git(&clone, &["clone", bare.to_str().unwrap(), "."]);
+        git(&clone, &["config", "user.name", "Test"]);
+        git(&clone, &["config", "user.email", "t@example.com"]);
+        fs::write(clone.join("a.txt"), "base\n").unwrap();
+        git(&clone, &["add", "a.txt"]);
+        git(&clone, &["commit", "-m", "base"]);
+        git(&clone, &["push", "-u", "origin", "main"]);
+
+        let other = temp_root("abort-other");
+        git(&other, &["clone", bare.to_str().unwrap(), "."]);
+        git(&other, &["config", "user.name", "Test"]);
+        git(&other, &["config", "user.email", "t@example.com"]);
+        fs::write(other.join("a.txt"), "upstream\n").unwrap();
+        git(&other, &["add", "a.txt"]);
+        git(&other, &["commit", "-m", "upstream"]);
+        git(&other, &["push"]);
+
+        fs::write(clone.join("a.txt"), "local\n").unwrap();
+        git(&clone, &["add", "a.txt"]);
+        git(&clone, &["commit", "-m", "local"]);
+        git(&clone, &["fetch"]);
+
+        let err = rebase_onto_upstream(&clone, "origin").expect_err("conflict");
+        let s = format!("{err}");
+        assert!(s.contains("LD-GIT-020"), "got {s}");
+
+        abort_rebase(&clone).expect("abort");
+        assert_eq!(fs::read_to_string(clone.join("a.txt")).unwrap(), "local\n");
+        let state = repo_in_merge_or_rebase(&clone).unwrap();
+        assert!(
+            !state.to_lowercase().contains("rebase"),
+            "expected clean state, got {state}"
+        );
+        let _ = fs::remove_dir_all(bare);
+        let _ = fs::remove_dir_all(clone);
+        let _ = fs::remove_dir_all(other);
+    }
+}

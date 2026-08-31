@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:26:40  01/09/2026** — Slice C stash/rebase/safer pull: **Pop stash…**,
+  stash with or without untracked, stash-before-pull then optional pop,
+  diverged pull → merge/rebase (`LD-GIT-024`/`LD-GIT-020`/`LD-GIT-021`–
+  `022`). User-guide “When the remote moved”; Rust stash/rebase tests.
 - **00:21:32  01/09/2026** — Slice B large-repo UX: Changes is dirty-only by
   default; tracked files open in a virtualized Browse dialog (`QListView` +
   filter + load-more) using `browse_files_page_size` / `history_page_size`

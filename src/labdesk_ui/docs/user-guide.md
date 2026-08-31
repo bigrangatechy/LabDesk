@@ -140,8 +140,15 @@ In the repo window:
   directory (like `git add <dir>/`). Very large file or diff previews
   are truncated — use **Open in editor** for the full content.
 - **Open in editor:** opens the selected file with the desktop default.
-- **Branches:** list, switch, create, merge into current (clean merges
-  only; if there are conflicts, resolve them outside LabDesk).
+- **Branches:** list, switch, create, merge into current. On conflict,
+  use the conflict resolve panel (or open files externally).
+- **Sync:** header shows ↑ahead / ↓behind / diverged. With fetch-on-focus
+  enabled (default), LabDesk fetches when you open or refresh a repo
+  window so remote changes are visible. Pull fast-forwards when possible;
+  if histories diverged, choose merge or rebase (conflicts → resolve UI).
+  **Stash…** / **Pop stash…** are on the toolbar; before pull with a
+  dirty tree, LabDesk offers to stash (with or without untracked) and,
+  after a successful pull, to pop that stash.
 - **Compare:** pick two branches (local or `origin/…`), see ahead/behind,
   recent commits, and a read-only tip diff (truncated if huge). When
   online, LabDesk can check whether the other branch exists on the forge.
@@ -152,6 +159,21 @@ In the repo window:
 - **Force push…** only after an explicit confirmation.
 - After a successful (non-force) push, LabDesk may offer to **create a
   merge or pull request** (wording matches the active forge).
+
+### When the remote moved
+
+If someone else pushed while you were committing locally:
+
+1. **Fetch** (or rely on fetch-on-focus) so the header shows behind or
+   diverged.
+2. If your working tree is dirty, **stash** (include untracked if you
+   have new files), then **Pull**.
+3. Pull fast-forwards when histories did not diverge. If they did
+   (`LD-GIT-024`), choose **merge** or **rebase onto upstream**.
+4. On conflicts (`LD-GIT-020`), use **Resolve conflicts…** (ours /
+   theirs / open external / mark resolved), then Continue — or Abort
+   merge/rebase to get back to a clean state.
+5. **Pop stash** when you are ready to restore local work.
 
 ---
 

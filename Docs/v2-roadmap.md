@@ -19,16 +19,16 @@ hard caps, and closes V1 completeness gaps. Delivery is **sliced** (A–H).
 
 ## Slices
 
-| Slice | Theme |
-|-------|--------|
-| A | Sync awareness (fetch-on-focus, remote-changed banner) |
-| B | Large-repo UX (dirty-only Changes, virtualized browse, paged history) |
-| C | Stash + rebase + safer pull |
-| D | In-app conflict resolution |
-| E | MR detail / edit / create-from-Compare |
-| F | MR merge via API + read-only notes |
-| G | SSH host-switch + richer diffs |
-| H | Notifications + V1 completeness pack |
+| Slice | Theme | Status |
+|-------|--------|--------|
+| A | Sync awareness (fetch-on-focus, remote-changed banner) | Done |
+| B | Large-repo UX (dirty-only Changes, virtualized browse, paged history) | Done |
+| C | Stash + rebase + safer pull | Done |
+| D | In-app conflict resolution | Next |
+| E | MR detail / edit / create-from-Compare | — |
+| F | MR merge via API + read-only notes | — |
+| G | SSH host-switch + richer diffs | — |
+| H | Notifications + V1 completeness pack | — |
 
 ## Out of V2
 

@@ -193,6 +193,9 @@ class RepoWindow(QMainWindow):
         self.btn_stash = QPushButton("Stash…")
         self.btn_stash.clicked.connect(self._stash)
         row.addWidget(self.btn_stash)
+        self.btn_stash_pop = QPushButton("Pop stash…")
+        self.btn_stash_pop.clicked.connect(self._stash_pop)
+        row.addWidget(self.btn_stash_pop)
         self.btn_rebase = QPushButton("Rebase onto upstream…")
         self.btn_rebase.clicked.connect(self._rebase_upstream)
         row.addWidget(self.btn_rebase)
@@ -1237,12 +1240,39 @@ class RepoWindow(QMainWindow):
             self.commit_meta.setText(f"[{code}] {msg}")
             self.commit_diff.setPlainText(str(exc))
 
+    def _confirm_stash_include_untracked(self, title: str, body: str) -> bool | None:
+        """Yes = stash with untracked; No = tracked/staged only; Cancel = abort.
+
+        Returns True/False for include_untracked, or None if cancelled.
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(title)
+        box.setText(body)
+        box.setInformativeText(
+            "Yes = include untracked files\n"
+            "No = tracked and staged changes only\n"
+            "Cancel = do nothing"
+        )
+        yes = box.addButton("Yes (with untracked)", QMessageBox.ButtonRole.YesRole)
+        no = box.addButton("No (tracked only)", QMessageBox.ButtonRole.NoRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(yes)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is yes:
+            return True
+        if clicked is no:
+            return False
+        return None
+
     def _pull(self) -> None:
         from labdesk_ui.utils.async_jobs import run_in_background
 
         path = self.repo_path
+        did_stash = False
 
-        # Safer pull when dirty: offer stash first.
+        # Safer pull when dirty: offer stash first (still allow pull without).
         try:
             import labdesk_core
 
@@ -1253,7 +1283,10 @@ class RepoWindow(QMainWindow):
             reply = QMessageBox.question(
                 self,
                 "Pull with local changes",
-                "Working tree is dirty. Stash (including untracked) before pull?",
+                "Working tree is dirty. Stash before pull?\n\n"
+                "Yes = stash then pull\n"
+                "No = pull without stashing\n"
+                "Cancel = abort",
                 QMessageBox.StandardButton.Yes
                 | QMessageBox.StandardButton.No
                 | QMessageBox.StandardButton.Cancel,
@@ -1262,10 +1295,17 @@ class RepoWindow(QMainWindow):
             if reply == QMessageBox.StandardButton.Cancel:
                 return
             if reply == QMessageBox.StandardButton.Yes:
+                include = self._confirm_stash_include_untracked(
+                    "Stash before pull",
+                    "Include untracked files in the stash?",
+                )
+                if include is None:
+                    return
                 try:
                     import labdesk_core
 
-                    labdesk_core.repo_stash_save(path, True)
+                    labdesk_core.repo_stash_save(path, include)
+                    did_stash = True
                 except Exception as exc:
                     code, msg = format_error(exc)
                     QMessageBox.critical(
@@ -1283,6 +1323,16 @@ class RepoWindow(QMainWindow):
             self.footer.setText(str(msg))
             self.refresh()
             QMessageBox.information(self, "Pull", str(msg))
+            if did_stash:
+                pop = QMessageBox.question(
+                    self,
+                    "Apply stash?",
+                    "Pull succeeded. Apply (pop) the stash you just created?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if pop == QMessageBox.StandardButton.Yes:
+                    self._stash_pop(confirm=False)
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
             self._busy = False
@@ -1954,17 +2004,37 @@ class RepoWindow(QMainWindow):
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
 
     def _stash(self) -> None:
-        reply = QMessageBox.question(
-            self,
+        include = self._confirm_stash_include_untracked(
             "Stash",
-            "Stash local changes including untracked files?",
+            "Stash local changes?",
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if include is None:
             return
         try:
             import labdesk_core
 
-            msg = labdesk_core.repo_stash_save(self.repo_path, True)
+            msg = labdesk_core.repo_stash_save(self.repo_path, include)
+            self.footer.setText(str(msg))
+            self.refresh()
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+    def _stash_pop(self, confirm: bool = True) -> None:
+        if confirm:
+            reply = QMessageBox.question(
+                self,
+                "Pop stash",
+                "Apply and remove the latest stash?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            import labdesk_core
+
+            msg = labdesk_core.repo_stash_pop(self.repo_path)
             self.footer.setText(str(msg))
             self.refresh()
         except Exception as exc:

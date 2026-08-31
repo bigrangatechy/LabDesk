@@ -101,7 +101,9 @@ edit a selected file outside LabDesk.
 1. From RepoView, **Push** (SSH agent/keys, or HTTPS via credential
    helper).
 2. If push is rejected (e.g. non-fast-forward), offer **pull** /
-   guidance. **Force push is not the default** recovery path.
+   guidance. Dirty tree → optional **stash** (with/without untracked)
+   before pull; diverged histories → **merge** or **rebase**.
+   **Force push is not the default** recovery path.
 3. **Force push** (V1): available as an explicit action; show a
    confirmation dialog that includes the **branch name** before
    proceeding.
