@@ -314,10 +314,12 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
   and `Docs/v2-roadmap.md`.
 - **Fancy side-by-side diff (Slice K):** DiffView toggle on Changes /
   History / Compare (unified or side-by-side from existing patches).
-- **Localization, MR reply posting, submodule/LFS UIs:** planned as
-  Slices L–N; not before then.
+- **Localization (Slice L):** Qt Linguist UI translations (`tr()` +
+  `.qm`); `general.locale`; Settings Language. English remains the
+  source language.
+- **MR reply posting, submodule/LFS UIs:** planned as Slices M–N; not
+  before then.
 - **No OAuth/SSO** for the API in this roadmap; PAT / forge tokens only.
-- **English-only UI** until Slice L.
 - **Linux only.** No Windows or macOS.
 - **V2 roadmap:** slices A–N + post-feature UI/UX pass — see
   [`v2-roadmap.md`](v2-roadmap.md).

@@ -108,6 +108,7 @@ V1 Settings stays small; the file may grow ahead of the UI.
 | Key | Type | Required | Exposure | Notes |
 |-----|------|----------|----------|--------|
 | `theme` | string | yes | **UI-exposed** | `"light"` \| `"dark"` \| `"system"` |
+| `locale` | string | no | **UI-exposed** | UI language: `"system"` \| `"en"` \| `"es"` \| `"de"` \| `"fr"` \| `"pt_BR"`; default `system` |
 | `default_clone_dir` | string | yes | **UI-exposed** | Clone destination folder |
 | `check_for_updates` | bool | yes | **UI-exposed** | Check the **LabDesk Flatpak remote** (from `Ranga/flatpaks`, ADR-004); Settings toggle + Check now |
 | `active_instance_id` | string | no | **config / connect flow** | Active host; kept in lockstep with the active account’s `instance_id` |

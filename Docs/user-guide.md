@@ -101,10 +101,12 @@ LabDesk prefers the selected host’s Base URL instead.
 
 ## 4. Settings & preferences
 
-- **Settings → Preferences:** clone folder, theme, window layout
-  (`classic` / `sidebar`), **Projects list layout** (`table` / `cards`),
-  clone/push progress fill colour + alpha, and whether to check for
-  Flatpak updates.
+- **Settings → Preferences:** clone folder, theme, **Language**, window
+  layout (`classic` / `sidebar`), **Projects list layout** (`table` /
+  `cards`), clone/push progress fill colour + alpha, and whether to
+  check for Flatpak updates. Language options: system default, English,
+  Español, Deutsch, Français, Português (Brasil). Restart LabDesk after
+  changing language so every window refreshes.
 - **View** menu: switch Projects / **Admin** / Settings and layout.
 - **Admin:** instance **Runners** (or **Agents** on OneDev) and **Users**
   lists. Pause/enable/delete runners where the forge API allows (admin

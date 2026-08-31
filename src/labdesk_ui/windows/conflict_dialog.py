@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from pathlib import Path
 
 from PySide6.QtGui import QFont
@@ -55,25 +57,25 @@ class ConflictDialog(QDialog):
         self.preview_theirs = QTextEdit()
         self.preview_theirs.setReadOnly(True)
         self.preview_theirs.setFont(mono)
-        self.tabs.addTab(self.preview_work, "Working tree")
-        self.tabs.addTab(self.preview_ours, "Ours")
-        self.tabs.addTab(self.preview_theirs, "Theirs")
+        self.tabs.addTab(self.preview_work, tr("Working tree"))
+        self.tabs.addTab(self.preview_ours, tr("Ours"))
+        self.tabs.addTab(self.preview_theirs, tr("Theirs"))
         right.addWidget(self.tabs, stretch=1)
 
         actions = QHBoxLayout()
-        self.btn_ours = QPushButton("Accept ours")
+        self.btn_ours = QPushButton(tr("Accept ours"))
         self.btn_ours.clicked.connect(self._accept_ours)
         actions.addWidget(self.btn_ours)
-        self.btn_theirs = QPushButton("Accept theirs")
+        self.btn_theirs = QPushButton(tr("Accept theirs"))
         self.btn_theirs.clicked.connect(self._accept_theirs)
         actions.addWidget(self.btn_theirs)
-        self.btn_external = QPushButton("Open external")
+        self.btn_external = QPushButton(tr("Open external"))
         self.btn_external.clicked.connect(self._open_external)
         actions.addWidget(self.btn_external)
-        self.btn_edit = QPushButton("Edit in LabDesk")
+        self.btn_edit = QPushButton(tr("Edit in LabDesk"))
         self.btn_edit.clicked.connect(self._open_in_app)
         actions.addWidget(self.btn_edit)
-        self.btn_mark = QPushButton("Mark resolved")
+        self.btn_mark = QPushButton(tr("Mark resolved"))
         self.btn_mark.clicked.connect(self._mark_resolved)
         actions.addWidget(self.btn_mark)
         right.addLayout(actions)
@@ -82,10 +84,10 @@ class ConflictDialog(QDialog):
 
         buttons = QDialogButtonBox()
         self.btn_continue = buttons.addButton(
-            "Continue", QDialogButtonBox.ButtonRole.AcceptRole
+            tr("Continue"), QDialogButtonBox.ButtonRole.AcceptRole
         )
         self.btn_abort = buttons.addButton(
-            "Abort", QDialogButtonBox.ButtonRole.DestructiveRole
+            tr("Abort"), QDialogButtonBox.ButtonRole.DestructiveRole
         )
         buttons.addButton(QDialogButtonBox.StandardButton.Close)
         self.btn_continue.clicked.connect(self._continue)
@@ -137,7 +139,7 @@ class ConflictDialog(QDialog):
         else:
             for view in (self.preview_work, self.preview_ours, self.preview_theirs):
                 view.setPlainText(
-                    "No conflicts remain. Continue merge/rebase, or Abort."
+                    tr("No conflicts remain. Continue merge/rebase, or Abort.")
                 )
 
     def _on_selected(self, current: QListWidgetItem | None, _prev) -> None:
@@ -240,7 +242,7 @@ class ConflictDialog(QDialog):
                 msg = labdesk_core.repo_continue_rebase(self.repo_path)
             else:
                 msg = labdesk_core.repo_continue_merge(self.repo_path)
-            QMessageBox.information(self, "Continue", str(msg))
+            QMessageBox.information(self, tr("Continue"), str(msg))
             self.accept()
         except Exception as exc:
             code, msg = format_error(exc)
@@ -248,7 +250,7 @@ class ConflictDialog(QDialog):
             if code == "LD-GIT-020":
                 QMessageBox.warning(
                     self,
-                    "More conflicts",
+                    tr("More conflicts"),
                     f"[{code}] {msg}\n\nResolve the next conflicted path(s).",
                 )
                 self._reload()
@@ -259,7 +261,7 @@ class ConflictDialog(QDialog):
     def _abort(self) -> None:
         reply = QMessageBox.question(
             self,
-            "Abort",
+            tr("Abort"),
             f"Abort {self.mode} and reset to HEAD?",
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -271,7 +273,7 @@ class ConflictDialog(QDialog):
                 msg = labdesk_core.repo_abort_rebase(self.repo_path)
             else:
                 msg = labdesk_core.repo_abort_merge(self.repo_path)
-            QMessageBox.information(self, "Abort", str(msg))
+            QMessageBox.information(self, tr("Abort"), str(msg))
             self.accept()
         except Exception as exc:
             code, msg = format_error(exc)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -37,22 +39,22 @@ class MRDialog(QDialog):
         form = QFormLayout()
 
         if project_label:
-            form.addRow("Project", QLabel(project_label))
+            form.addRow(tr("Project"), QLabel(project_label))
 
         self.source = QLineEdit(source_branch)
         self.target = QLineEdit(target_branch or "main")
         self.title = QLineEdit(title_prefill)
-        self.title.setPlaceholderText("Short title (required)")
+        self.title.setPlaceholderText(tr("Short title (required)"))
         self.description = QTextEdit()
-        self.description.setPlaceholderText("Optional description")
+        self.description.setPlaceholderText(tr("Optional description"))
         if description_prefill:
             self.description.setPlainText(description_prefill)
-        self.draft = QCheckBox("Create as draft (where supported)")
+        self.draft = QCheckBox(tr("Create as draft (where supported)"))
 
-        form.addRow("Source branch", self.source)
-        form.addRow("Target branch", self.target)
-        form.addRow("Title", self.title)
-        form.addRow("Description", self.description)
+        form.addRow(tr("Source branch"), self.source)
+        form.addRow(tr("Target branch"), self.target)
+        form.addRow(tr("Title"), self.title)
+        form.addRow(tr("Description"), self.description)
         form.addRow("", self.draft)
         layout.addLayout(form)
 

@@ -45,6 +45,8 @@ pub struct GeneralConfig {
     pub history_page_size: u32,
     /// Opt-in tracked-file browse page size.
     pub browse_files_page_size: u32,
+    /// UI locale: `system` | `en` | `es` | `de` | `fr` | `pt_BR` (Slice L).
+    pub locale: String,
 }
 
 /// Forge host (machine).
@@ -101,6 +103,7 @@ impl Default for GeneralConfig {
             fetch_on_focus: true,
             history_page_size: 200,
             browse_files_page_size: 200,
+            locale: "system".into(),
         }
     }
 }
@@ -273,6 +276,7 @@ fn default_config() -> AppConfig {
     general["fetch_on_focus"] = Item::Value(Value::from(true));
     general["history_page_size"] = Item::Value(Value::from(200i64));
     general["browse_files_page_size"] = Item::Value(Value::from(200i64));
+    general["locale"] = value("system");
     document["general"] = Item::Table(general);
     document["instances"] = Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
     document["accounts"] = Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
@@ -354,6 +358,11 @@ fn read_general(doc: &DocumentMut) -> Result<GeneralConfig> {
             .and_then(|n| u32::try_from(n).ok())
             .filter(|n| *n > 0)
             .unwrap_or(200),
+        locale: table
+            .get("locale")
+            .and_then(|v| v.as_str())
+            .unwrap_or("system")
+            .to_string(),
     })
 }
 
@@ -638,6 +647,7 @@ fn sync_document(cfg: &mut AppConfig) {
         Item::Value(Value::from(i64::from(cfg.general.history_page_size)));
     general["browse_files_page_size"] =
         Item::Value(Value::from(i64::from(cfg.general.browse_files_page_size)));
+    general["locale"] = value(&cfg.general.locale);
 
     let mut inst_array = toml_edit::ArrayOfTables::new();
     for inst in &cfg.instances {
@@ -940,6 +950,26 @@ pub fn set_ui_shell(paths: &AppPaths, shell: &str) -> Result<()> {
     }
     let mut cfg = load_or_default(paths)?;
     cfg.general.ui_shell = shell.to_string();
+    save(paths, &mut cfg)?;
+    let _ = save_known_good(paths);
+    Ok(())
+}
+
+/// Persist UI locale (`system` | `en` | `es` | `de` | `fr` | `pt_BR`).
+pub fn set_locale(paths: &AppPaths, locale: &str) -> Result<()> {
+    let locale = locale.trim();
+    if !matches!(
+        locale,
+        "system" | "en" | "es" | "de" | "fr" | "pt_BR" | "pt-BR"
+    ) {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-CFG-003",
+            "Config value invalid: locale",
+        )));
+    }
+    let normalized = if locale == "pt-BR" { "pt_BR" } else { locale };
+    let mut cfg = load_or_default(paths)?;
+    cfg.general.locale = normalized.to_string();
     save(paths, &mut cfg)?;
     let _ = save_known_good(paths);
     Ok(())

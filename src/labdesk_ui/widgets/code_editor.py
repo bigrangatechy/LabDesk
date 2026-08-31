@@ -6,6 +6,8 @@ basic language highlighting, and large/binary file policy.
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 import re
 from pathlib import Path
 from weakref import WeakValueDictionary
@@ -382,24 +384,24 @@ class EditorWindow(QMainWindow):
 
         # Find / replace bar
         find_row = QHBoxLayout()
-        find_row.addWidget(QLabel("Find"))
+        find_row.addWidget(QLabel(tr("Find")))
         self.find_edit = QLineEdit()
-        self.find_edit.setPlaceholderText("Find…")
+        self.find_edit.setPlaceholderText(tr("Find…"))
         self.find_edit.returnPressed.connect(lambda: self.find_next(False))
         find_row.addWidget(self.find_edit, stretch=1)
-        self.btn_find_next = QPushButton("Next")
+        self.btn_find_next = QPushButton(tr("Next"))
         self.btn_find_next.clicked.connect(lambda: self.find_next(False))
         find_row.addWidget(self.btn_find_next)
-        self.btn_find_prev = QPushButton("Prev")
+        self.btn_find_prev = QPushButton(tr("Prev"))
         self.btn_find_prev.clicked.connect(lambda: self.find_next(True))
         find_row.addWidget(self.btn_find_prev)
-        find_row.addWidget(QLabel("Replace"))
+        find_row.addWidget(QLabel(tr("Replace")))
         self.replace_edit = QLineEdit()
         find_row.addWidget(self.replace_edit, stretch=1)
-        self.btn_replace = QPushButton("Replace")
+        self.btn_replace = QPushButton(tr("Replace"))
         self.btn_replace.clicked.connect(self.replace_one)
         find_row.addWidget(self.btn_replace)
-        self.btn_replace_all = QPushButton("Replace all")
+        self.btn_replace_all = QPushButton(tr("Replace all"))
         self.btn_replace_all.clicked.connect(self.replace_all)
         find_row.addWidget(self.btn_replace_all)
         layout.addLayout(find_row)
@@ -411,10 +413,10 @@ class EditorWindow(QMainWindow):
         )
 
         tools = QHBoxLayout()
-        self.btn_save = QPushButton("Save")
+        self.btn_save = QPushButton(tr("Save"))
         self.btn_save.clicked.connect(self.save)
         tools.addWidget(self.btn_save)
-        self.btn_external = QPushButton("Open external")
+        self.btn_external = QPushButton(tr("Open external"))
         self.btn_external.clicked.connect(self._open_external)
         tools.addWidget(self.btn_external)
         self.pos_label = QLabel("")
@@ -432,17 +434,17 @@ class EditorWindow(QMainWindow):
         self._update_pos()
 
     def _build_actions(self) -> None:
-        act_save = QAction("Save", self)
+        act_save = QAction(tr("Save"), self)
         act_save.setShortcut(QKeySequence.StandardKey.Save)
         act_save.triggered.connect(self.save)
         self.addAction(act_save)
 
-        act_find = QAction("Find", self)
+        act_find = QAction(tr("Find"), self)
         act_find.setShortcut(QKeySequence.StandardKey.Find)
         act_find.triggered.connect(self._focus_find)
         self.addAction(act_find)
 
-        act_close = QAction("Close", self)
+        act_close = QAction(tr("Close"), self)
         act_close.setShortcut(QKeySequence.StandardKey.Close)
         act_close.triggered.connect(self.close)
         self.addAction(act_close)
@@ -451,7 +453,7 @@ class EditorWindow(QMainWindow):
         try:
             data = self.path.read_bytes()
         except OSError as exc:
-            QMessageBox.warning(self, "Open failed", str(exc))
+            QMessageBox.warning(self, tr("Open failed"), str(exc))
             self.editor.setPlainText("")
             self.editor.setReadOnly(True)
             self.btn_save.setEnabled(False)
@@ -542,7 +544,7 @@ class EditorWindow(QMainWindow):
         self.editor.document().setModified(False)
         self._dirty = False
         self._update_title()
-        self.banner.setText("Saved.")
+        self.banner.setText(tr("Saved."))
         self.banner.setVisible(True)
         return True
 
@@ -551,8 +553,8 @@ class EditorWindow(QMainWindow):
             if self._dirty:
                 reply = QMessageBox.question(
                     self,
-                    "Unsaved changes",
-                    "Save before opening externally?",
+                    tr("Unsaved changes"),
+                    tr("Save before opening externally?"),
                     QMessageBox.StandardButton.Save
                     | QMessageBox.StandardButton.Discard
                     | QMessageBox.StandardButton.Cancel,
@@ -571,7 +573,7 @@ class EditorWindow(QMainWindow):
         if self._dirty and not self.editor.isReadOnly():
             reply = QMessageBox.question(
                 self,
-                "Unsaved changes",
+                tr("Unsaved changes"),
                 f"Save changes to {self.path.name}?",
                 QMessageBox.StandardButton.Save
                 | QMessageBox.StandardButton.Discard
@@ -605,14 +607,14 @@ def open_code_editor(path: str | Path, *, parent=None) -> EditorWindow | None:
     if mode == "missing":
         QMessageBox.warning(
             parent,
-            "Open editor",
-            info.get("message") or "File not found.",
+            tr("Open editor"),
+            info.get("message") or tr("File not found."),
         )
         return None
     if mode == "binary":
         reply = QMessageBox.question(
             parent,
-            "Binary file",
+            tr("Binary file"),
             f"{p.name} looks binary. Open with the desktop default instead?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
@@ -628,7 +630,7 @@ def open_code_editor(path: str | Path, *, parent=None) -> EditorWindow | None:
     read_only = mode == "readonly"
     status = info.get("message") or ""
     if info.get("warn") and status:
-        QMessageBox.information(parent, "Large file", status)
+        QMessageBox.information(parent, tr("Large file"), status)
 
     win = EditorWindow(p, parent=parent, read_only=read_only, status_message=status)
     _OPEN_EDITORS[key] = win

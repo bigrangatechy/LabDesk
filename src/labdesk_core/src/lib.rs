@@ -115,6 +115,7 @@ fn config_to_dict(py: Python<'_>, cfg: &config::AppConfig) -> PyResult<PyObject>
     general.set_item("fetch_on_focus", cfg.general.fetch_on_focus)?;
     general.set_item("history_page_size", cfg.general.history_page_size)?;
     general.set_item("browse_files_page_size", cfg.general.browse_files_page_size)?;
+    general.set_item("locale", &cfg.general.locale)?;
     root.set_item("general", general)?;
 
     let instances = pyo3::types::PyList::empty(py);
@@ -2519,6 +2520,14 @@ fn set_ui_shell(shell: String) -> PyResult<()> {
     Ok(())
 }
 
+/// Persist `general.locale` (`system` | `en` | `es` | `de` | `fr` | `pt_BR`).
+#[pyfunction]
+fn set_locale(locale: String) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    config::set_locale(&paths, &locale)?;
+    Ok(())
+}
+
 #[pyfunction]
 fn set_projects_layout(layout: String) -> PyResult<()> {
     let paths = paths::AppPaths::detect();
@@ -2641,6 +2650,7 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_check_for_updates, m)?)?;
     m.add_function(wrap_pyfunction!(set_active_ui_view, m)?)?;
     m.add_function(wrap_pyfunction!(set_ui_shell, m)?)?;
+    m.add_function(wrap_pyfunction!(set_locale, m)?)?;
     m.add_function(wrap_pyfunction!(set_projects_layout, m)?)?;
     m.add_function(wrap_pyfunction!(set_progress_overlay, m)?)?;
     m.add_function(wrap_pyfunction!(get_git_op_progress, m)?)?;

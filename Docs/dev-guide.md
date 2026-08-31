@@ -196,6 +196,7 @@ when needed, then runs `tests/python/`.
 | Stage untracked dir | `test_stage_untracked_dir.py` | `repo_stage` expands dir rows (`git add <dir>/`) |
 | Active-host URLs | `test_active_host_urls.py` | Clone/Open-in helpers follow Base URL not public host |
 | Forge-aware UI labels | `test_forge_labels.py` | MR/PR / Open in … / host combo helpers |
+| Localization / i18n | `test_i18n.py` | locale resolve, `.qm` load, `tr()` |
 | Host ↔ LAN remotes | `test_host_switch_remotes.py` | Host switch retarget feedback |
 | Multi-forge connect | `test_multi_forge.py` | Forge picker + SaaS reject list |
 | LAN / SaaS URLs | `test_config_urls.py` | HTTP allowlist + gitlab.com reject |

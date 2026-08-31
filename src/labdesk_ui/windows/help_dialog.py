@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from pathlib import Path
 
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayout
@@ -44,7 +46,7 @@ def load_user_guide_markdown() -> str:
 class UserGuideDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("LabDesk User Guide")
+        self.setWindowTitle(tr("LabDesk User Guide"))
         self.resize(720, 560)
         layout = QVBoxLayout(self)
         browser = QTextBrowser()

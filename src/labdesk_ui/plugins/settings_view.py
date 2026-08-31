@@ -6,6 +6,8 @@ the feature works and we deliberately expose a control here.
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -34,62 +36,69 @@ class SettingsView(QWidget):
         layout = QVBoxLayout(self)
 
         header = QHBoxLayout()
-        back = QPushButton("← Back to Projects")
+        back = QPushButton(tr("← Back to Projects"))
         back.clicked.connect(lambda: self._ctx.switch_view("projects"))
         header.addWidget(back)
-        header.addWidget(QLabel("Settings"), stretch=1)
+        header.addWidget(QLabel(tr("Settings")), stretch=1)
         layout.addLayout(header)
 
         form = QFormLayout()
 
         clone_row = QHBoxLayout()
         self.clone_dir = QLineEdit()
-        self.clone_dir.setPlaceholderText("e.g. ~/Documents/gitlab")
+        self.clone_dir.setPlaceholderText(tr("e.g. ~/Documents/gitlab"))
         clone_row.addWidget(self.clone_dir, stretch=1)
-        browse = QPushButton("Browse…")
+        browse = QPushButton(tr("Browse…"))
         browse.clicked.connect(self._browse_clone_dir)
         clone_row.addWidget(browse)
-        form.addRow("Clone into", clone_row)
+        form.addRow(tr("Clone into"), clone_row)
 
         self.theme = QComboBox()
-        self.theme.addItem("System", "system")
-        self.theme.addItem("Light", "light")
-        self.theme.addItem("Dark", "dark")
-        form.addRow("Theme", self.theme)
+        self.theme.addItem(tr("System"), "system")
+        self.theme.addItem(tr("Light"), "light")
+        self.theme.addItem(tr("Dark"), "dark")
+        form.addRow(tr("Theme"), self.theme)
+
+        self.locale = QComboBox()
+        from labdesk_ui.i18n import locale_display_choices
+
+        for code, label in locale_display_choices():
+            self.locale.addItem(tr(label) if code == "system" else label, code)
+        form.addRow(tr("Language"), self.locale)
 
         self.ui_shell = QComboBox()
-        self.ui_shell.addItem("Classic", "classic")
-        self.ui_shell.addItem("Sidebar", "sidebar")
-        form.addRow("Main window layout", self.ui_shell)
+        self.ui_shell.addItem(tr("Classic"), "classic")
+        self.ui_shell.addItem(tr("Sidebar"), "sidebar")
+        form.addRow(tr("Main window layout"), self.ui_shell)
 
         self.projects_layout = QComboBox()
-        self.projects_layout.addItem("Table", "table")
-        self.projects_layout.addItem("Cards", "cards")
+        self.projects_layout.addItem(tr("Table"), "table")
+        self.projects_layout.addItem(tr("Cards"), "cards")
         self.projects_layout.currentIndexChanged.connect(self._on_projects_layout_changed)
-        form.addRow("Projects list layout", self.projects_layout)
+        form.addRow(tr("Projects list layout"), self.projects_layout)
 
         progress_row = QHBoxLayout()
-        self.progress_color_btn = QPushButton("Choose…")
+        self.progress_color_btn = QPushButton(tr("Choose…"))
         self.progress_color_btn.clicked.connect(self._pick_progress_color)
         self._progress_color = "#2ecc71"
         progress_row.addWidget(self.progress_color_btn)
         self.progress_alpha = QSpinBox()
         self.progress_alpha.setRange(0, 255)
         self.progress_alpha.setValue(70)
-        self.progress_alpha.setToolTip("Transparency of the clone/push fill (0 = invisible, 255 = solid)")
-        progress_row.addWidget(QLabel("Alpha"))
+        self.progress_alpha.setToolTip(tr("Transparency of the clone/push fill (0 = invisible, 255 = solid)"))
+        progress_row.addWidget(QLabel(tr("Alpha")))
         progress_row.addWidget(self.progress_alpha)
         progress_row.addStretch(1)
-        form.addRow("Clone/push fill colour", progress_row)
+        form.addRow(tr("Clone/push fill colour"), progress_row)
 
-        self.check_updates = QCheckBox("Check LabDesk Flatpak updates on startup")
-        form.addRow("Updates", self.check_updates)
+        self.check_updates = QCheckBox(tr("Check LabDesk Flatpak updates on startup"))
+        form.addRow(tr("Updates"), self.check_updates)
 
         layout.addLayout(form)
         self._refresh_progress_color_btn()
 
         update_row = QHBoxLayout()
-        self.btn_check_updates = QPushButton("Check for updates now…")
+        self.btn_check_updates = QPushButton(tr("Check for updates now…"))
         self.btn_check_updates.clicked.connect(self._check_updates_now)
         update_row.addWidget(self.btn_check_updates)
         update_row.addStretch(1)
@@ -101,23 +110,23 @@ class SettingsView(QWidget):
         layout.addWidget(self.paths)
 
         btns = QHBoxLayout()
-        save = QPushButton("Save settings")
+        save = QPushButton(tr("Save settings"))
         save.clicked.connect(self._save)
         btns.addWidget(save)
-        reload_btn = QPushButton("Reload from config")
+        reload_btn = QPushButton(tr("Reload from config"))
         reload_btn.clicked.connect(self._load)
         btns.addWidget(reload_btn)
-        done = QPushButton("Done")
+        done = QPushButton(tr("Done"))
         done.clicked.connect(lambda: self._ctx.switch_view("projects"))
         btns.addWidget(done)
         btns.addStretch(1)
         layout.addLayout(btns)
 
         hint = QLabel(
-            "This screen only shows options that are ready for everyday use. "
+            tr("This screen only shows options that are ready for everyday use. "
             "config.toml holds the full preference surface (including "
             "config-only keys for testing). Saving here updates only the "
-            "fields above and preserves other keys in the file."
+            "fields above and preserves other keys in the file.")
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: palette(mid);")
@@ -141,6 +150,9 @@ class SettingsView(QWidget):
             theme = general.get("theme") or "system"
             idx = self.theme.findData(theme)
             self.theme.setCurrentIndex(idx if idx >= 0 else 0)
+            locale = general.get("locale") or "system"
+            loc_idx = self.locale.findData(locale)
+            self.locale.setCurrentIndex(loc_idx if loc_idx >= 0 else 0)
             shell = general.get("ui_shell") or "classic"
             sidx = self.ui_shell.findData(shell)
             self.ui_shell.setCurrentIndex(sidx if sidx >= 0 else 0)
@@ -173,7 +185,7 @@ class SettingsView(QWidget):
         from PySide6.QtGui import QColor
 
         initial = QColor(self._progress_color)
-        chosen = QColorDialog.getColor(initial, self, "Clone/push fill colour")
+        chosen = QColorDialog.getColor(initial, self, tr("Clone/push fill colour"))
         if chosen.isValid():
             self._progress_color = chosen.name()
             self._refresh_progress_color_btn()
@@ -204,7 +216,7 @@ class SettingsView(QWidget):
         start = self.clone_dir.text().strip() or ""
         chosen = QFileDialog.getExistingDirectory(
             self,
-            "Select clone folder",
+            tr("Select clone folder"),
             start,
             QFileDialog.Option.ShowDirsOnly,
         )
@@ -222,9 +234,9 @@ class SettingsView(QWidget):
         def on_ok(result) -> None:
             detail = (result or {}).get("detail") or ""
             if (result or {}).get("available"):
-                QMessageBox.information(self, "Updates", detail)
+                QMessageBox.information(self, tr("Updates"), detail)
             else:
-                QMessageBox.information(self, "Updates", detail or "No updates found.")
+                QMessageBox.information(self, tr("Updates"), detail or "No updates found.")
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
             QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
@@ -236,7 +248,7 @@ class SettingsView(QWidget):
             on_error=on_err,
             busy_widgets=[self.btn_check_updates],
             status=self._ctx.set_detail,
-            working_message="Checking for Flatpak updates…",
+            working_message=tr("Checking for Flatpak updates…"),
         )
 
     def _save(self) -> None:
@@ -245,13 +257,14 @@ class SettingsView(QWidget):
 
             clone = self.clone_dir.text().strip()
             if not clone:
-                QMessageBox.warning(self, "Settings", "Clone folder is required.")
+                QMessageBox.warning(self, tr("Settings"), tr("Clone folder is required."))
                 return
 
             # Snapshot form values first. set_ui_shell → switch_view → on_activated
             # → _load() mid-save would otherwise reset the layout combo from disk
             # (still "table") and then persist that overwrite.
             theme = str(self.theme.currentData() or "system")
+            locale = str(self.locale.itemData(self.locale.currentIndex()) or "system")
             shell = str(self.ui_shell.itemData(self.ui_shell.currentIndex()) or "classic")
             layout_choice = str(
                 self.projects_layout.itemData(self.projects_layout.currentIndex())
@@ -266,6 +279,12 @@ class SettingsView(QWidget):
             from labdesk_ui.utils.theme import apply_theme
 
             apply_theme(theme)
+            if hasattr(labdesk_core, "set_locale"):
+                labdesk_core.set_locale(locale)
+            from labdesk_ui.i18n import install_translators
+            from PySide6.QtWidgets import QApplication
+
+            install_translators(QApplication.instance(), locale)
             labdesk_core.set_ui_shell(shell)
             if hasattr(self._ctx, "set_ui_shell"):
                 self._ctx.set_ui_shell(shell, persist=False)
@@ -279,9 +298,15 @@ class SettingsView(QWidget):
                 projects = self._ctx._view_widgets.get("projects")
             if projects is not None and hasattr(projects, "apply_prefs"):
                 projects.apply_prefs()
-            self._ctx.set_detail("Settings saved.")
+            self._ctx.set_detail(tr("Settings saved."))
             self._load()
-            QMessageBox.information(self, "Settings", "Settings saved to config.toml.")
+            QMessageBox.information(
+                self,
+                tr("Settings"),
+                tr("Settings saved to config.toml.")
+                + "\n\n"
+                + tr("Restart LabDesk to fully refresh all window text."),
+            )
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
@@ -291,4 +316,4 @@ def _factory(parent: QWidget, ctx: AppContext) -> QWidget:
     return SettingsView(parent, ctx)
 
 
-register_view("settings", "Settings", _factory, order=90)
+register_view("settings", tr("Settings"), _factory, order=90)

@@ -37,8 +37,8 @@ admin, localization, review, and git-extension surfaces. Delivery is
 | I | Full in-app code editor (from scratch on Qt; no QScintilla) | Done |
 | J | Admin / runner management | Done |
 | K | Side-by-side fancy diff editor | Done |
-| L | Localization | Next |
-| M | MR comment replies / full review workflows | — |
+| L | Localization | Done |
+| M | MR comment replies / full review workflows | Next |
 | N | Submodule / LFS management UIs | — |
 | UX | UI/UX polish pass (after I–N) | — |
 
@@ -58,8 +58,11 @@ admin, localization, review, and git-extension surfaces. Delivery is
   read-only unified `QTextEdit` views; reuses Slice I Qt patterns (no
   QScintilla). Changes / History / Compare: **Unified** ↔ **Side by side**
   toggle with synced scroll and colored panes.
-- **L — Localization:** Non-English UI strings / packaging; English
-  remains default until this slice.
+- **L — Localization:** Qt Linguist (`.ts` / `.qm` + `QTranslator`).
+  English source strings via `tr()`; locales **system**, **en**, **es**,
+  **de**, **fr**, **pt_BR**. Settings **Language**; restart to refresh
+  all open windows. Catalogs under `labdesk_ui/i18n/`; rebuild with
+  `scripts/build_translations.py`.
 - **M — Review workflows:** Post MR/PR comment replies and fuller review
   flows (beyond read-only notes in F).
 - **N — Submodule/LFS:** Management UIs for submodules and Git LFS

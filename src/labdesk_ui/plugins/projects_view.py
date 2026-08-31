@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QRect, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QPainter
 from PySide6.QtWidgets import (
@@ -51,7 +53,7 @@ def pipeline_status_glyph(status: str | None) -> tuple[str, str]:
     """Return (glyph, tooltip) for a GitLab pipeline status string."""
     s = (status or "").strip().lower()
     if not s:
-        return ("·", "No pipeline on default branch")
+        return ("·", tr("No pipeline on default branch"))
     mapping = {
         "success": ("✓", "success"),
         "failed": ("✗", "failed"),
@@ -111,7 +113,7 @@ def progress_fraction_from_snapshot(snap: dict | None) -> float:
 
 
 class _ProjectsTableModel(QAbstractTableModel):
-    _HEADERS = ("CI", "Project", "Default branch", "Visibility", "Last activity")
+    _HEADERS = (tr("CI"), tr("Project"), tr("Default branch"), tr("Visibility"), tr("Last activity"))
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -260,7 +262,7 @@ class _ProjectCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
         top = QHBoxLayout()
-        self.ci = QLabel("·")
+        self.ci = QLabel(tr("·"))
         self.ci.setFixedWidth(20)
         top.addWidget(self.ci)
         self.title = QLabel("")
@@ -344,11 +346,11 @@ class ProjectsView(QWidget):
 
         layout = QVBoxLayout(self)
 
-        self.projects_meta = QLabel("Projects")
+        self.projects_meta = QLabel(tr("Projects"))
         layout.addWidget(self.projects_meta)
 
         self.filter_edit = QLineEdit()
-        self.filter_edit.setPlaceholderText("Filter projects…")
+        self.filter_edit.setPlaceholderText(tr("Filter projects…"))
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.textChanged.connect(self._on_filter_text_changed)
         layout.addWidget(self.filter_edit)
@@ -395,35 +397,35 @@ class ProjectsView(QWidget):
         layout.addWidget(self._layout_stack, stretch=1)
 
         row = QHBoxLayout()
-        self.btn_connect = QPushButton("Add host / account…")
+        self.btn_connect = QPushButton(tr("Add host / account…"))
         self.btn_connect.clicked.connect(self._ctx.show_connect_dialog)
         row.addWidget(self.btn_connect)
 
-        self.btn_refresh_user = QPushButton("Refresh user")
+        self.btn_refresh_user = QPushButton(tr("Refresh user"))
         self.btn_refresh_user.clicked.connect(self._ctx.refresh_connection_banner)
         row.addWidget(self.btn_refresh_user)
 
-        self.btn_refresh_projects = QPushButton("Refresh projects")
+        self.btn_refresh_projects = QPushButton(tr("Refresh projects"))
         self.btn_refresh_projects.clicked.connect(self._refresh_projects)
         row.addWidget(self.btn_refresh_projects)
 
-        self.btn_open_local = QPushButton("Open local")
+        self.btn_open_local = QPushButton(tr("Open local"))
         self.btn_open_local.clicked.connect(self._open_local_repo)
         row.addWidget(self.btn_open_local)
 
-        self.btn_add_existing = QPushButton("Add existing…")
+        self.btn_add_existing = QPushButton(tr("Add existing…"))
         self.btn_add_existing.clicked.connect(self._add_existing_clone)
         row.addWidget(self.btn_add_existing)
 
-        self.btn_open = QPushButton("Open in browser")
+        self.btn_open = QPushButton(tr("Open in browser"))
         self.btn_open.clicked.connect(self._open_in_browser)
         row.addWidget(self.btn_open)
 
-        self.btn_clone = QPushButton("Clone")
+        self.btn_clone = QPushButton(tr("Clone"))
         self.btn_clone.clicked.connect(lambda: self._clone_with_transport("https"))
         row.addWidget(self.btn_clone)
 
-        self.btn_clone_ssh = QPushButton("Clone (SSH)")
+        self.btn_clone_ssh = QPushButton(tr("Clone (SSH)"))
         self.btn_clone_ssh.clicked.connect(lambda: self._clone_with_transport("ssh"))
         row.addWidget(self.btn_clone_ssh)
 
@@ -480,7 +482,7 @@ class ProjectsView(QWidget):
         self.btn_refresh_user.setEnabled(True)
         self.btn_clone.setEnabled(available and not self._git_busy)
         self.btn_clone_ssh.setEnabled(available and not self._git_busy)
-        tip = "Working offline — refresh disabled." if not available else ""
+        tip = tr("Working offline — refresh disabled.") if not available else ""
         self.btn_refresh_projects.setToolTip(tip)
         self.btn_clone.setToolTip(tip)
         self.btn_clone_ssh.setToolTip(tip)
@@ -543,7 +545,7 @@ class ProjectsView(QWidget):
                 self._all_projects = []
                 self._model.set_rows([])
                 self._rebuild_cards([])
-                self.projects_meta.setText("Projects (none — connect a host/account)")
+                self.projects_meta.setText(tr("Projects (none — connect a host/account)"))
                 return
             self._all_projects = (data or {}).get("projects") or []
             self._apply_filter()
@@ -560,7 +562,7 @@ class ProjectsView(QWidget):
             on_success=on_ok,
             on_error=on_err,
             status=self._ctx.set_detail,
-            working_message="Loading projects…",
+            working_message=tr("Loading projects…"),
         )
 
     def _apply_filter(self, _text: str = "") -> None:
@@ -702,7 +704,7 @@ class ProjectsView(QWidget):
             on_error=on_err,
             busy_widgets=[self.btn_refresh_projects, self.btn_clone, self.btn_clone_ssh],
             status=self._ctx.set_detail,
-            working_message="Refreshing projects (and pipeline status)…",
+            working_message=tr("Refreshing projects (and pipeline status)…"),
         )
 
     def _open_in_browser(self) -> None:
@@ -711,14 +713,14 @@ class ProjectsView(QWidget):
             return
         web = project.get("web_url")
         if not web:
-            QMessageBox.information(self, "Open", "No web URL for this project.")
+            QMessageBox.information(self, tr("Open"), tr("No web URL for this project."))
             return
         QDesktopServices.openUrl(QUrl(web))
 
     def _open_local_repo(self) -> None:
         project = self._selected_project()
         if not project:
-            QMessageBox.information(self, "Open", "Select a project first.")
+            QMessageBox.information(self, tr("Open"), tr("Select a project first."))
             return
         project_id = project.get("project_id")
         if project_id is None:
@@ -730,9 +732,9 @@ class ProjectsView(QWidget):
             if not info.get("found") or not info.get("exists"):
                 reply = QMessageBox.question(
                     self,
-                    "Open local",
-                    "No registered clone for this project.\n\n"
-                    "Add an existing folder now?",
+                    tr("Open local"),
+                    tr("No registered clone for this project.\n\n"
+                    "Add an existing folder now?"),
                 )
                 if reply == QMessageBox.StandardButton.Yes:
                     self._add_existing_clone()
@@ -749,7 +751,7 @@ class ProjectsView(QWidget):
     def _add_existing_clone(self) -> None:
         project = self._selected_project()
         if not project:
-            QMessageBox.information(self, "Add existing", "Select a project first.")
+            QMessageBox.information(self, tr("Add existing"), tr("Select a project first."))
             return
         project_id = project.get("project_id")
         if project_id is None:
@@ -765,7 +767,7 @@ class ProjectsView(QWidget):
 
         chosen = QFileDialog.getExistingDirectory(
             self,
-            "Select existing clone folder",
+            tr("Select existing clone folder"),
             start,
             QFileDialog.Option.ShowDirsOnly,
         )
@@ -781,7 +783,7 @@ class ProjectsView(QWidget):
             title = project.get("path_with_namespace") or path
             reply = QMessageBox.question(
                 self,
-                "Add existing",
+                tr("Add existing"),
                 f"Registered:\n{path}\n\nOpen it now?",
             )
             if reply == QMessageBox.StandardButton.Yes:
@@ -793,17 +795,17 @@ class ProjectsView(QWidget):
     def _clone_with_transport(self, transport: str) -> None:
         project = self._selected_project()
         if not project:
-            QMessageBox.information(self, "Clone", "Select a project first.")
+            QMessageBox.information(self, tr("Clone"), tr("Select a project first."))
             return
         project_id = project.get("project_id")
         if project_id is None:
-            QMessageBox.warning(self, "Clone", "Selected project has no id.")
+            QMessageBox.warning(self, tr("Clone"), tr("Selected project has no id."))
             return
 
         name = project.get("path_with_namespace") or project.get("name") or str(project_id)
         reply = QMessageBox.question(
             self,
-            "Clone",
+            tr("Clone"),
             f"Clone {name} via {transport.upper()} into the clone folder?\n"
             "(If a clone already exists there, LabDesk will use it.)",
         )
@@ -833,13 +835,13 @@ class ProjectsView(QWidget):
                 self._ctx.set_detail(f"Using existing clone at {path}")
                 QMessageBox.information(
                     self,
-                    "Existing clone",
+                    tr("Existing clone"),
                     f"A git repository was already at:\n{path}\n\n"
                     "It has been registered with this project.",
                 )
             else:
                 self._ctx.set_detail(f"Cloned to {path}")
-                QMessageBox.information(self, "Clone", f"Cloned to:\n{path}")
+                QMessageBox.information(self, tr("Clone"), f"Cloned to:\n{path}")
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
             self._stop_progress_poll()
@@ -861,4 +863,4 @@ def _factory(parent: QWidget, ctx: AppContext) -> QWidget:
     return ProjectsView(parent, ctx)
 
 
-register_view("projects", "Projects", _factory, order=10)
+register_view("projects", tr("Projects"), _factory, order=10)

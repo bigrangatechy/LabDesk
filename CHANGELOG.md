@@ -20,6 +20,11 @@ bullets without a stamp predate this convention.
 
  ### Added
 
+- **02:17:52  01/09/2026** — Slice L localization (Qt Linguist):
+  `general.locale` + Settings **Language** (system / en / es / de / fr /
+  pt_BR); `tr()` across UI chrome; `.ts`/`.qm` catalogs (280 strings);
+  restart to fully refresh open windows. Rebuild via
+  `scripts/build_translations.py`.
 - **01:54:39  01/09/2026** — Slice K side-by-side diff: DiffView with
   Unified / Side by side toggle on Changes, History, and Compare;
   aligned panes from unified patches; synced scroll; no QScintilla.

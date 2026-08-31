@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QDialog,
@@ -66,24 +68,24 @@ class MRDetailDialog(QDialog):
         self.meta = QLabel("")
         self.meta.setWordWrap(True)
         self.description = QTextEdit()
-        form.addRow("Title", self.title_edit)
-        form.addRow("Source branch", self.source_edit)
-        form.addRow("Target branch", self.target_edit)
-        form.addRow("Meta", self.meta)
-        form.addRow("Description", self.description)
+        form.addRow(tr("Title"), self.title_edit)
+        form.addRow(tr("Source branch"), self.source_edit)
+        form.addRow(tr("Target branch"), self.target_edit)
+        form.addRow(tr("Meta"), self.meta)
+        form.addRow(tr("Description"), self.description)
         layout.addLayout(form)
 
-        layout.addWidget(QLabel("Notes (read-only — replies are not posted from LabDesk)"))
+        layout.addWidget(QLabel(tr("Notes (read-only — replies are not posted from LabDesk)")))
         self.notes = QTextEdit()
         self.notes.setReadOnly(True)
         self.notes.setFont(QFont("monospace"))
         layout.addWidget(self.notes, stretch=1)
 
         notes_row = QHBoxLayout()
-        self.btn_notes = QPushButton("Reload notes")
+        self.btn_notes = QPushButton(tr("Reload notes"))
         self.btn_notes.clicked.connect(lambda: self._load_notes(reset=True))
         notes_row.addWidget(self.btn_notes)
-        self.btn_notes_more = QPushButton("Load more notes")
+        self.btn_notes_more = QPushButton(tr("Load more notes"))
         self.btn_notes_more.clicked.connect(self._load_more_notes)
         self.btn_notes_more.setEnabled(False)
         notes_row.addWidget(self.btn_notes_more)
@@ -91,10 +93,10 @@ class MRDetailDialog(QDialog):
         layout.addLayout(notes_row)
 
         row = QHBoxLayout()
-        self.btn_save = QPushButton("Save metadata")
+        self.btn_save = QPushButton(tr("Save metadata"))
         self.btn_save.clicked.connect(self._save)
         row.addWidget(self.btn_save)
-        self.btn_merge = QPushButton("Merge…")
+        self.btn_merge = QPushButton(tr("Merge…"))
         self.btn_merge.clicked.connect(self._merge)
         row.addWidget(self.btn_merge)
         self.btn_open = QPushButton(open_in_label(self._info))
@@ -217,7 +219,7 @@ class MRDetailDialog(QDialog):
                 self.target_edit.text().strip() or None,
             )
             self._load()
-            QMessageBox.information(self, "Saved", f"{self._kind} metadata updated.")
+            QMessageBox.information(self, tr("Saved"), f"{self._kind} metadata updated.")
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
@@ -229,14 +231,14 @@ class MRDetailDialog(QDialog):
         box.setWindowTitle(f"Merge {self._kind.lower()}")
         box.setText(f"Merge !{self.mr_iid} via the forge API?")
         box.setInformativeText(
-            "Default uses the forge’s normal merge. Squash is the alternate "
+            tr("Default uses the forge’s normal merge. Squash is the alternate "
             "safe option where the forge supports it "
-            "(failures report as LD-API-MR-003)."
+            "(failures report as LD-API-MR-003).")
         )
         default_btn = box.addButton(
-            "Merge (default)", QMessageBox.ButtonRole.AcceptRole
+            tr("Merge (default)"), QMessageBox.ButtonRole.AcceptRole
         )
-        squash_btn = box.addButton("Squash…", QMessageBox.ButtonRole.ActionRole)
+        squash_btn = box.addButton(tr("Squash…"), QMessageBox.ButtonRole.ActionRole)
         box.addButton(QMessageBox.StandardButton.Cancel)
         box.setDefaultButton(default_btn)
         box.exec()
@@ -257,14 +259,14 @@ class MRDetailDialog(QDialog):
 
             labdesk_core.merge_merge_request(self.project_id, self.mr_iid, method)
             self._load()
-            QMessageBox.information(self, "Merged", f"!{self.mr_iid} merged.")
+            QMessageBox.information(self, tr("Merged"), f"!{self.mr_iid} merged.")
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
 
     def _open_web(self) -> None:
         if not self._web_url:
-            QMessageBox.information(self, open_in_label(self._info), "No web URL.")
+            QMessageBox.information(self, open_in_label(self._info), tr("No web URL."))
             return
         try:
             open_url(self._web_url)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -187,48 +189,48 @@ class RepoWindow(QMainWindow):
         layout.addWidget(self.notify_chip)
 
         row = QHBoxLayout()
-        self.btn_refresh = QPushButton("Refresh")
+        self.btn_refresh = QPushButton(tr("Refresh"))
         self.btn_refresh.clicked.connect(self.refresh)
         row.addWidget(self.btn_refresh)
 
-        self.btn_pull = QPushButton("Pull")
+        self.btn_pull = QPushButton(tr("Pull"))
         self.btn_pull.clicked.connect(self._pull)
         row.addWidget(self.btn_pull)
 
-        self.btn_fetch = QPushButton("Fetch")
+        self.btn_fetch = QPushButton(tr("Fetch"))
         self.btn_fetch.clicked.connect(self._fetch)
         row.addWidget(self.btn_fetch)
 
-        self.btn_push = QPushButton("Push")
+        self.btn_push = QPushButton(tr("Push"))
         self.btn_push.clicked.connect(self._push)
         row.addWidget(self.btn_push)
 
-        self.btn_force = QPushButton("Force push…")
+        self.btn_force = QPushButton(tr("Force push…"))
         self.btn_force.clicked.connect(self._force_push)
         row.addWidget(self.btn_force)
 
-        self.btn_stash = QPushButton("Stash…")
+        self.btn_stash = QPushButton(tr("Stash…"))
         self.btn_stash.clicked.connect(self._stash)
         row.addWidget(self.btn_stash)
-        self.btn_stash_pop = QPushButton("Pop stash…")
+        self.btn_stash_pop = QPushButton(tr("Pop stash…"))
         self.btn_stash_pop.clicked.connect(self._stash_pop)
         row.addWidget(self.btn_stash_pop)
-        self.btn_rebase = QPushButton("Rebase onto upstream…")
+        self.btn_rebase = QPushButton(tr("Rebase onto upstream…"))
         self.btn_rebase.clicked.connect(self._rebase_upstream)
         row.addWidget(self.btn_rebase)
-        self.btn_conflicts = QPushButton("Resolve conflicts…")
+        self.btn_conflicts = QPushButton(tr("Resolve conflicts…"))
         self.btn_conflicts.clicked.connect(self._open_conflicts)
         row.addWidget(self.btn_conflicts)
 
-        self.btn_mr = QPushButton("Create merge request…")
+        self.btn_mr = QPushButton(tr("Create merge request…"))
         self.btn_mr.clicked.connect(self._create_mr)
         row.addWidget(self.btn_mr)
 
-        self.btn_editor = QPushButton("Edit in LabDesk")
+        self.btn_editor = QPushButton(tr("Edit in LabDesk"))
         self.btn_editor.clicked.connect(self._open_in_editor)
         self.btn_editor.setEnabled(False)
         row.addWidget(self.btn_editor)
-        self.btn_external = QPushButton("Open external")
+        self.btn_external = QPushButton(tr("Open external"))
         self.btn_external.clicked.connect(self._open_external)
         self.btn_external.setEnabled(False)
         row.addWidget(self.btn_external)
@@ -236,18 +238,18 @@ class RepoWindow(QMainWindow):
         layout.addLayout(row)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_changes_tab(), "Changes")
-        self.tabs.addTab(self._build_history_tab(), "History")
-        self.tabs.addTab(self._build_branches_tab(), "Branches")
-        self.tabs.addTab(self._build_compare_tab(), "Compare")
+        self.tabs.addTab(self._build_changes_tab(), tr("Changes"))
+        self.tabs.addTab(self._build_history_tab(), tr("History"))
+        self.tabs.addTab(self._build_branches_tab(), tr("Branches"))
+        self.tabs.addTab(self._build_compare_tab(), tr("Compare"))
         self._pipelines_tab_index = self.tabs.addTab(
-            self._build_pipelines_tab(), "Pipelines"
+            self._build_pipelines_tab(), tr("Pipelines")
         )
         self._runners_tab_index = self.tabs.addTab(
-            self._build_runners_tab(), "Runners"
+            self._build_runners_tab(), tr("Runners")
         )
         self._mrs_tab_index = self.tabs.addTab(
-            self._build_mrs_tab(), "Merge requests"
+            self._build_mrs_tab(), tr("Merge requests")
         )
         layout.addWidget(self.tabs, stretch=1)
 
@@ -262,7 +264,7 @@ class RepoWindow(QMainWindow):
         self._apply_forge_labels()
 
         # Defer initial load so the window can paint before scanning a large tree.
-        self.footer.setText("Loading repository…")
+        self.footer.setText(tr("Loading repository…"))
         QTimer.singleShot(0, self.refresh)
         self.set_network_available(True)
         self._history_offset = 0
@@ -340,7 +342,7 @@ class RepoWindow(QMainWindow):
             if hasattr(self, "btn_mr_refresh"):
                 self.btn_mr_refresh.setEnabled(True)
                 self.btn_mr_open.setEnabled(False)
-        tip = "Working offline — network git actions disabled." if not available else ""
+        tip = tr("Working offline — network git actions disabled.") if not available else ""
         self.btn_push.setToolTip(tip)
         self.btn_force.setToolTip(tip)
         self.btn_pull.setToolTip(tip)
@@ -367,27 +369,27 @@ class RepoWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         pick = QHBoxLayout()
-        pick.addWidget(QLabel("Base"))
+        pick.addWidget(QLabel(tr("Base")))
         self.compare_base = QComboBox()
         self.compare_base.setMinimumWidth(160)
         pick.addWidget(self.compare_base, stretch=1)
-        pick.addWidget(QLabel("Other"))
+        pick.addWidget(QLabel(tr("Other")))
         self.compare_other = QComboBox()
         self.compare_other.setMinimumWidth(160)
         pick.addWidget(self.compare_other, stretch=1)
-        self.btn_compare = QPushButton("Compare")
+        self.btn_compare = QPushButton(tr("Compare"))
         self.btn_compare.clicked.connect(self._run_compare)
         pick.addWidget(self.btn_compare)
-        self.btn_compare_mr = QPushButton("Create MR/PR from compare…")
+        self.btn_compare_mr = QPushButton(tr("Create MR/PR from compare…"))
         self.btn_compare_mr.clicked.connect(self._create_mr_from_compare)
         self.btn_compare_mr.setEnabled(False)
         self.btn_compare_mr.setToolTip(
-            "Run Compare when the other ref is ahead of the base, then create."
+            tr("Run Compare when the other ref is ahead of the base, then create.")
         )
         pick.addWidget(self.btn_compare_mr)
         layout.addLayout(pick)
 
-        self.compare_summary = QLabel("Pick two refs and Compare.")
+        self.compare_summary = QLabel(tr("Pick two refs and Compare."))
         self.compare_summary.setWordWrap(True)
         layout.addWidget(self.compare_summary)
         self._compare_ahead = 0
@@ -405,15 +407,15 @@ class RepoWindow(QMainWindow):
         self.compare_files = QListWidget()
         self.compare_files.setMaximumHeight(140)
         self.compare_files.currentItemChanged.connect(self._on_compare_file_selected)
-        right_layout.addWidget(QLabel("Changed files"))
+        right_layout.addWidget(QLabel(tr("Changed files")))
         right_layout.addWidget(self.compare_files)
-        self.compare_diff = DiffView(placeholder="Tip-to-tip unified or side-by-side diff.")
+        self.compare_diff = DiffView(placeholder=tr("Tip-to-tip unified or side-by-side diff."))
         right_layout.addWidget(self.compare_diff, stretch=1)
         diff_row = QHBoxLayout()
         self.compare_trunc_hint = QLabel("")
         self.compare_trunc_hint.setWordWrap(True)
         diff_row.addWidget(self.compare_trunc_hint, stretch=1)
-        self.btn_compare_open = QPushButton("Open external…")
+        self.btn_compare_open = QPushButton(tr("Open external…"))
         self.btn_compare_open.clicked.connect(self._open_compare_file_external)
         self.btn_compare_open.setEnabled(False)
         diff_row.addWidget(self.btn_compare_open)
@@ -429,20 +431,20 @@ class RepoWindow(QMainWindow):
     def _build_mrs_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        self.mr_summary = QLabel("No merge requests loaded yet.")
+        self.mr_summary = QLabel(tr("No merge requests loaded yet."))
         self.mr_summary.setWordWrap(True)
         layout.addWidget(self.mr_summary)
         self.mr_list = QListWidget()
         layout.addWidget(self.mr_list, stretch=1)
         row = QHBoxLayout()
-        self.btn_mr_refresh = QPushButton("Refresh MRs")
+        self.btn_mr_refresh = QPushButton(tr("Refresh MRs"))
         self.btn_mr_refresh.clicked.connect(self._refresh_mrs)
         row.addWidget(self.btn_mr_refresh)
-        self.btn_mr_open = QPushButton("Open in GitLab")
+        self.btn_mr_open = QPushButton(tr("Open in GitLab"))
         self.btn_mr_open.clicked.connect(self._open_selected_mr)
         self.btn_mr_open.setEnabled(False)
         row.addWidget(self.btn_mr_open)
-        self.btn_mr_detail = QPushButton("Details…")
+        self.btn_mr_detail = QPushButton(tr("Details…"))
         self.btn_mr_detail.clicked.connect(self._open_mr_detail)
         self.btn_mr_detail.setEnabled(False)
         row.addWidget(self.btn_mr_detail)
@@ -455,27 +457,27 @@ class RepoWindow(QMainWindow):
     def _build_pipelines_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        self.pipeline_summary = QLabel("No pipeline loaded yet.")
+        self.pipeline_summary = QLabel(tr("No pipeline loaded yet."))
         self.pipeline_summary.setWordWrap(True)
         layout.addWidget(self.pipeline_summary)
         self.pipeline_jobs = QListWidget()
         layout.addWidget(self.pipeline_jobs, stretch=1)
         row = QHBoxLayout()
-        self.btn_pipeline_refresh = QPushButton("Refresh pipeline")
+        self.btn_pipeline_refresh = QPushButton(tr("Refresh pipeline"))
         self.btn_pipeline_refresh.clicked.connect(self._refresh_pipelines)
         row.addWidget(self.btn_pipeline_refresh)
-        self.btn_pipeline_open = QPushButton("Open in GitLab")
+        self.btn_pipeline_open = QPushButton(tr("Open in GitLab"))
         self.btn_pipeline_open.clicked.connect(self._open_pipeline)
         self.btn_pipeline_open.setEnabled(False)
         row.addWidget(self.btn_pipeline_open)
-        self.btn_play_job = QPushButton("Play manual job…")
+        self.btn_play_job = QPushButton(tr("Play manual job…"))
         self.btn_play_job.clicked.connect(self._play_selected_job)
         row.addWidget(self.btn_play_job)
-        self.btn_job_log = QPushButton("Job log…")
+        self.btn_job_log = QPushButton(tr("Job log…"))
         self.btn_job_log.clicked.connect(self._open_selected_job_log)
         self.btn_job_log.setEnabled(False)
         self.btn_job_log.setToolTip(
-            "Open the selected job in the forge (log tail in-app deferred)."
+            tr("Open the selected job in the forge (log tail in-app deferred).")
         )
         row.addWidget(self.btn_job_log)
         row.addStretch(1)
@@ -486,28 +488,28 @@ class RepoWindow(QMainWindow):
     def _build_runners_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        self.runners_summary = QLabel("No project runners loaded yet.")
+        self.runners_summary = QLabel(tr("No project runners loaded yet."))
         self.runners_summary.setWordWrap(True)
         layout.addWidget(self.runners_summary)
         self.project_runners = QListWidget()
         self.project_runners.currentItemChanged.connect(self._on_project_runner_selected)
         layout.addWidget(self.project_runners, stretch=1)
         row = QHBoxLayout()
-        self.btn_runners_refresh = QPushButton("Refresh runners")
+        self.btn_runners_refresh = QPushButton(tr("Refresh runners"))
         self.btn_runners_refresh.clicked.connect(self._refresh_project_runners)
         row.addWidget(self.btn_runners_refresh)
-        self.btn_runner_pause = QPushButton("Pause")
+        self.btn_runner_pause = QPushButton(tr("Pause"))
         self.btn_runner_pause.clicked.connect(lambda: self._set_project_runner_paused(True))
         row.addWidget(self.btn_runner_pause)
-        self.btn_runner_enable = QPushButton("Enable")
+        self.btn_runner_enable = QPushButton(tr("Enable"))
         self.btn_runner_enable.clicked.connect(
             lambda: self._set_project_runner_paused(False)
         )
         row.addWidget(self.btn_runner_enable)
-        self.btn_runner_delete = QPushButton("Delete…")
+        self.btn_runner_delete = QPushButton(tr("Delete…"))
         self.btn_runner_delete.clicked.connect(self._delete_project_runner)
         row.addWidget(self.btn_runner_delete)
-        self.btn_runner_open = QPushButton("Open in forge")
+        self.btn_runner_open = QPushButton(tr("Open in forge"))
         self.btn_runner_open.clicked.connect(self._open_project_runner)
         row.addWidget(self.btn_runner_open)
         row.addStretch(1)
@@ -594,7 +596,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=[self.btn_refresh],
             status=self.footer.setText,
-            working_message="Loading repository…",
+            working_message=tr("Loading repository…"),
         )
 
     def _apply_local_refresh(self, data: dict) -> None:
@@ -634,7 +636,7 @@ class RepoWindow(QMainWindow):
             state = str(data.get("git_state") or "")
             mid = "Merge" in state or "Rebase" in state
             self.btn_conflicts.setEnabled(bool(mid))
-            self.btn_conflicts.setText("Resolve conflicts…")
+            self.btn_conflicts.setText(tr("Resolve conflicts…"))
 
         self._populate_changes(
             branch=branch,
@@ -662,7 +664,7 @@ class RepoWindow(QMainWindow):
             return
         if not upstream:
             self.sync_banner.setText(
-                "No upstream set — push then Set upstream, or fetch after tracking exists."
+                tr("No upstream set — push then Set upstream, or fetch after tracking exists.")
             )
             return
         if ahead and behind:
@@ -735,8 +737,8 @@ class RepoWindow(QMainWindow):
         n_changes = len(changes)
         if n_changes == 0:
             self.footer.setText(
-                "Working tree clean · dirty-only Changes "
-                "(Browse files… for a virtualized tracked list). Use History for commits."
+                tr("Working tree clean · dirty-only Changes "
+                "(Browse files… for a virtualized tracked list). Use History for commits.")
             )
             self.diff.setPlainText(
                 "Working tree clean — no local changes.\n\n"
@@ -762,8 +764,8 @@ class RepoWindow(QMainWindow):
         self.commit_meta.setText("")
         self.commit_diff.clear()
         if not commits:
-            self.commits.addItem(QListWidgetItem("(no commits)"))
-            self.commit_meta.setText("This repository has no commits yet.")
+            self.commits.addItem(QListWidgetItem(tr("(no commits)")))
+            self.commit_meta.setText(tr("This repository has no commits yet."))
             return
         for c in commits:
             when = _format_commit_time(c.get("time"))
@@ -809,38 +811,38 @@ class RepoWindow(QMainWindow):
         left_layout.addWidget(self.files, stretch=1)
 
         stage_row = QHBoxLayout()
-        self.btn_stage = QPushButton("Stage")
+        self.btn_stage = QPushButton(tr("Stage"))
         self.btn_stage.clicked.connect(self._stage_selected)
         stage_row.addWidget(self.btn_stage)
-        self.btn_unstage = QPushButton("Unstage")
+        self.btn_unstage = QPushButton(tr("Unstage"))
         self.btn_unstage.clicked.connect(self._unstage_selected)
         stage_row.addWidget(self.btn_unstage)
-        self.btn_stage_all = QPushButton("Stage all")
+        self.btn_stage_all = QPushButton(tr("Stage all"))
         self.btn_stage_all.clicked.connect(self._stage_all)
         stage_row.addWidget(self.btn_stage_all)
-        self.btn_discard = QPushButton("Discard…")
+        self.btn_discard = QPushButton(tr("Discard…"))
         self.btn_discard.clicked.connect(self._discard_selected)
         stage_row.addWidget(self.btn_discard)
-        self.btn_browse_files = QPushButton("Browse files…")
+        self.btn_browse_files = QPushButton(tr("Browse files…"))
         self.btn_browse_files.clicked.connect(self._toggle_browse_files)
         stage_row.addWidget(self.btn_browse_files)
         left_layout.addLayout(stage_row)
 
-        left_layout.addWidget(QLabel("Commit message"))
+        left_layout.addWidget(QLabel(tr("Commit message")))
         self.commit_message = QTextEdit()
         self.commit_message.setPlaceholderText(
-            "Summary (required)\n\nOptional longer description…"
+            tr("Summary (required)\n\nOptional longer description…")
         )
         self.commit_message.setFixedHeight(90)
         left_layout.addWidget(self.commit_message)
-        self.btn_commit = QPushButton("Commit")
+        self.btn_commit = QPushButton(tr("Commit"))
         self.btn_commit.clicked.connect(self._commit)
         left_layout.addWidget(self.btn_commit)
 
         split.addWidget(left)
 
         self.diff = DiffView(
-            placeholder="Select a changed file for a diff, or a tracked file to view."
+            placeholder=tr("Select a changed file for a diff, or a tracked file to view.")
         )
         split.addWidget(self.diff)
         split.setStretchFactor(0, 1)
@@ -868,19 +870,19 @@ class RepoWindow(QMainWindow):
         self.commit_meta.setTextInteractionFlags(Qt.TextSelectableByMouse)
         right_layout.addWidget(self.commit_meta)
 
-        self.commit_diff = DiffView(placeholder="Select a commit to view its patch.")
+        self.commit_diff = DiffView(placeholder=tr("Select a commit to view its patch."))
         right_layout.addWidget(self.commit_diff, stretch=1)
 
         self.commit_files = QListWidget()
         self.commit_files.setMaximumHeight(140)
         self.commit_files.currentItemChanged.connect(self._on_commit_file_selected)
-        right_layout.addWidget(QLabel("Changed files"))
+        right_layout.addWidget(QLabel(tr("Changed files")))
         right_layout.addWidget(self.commit_files)
         hist_diff_row = QHBoxLayout()
         self.commit_trunc_hint = QLabel("")
         self.commit_trunc_hint.setWordWrap(True)
         hist_diff_row.addWidget(self.commit_trunc_hint, stretch=1)
-        self.btn_commit_open = QPushButton("Open external…")
+        self.btn_commit_open = QPushButton(tr("Open external…"))
         self.btn_commit_open.clicked.connect(self._open_commit_file_external)
         self.btn_commit_open.setEnabled(False)
         hist_diff_row.addWidget(self.btn_commit_open)
@@ -892,7 +894,7 @@ class RepoWindow(QMainWindow):
         split.setSizes([320, 700])
         layout.addWidget(split)
         hist_row = QHBoxLayout()
-        self.btn_history_more = QPushButton("Load more…")
+        self.btn_history_more = QPushButton(tr("Load more…"))
         self.btn_history_more.clicked.connect(self._load_more_history)
         hist_row.addWidget(self.btn_history_more)
         hist_row.addStretch(1)
@@ -906,19 +908,19 @@ class RepoWindow(QMainWindow):
         self.branches.itemDoubleClicked.connect(lambda _i: self._switch_branch())
         layout.addWidget(self.branches, stretch=1)
         row = QHBoxLayout()
-        self.btn_switch_branch = QPushButton("Switch")
+        self.btn_switch_branch = QPushButton(tr("Switch"))
         self.btn_switch_branch.clicked.connect(self._switch_branch)
         row.addWidget(self.btn_switch_branch)
-        self.btn_create_branch = QPushButton("Create…")
+        self.btn_create_branch = QPushButton(tr("Create…"))
         self.btn_create_branch.clicked.connect(self._create_branch)
         row.addWidget(self.btn_create_branch)
-        self.btn_merge_branch = QPushButton("Merge into current…")
+        self.btn_merge_branch = QPushButton(tr("Merge into current…"))
         self.btn_merge_branch.clicked.connect(self._merge_branch)
         row.addWidget(self.btn_merge_branch)
-        self.btn_delete_branch = QPushButton("Delete…")
+        self.btn_delete_branch = QPushButton(tr("Delete…"))
         self.btn_delete_branch.clicked.connect(self._delete_branch)
         row.addWidget(self.btn_delete_branch)
-        self.btn_set_upstream = QPushButton("Set upstream")
+        self.btn_set_upstream = QPushButton(tr("Set upstream"))
         self.btn_set_upstream.clicked.connect(self._set_upstream)
         row.addWidget(self.btn_set_upstream)
         row.addStretch(1)
@@ -964,7 +966,7 @@ class RepoWindow(QMainWindow):
         name = self._selected_branch_name()
         if not name:
             QMessageBox.information(
-                self, "Merge", "Select a branch to merge into the current branch."
+                self, tr("Merge"), tr("Select a branch to merge into the current branch.")
             )
             return
         try:
@@ -973,12 +975,12 @@ class RepoWindow(QMainWindow):
             current = labdesk_core.repo_branch(self.repo_path)
             if name == current:
                 QMessageBox.information(
-                    self, "Merge", "Select a different branch than the current one."
+                    self, tr("Merge"), tr("Select a different branch than the current one.")
                 )
                 return
             reply = QMessageBox.question(
                 self,
-                "Merge",
+                tr("Merge"),
                 f"Merge '{name}' into '{current}'?\n\n"
                 "On conflict, LabDesk leaves the merge in progress so you can "
                 "resolve in LabDesk or externally.",
@@ -988,7 +990,7 @@ class RepoWindow(QMainWindow):
             msg = labdesk_core.repo_merge_branch(self.repo_path, name)
             self.footer.setText(msg)
             self.refresh()
-            QMessageBox.information(self, "Merge", msg)
+            QMessageBox.information(self, tr("Merge"), msg)
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
@@ -1006,9 +1008,9 @@ class RepoWindow(QMainWindow):
 
         def on_ok(_result) -> None:
             self._busy = False
-            self.footer.setText("Fetch OK.")
+            self.footer.setText(tr("Fetch OK."))
             self._refresh_header()
-            QMessageBox.information(self, "Fetch", "Fetched from origin.")
+            QMessageBox.information(self, tr("Fetch"), tr("Fetched from origin."))
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
             self._busy = False
@@ -1022,7 +1024,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=self._network_busy_widgets(),
             status=self.footer.setText,
-            working_message="Working…",
+            working_message=tr("Working…"),
         )
 
     def _refresh_branches(self) -> None:
@@ -1038,7 +1040,7 @@ class RepoWindow(QMainWindow):
     def _switch_branch(self) -> None:
         name = self._selected_branch_name()
         if not name:
-            QMessageBox.information(self, "Switch branch", "Select a branch.")
+            QMessageBox.information(self, tr("Switch branch"), tr("Select a branch."))
             return
         try:
             import labdesk_core
@@ -1079,7 +1081,7 @@ class RepoWindow(QMainWindow):
     def _open_in_editor(self) -> None:
         rel = self._selected_file_path()
         if not rel:
-            QMessageBox.information(self, "Edit in LabDesk", "Select a file first.")
+            QMessageBox.information(self, tr("Edit in LabDesk"), tr("Select a file first."))
             return
         from labdesk_ui.widgets.code_editor import open_code_editor
 
@@ -1091,7 +1093,7 @@ class RepoWindow(QMainWindow):
     def _open_external(self) -> None:
         rel = self._selected_file_path()
         if not rel:
-            QMessageBox.information(self, "Open external", "Select a file first.")
+            QMessageBox.information(self, tr("Open external"), tr("Select a file first."))
             return
         abs_path = Path(self.repo_path) / rel
         try:
@@ -1128,13 +1130,13 @@ class RepoWindow(QMainWindow):
                 return
             source, target, title, description, draft = dlg.values()
             if not title:
-                QMessageBox.warning(self, create_title, "Title is required.")
+                QMessageBox.warning(self, create_title, tr("Title is required."))
                 return
             if not source or not target:
                 QMessageBox.warning(
                     self,
                     create_title,
-                    "Source and target branches are required.",
+                    tr("Source and target branches are required."),
                 )
                 return
         except Exception as exc:
@@ -1239,7 +1241,7 @@ class RepoWindow(QMainWindow):
     def _stage_selected(self) -> None:
         paths = self._selected_change_paths()
         if not paths:
-            QMessageBox.information(self, "Stage", "Select one or more changed files.")
+            QMessageBox.information(self, tr("Stage"), tr("Select one or more changed files."))
             return
         try:
             import labdesk_core
@@ -1254,7 +1256,7 @@ class RepoWindow(QMainWindow):
     def _unstage_selected(self) -> None:
         paths = self._selected_change_paths()
         if not paths:
-            QMessageBox.information(self, "Unstage", "Select one or more staged files.")
+            QMessageBox.information(self, tr("Unstage"), tr("Select one or more staged files."))
             return
         try:
             import labdesk_core
@@ -1275,7 +1277,7 @@ class RepoWindow(QMainWindow):
             if not paths:
                 paths = [e["path"] for e in changes if e.get("path")]
             if not paths:
-                QMessageBox.information(self, "Stage all", "Nothing to stage.")
+                QMessageBox.information(self, tr("Stage all"), tr("Nothing to stage."))
                 return
             n = labdesk_core.repo_stage(self.repo_path, paths)
             self.footer.setText(f"Staged {n} path(s).")
@@ -1287,7 +1289,7 @@ class RepoWindow(QMainWindow):
     def _commit(self) -> None:
         message = self.commit_message.toPlainText().strip()
         if not message:
-            QMessageBox.warning(self, "Commit", "Enter a commit message.")
+            QMessageBox.warning(self, tr("Commit"), tr("Enter a commit message."))
             return
         try:
             import labdesk_core
@@ -1297,7 +1299,7 @@ class RepoWindow(QMainWindow):
             self.commit_message.clear()
             self.footer.setText(f"Committed {short}.")
             self.refresh()
-            QMessageBox.information(self, "Commit", f"Created commit {short}.")
+            QMessageBox.information(self, tr("Commit"), f"Created commit {short}.")
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
@@ -1380,7 +1382,7 @@ class RepoWindow(QMainWindow):
             if hasattr(self, "commit_trunc_hint"):
                 if _diff_looks_truncated(patch):
                     self.commit_trunc_hint.setText(
-                        "Diff truncated — select a file and Open external for the full content."
+                        tr("Diff truncated — select a file and Open external for the full content.")
                     )
                 else:
                     self.commit_trunc_hint.setText("")
@@ -1401,12 +1403,12 @@ class RepoWindow(QMainWindow):
         box.setWindowTitle(title)
         box.setText(body)
         box.setInformativeText(
-            "Yes = include untracked files\n"
+            tr("Yes = include untracked files\n"
             "No = tracked and staged changes only\n"
-            "Cancel = do nothing"
+            "Cancel = do nothing")
         )
-        yes = box.addButton("Yes (with untracked)", QMessageBox.ButtonRole.YesRole)
-        no = box.addButton("No (tracked only)", QMessageBox.ButtonRole.NoRole)
+        yes = box.addButton(tr("Yes (with untracked)"), QMessageBox.ButtonRole.YesRole)
+        no = box.addButton(tr("No (tracked only)"), QMessageBox.ButtonRole.NoRole)
         box.addButton(QMessageBox.StandardButton.Cancel)
         box.setDefaultButton(yes)
         box.exec()
@@ -1433,11 +1435,11 @@ class RepoWindow(QMainWindow):
         if dirty:
             reply = QMessageBox.question(
                 self,
-                "Pull with local changes",
-                "Working tree is dirty. Stash before pull?\n\n"
+                tr("Pull with local changes"),
+                tr("Working tree is dirty. Stash before pull?\n\n"
                 "Yes = stash then pull\n"
                 "No = pull without stashing\n"
-                "Cancel = abort",
+                "Cancel = abort"),
                 QMessageBox.StandardButton.Yes
                 | QMessageBox.StandardButton.No
                 | QMessageBox.StandardButton.Cancel,
@@ -1473,12 +1475,12 @@ class RepoWindow(QMainWindow):
             self._busy = False
             self.footer.setText(str(msg))
             self.refresh()
-            QMessageBox.information(self, "Pull", str(msg))
+            QMessageBox.information(self, tr("Pull"), str(msg))
             if did_stash:
                 pop = QMessageBox.question(
                     self,
-                    "Apply stash?",
-                    "Pull succeeded. Apply (pop) the stash you just created?",
+                    tr("Apply stash?"),
+                    tr("Pull succeeded. Apply (pop) the stash you just created?"),
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.Yes,
                 )
@@ -1490,7 +1492,7 @@ class RepoWindow(QMainWindow):
             if code == "LD-GIT-024":
                 choice = QMessageBox.question(
                     self,
-                    "Histories diverged",
+                    tr("Histories diverged"),
                     f"[{code}] {msg}\n\nMerge upstream now?\n"
                     "(No = offer rebase; Cancel = abort)",
                     QMessageBox.StandardButton.Yes
@@ -1506,7 +1508,7 @@ class RepoWindow(QMainWindow):
             if code == "LD-GIT-020":
                 reply = QMessageBox.question(
                     self,
-                    "Conflicts",
+                    tr("Conflicts"),
                     f"[{code}] {msg}\n\nOpen conflict resolver?",
                 )
                 if reply == QMessageBox.StandardButton.Yes:
@@ -1522,7 +1524,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=self._network_busy_widgets(),
             status=self.footer.setText,
-            working_message="Working…",
+            working_message=tr("Working…"),
         )
 
     def _push(self) -> None:
@@ -1537,7 +1539,7 @@ class RepoWindow(QMainWindow):
             branch = "current branch"
         reply = QMessageBox.warning(
             self,
-            "Force push",
+            tr("Force push"),
             f"Force push to {branch}? This can overwrite remote history.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -1562,7 +1564,7 @@ class RepoWindow(QMainWindow):
             self.footer.setText("Force push OK." if force else "Push OK.")
             QMessageBox.information(
                 self,
-                "Push",
+                tr("Push"),
                 "Force push succeeded." if force else "Push succeeded.",
             )
             self._refresh_local_async()
@@ -1592,7 +1594,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=self._network_busy_widgets(),
             status=self.footer.setText,
-            working_message="Working…",
+            working_message=tr("Working…"),
         )
 
     def _maybe_offer_set_upstream(self) -> None:
@@ -1607,7 +1609,7 @@ class RepoWindow(QMainWindow):
             return
         reply = QMessageBox.question(
             self,
-            "Set upstream?",
+            tr("Set upstream?"),
             f"No upstream tracking branch for '{branch}'.\n"
             f"Set upstream to origin/{branch}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -1657,7 +1659,7 @@ class RepoWindow(QMainWindow):
         base = self.compare_base.currentText().strip()
         other = self.compare_other.currentText().strip()
         if not base or not other:
-            QMessageBox.information(self, "Compare", "Select base and other refs.")
+            QMessageBox.information(self, tr("Compare"), tr("Select base and other refs."))
             return
         from labdesk_ui.utils.async_jobs import run_in_background
 
@@ -1732,7 +1734,7 @@ class RepoWindow(QMainWindow):
             if hasattr(self, "compare_trunc_hint"):
                 if _diff_looks_truncated(patch):
                     self.compare_trunc_hint.setText(
-                        "Diff truncated — select a file and Open external for the full content."
+                        tr("Diff truncated — select a file and Open external for the full content.")
                     )
                 else:
                     self.compare_trunc_hint.setText("")
@@ -1750,7 +1752,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=[self.btn_compare],
             status=self.footer.setText,
-            working_message="Comparing…",
+            working_message=tr("Comparing…"),
         )
 
     def _apply_mrs_view(self, mrs: list, *, cached: bool = False, fetched_at: str | None = None) -> None:
@@ -1991,7 +1993,7 @@ class RepoWindow(QMainWindow):
             )
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
-            self.pipeline_chip.setText("Pipeline: (offline)")
+            self.pipeline_chip.setText(tr("Pipeline: (offline)"))
             self.pipeline_summary.setText(f"Offline — could not load cache [{code}]: {msg}")
             self.btn_play_job.setEnabled(False)
 
@@ -2002,7 +2004,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=[self.btn_pipeline_refresh] if hasattr(self, "btn_pipeline_refresh") else None,
             status=self.footer.setText,
-            working_message="Loading cached pipeline…",
+            working_message=tr("Loading cached pipeline…"),
         )
 
     def _refresh_pipelines(self) -> None:
@@ -2050,7 +2052,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=[self.btn_pipeline_refresh] if hasattr(self, "btn_pipeline_refresh") else None,
             status=self.footer.setText,
-            working_message="Loading pipeline…",
+            working_message=tr("Loading pipeline…"),
         )
 
     def _open_pipeline(self) -> None:
@@ -2064,11 +2066,11 @@ class RepoWindow(QMainWindow):
 
     def _play_selected_job(self) -> None:
         if not self._network_available:
-            QMessageBox.information(self, "Play job", "Working offline.")
+            QMessageBox.information(self, tr("Play job"), tr("Working offline."))
             return
         item = self.pipeline_jobs.currentItem()
         if item is None:
-            QMessageBox.information(self, "Play job", "Select a manual job first.")
+            QMessageBox.information(self, tr("Play job"), tr("Select a manual job first."))
             return
         job = item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(job, dict):
@@ -2078,7 +2080,7 @@ class RepoWindow(QMainWindow):
             when = job.get("when") or "?"
             QMessageBox.information(
                 self,
-                "Play job",
+                tr("Play job"),
                 "Only jobs waiting for manual start can be played from LabDesk.\n\n"
                 f"Selected job status={status}, when={when}.\n"
                 "Look for a row marked ▶ (status manual).",
@@ -2087,13 +2089,13 @@ class RepoWindow(QMainWindow):
         name = job.get("name") or job.get("id")
         reply = QMessageBox.question(
             self,
-            "Play job",
+            tr("Play job"),
             f"Start manual job '{name}'?",
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
         if self._pipeline_project_id is None:
-            QMessageBox.warning(self, "Play job", "Project id unknown; refresh pipeline.")
+            QMessageBox.warning(self, tr("Play job"), tr("Project id unknown; refresh pipeline."))
             return
 
         from labdesk_ui.utils.async_jobs import run_in_background
@@ -2120,7 +2122,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=self._network_busy_widgets(),
             status=self.footer.setText,
-            working_message="Starting job…",
+            working_message=tr("Starting job…"),
         )
 
     def changeEvent(self, event) -> None:
@@ -2197,11 +2199,11 @@ class RepoWindow(QMainWindow):
     def _discard_selected(self) -> None:
         paths = self._selected_change_paths()
         if not paths:
-            QMessageBox.information(self, "Discard", "Select a changed path.")
+            QMessageBox.information(self, tr("Discard"), tr("Select a changed path."))
             return
         reply = QMessageBox.warning(
             self,
-            "Discard",
+            tr("Discard"),
             f"Discard local changes for {len(paths)} path(s)?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -2239,8 +2241,8 @@ class RepoWindow(QMainWindow):
         if confirm:
             reply = QMessageBox.question(
                 self,
-                "Pop stash",
-                "Apply and remove the latest stash?",
+                tr("Pop stash"),
+                tr("Apply and remove the latest stash?"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes,
             )
@@ -2263,7 +2265,7 @@ class RepoWindow(QMainWindow):
             msg = labdesk_core.repo_merge_upstream(self.repo_path)
             self.footer.setText(str(msg))
             self.refresh()
-            QMessageBox.information(self, "Merge", str(msg))
+            QMessageBox.information(self, tr("Merge"), str(msg))
         except Exception as exc:
             code, msg = format_error(exc)
             if code == "LD-GIT-020":
@@ -2274,8 +2276,8 @@ class RepoWindow(QMainWindow):
     def _rebase_upstream(self) -> None:
         reply = QMessageBox.question(
             self,
-            "Rebase",
-            "Rebase current branch onto upstream?",
+            tr("Rebase"),
+            tr("Rebase current branch onto upstream?"),
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
@@ -2285,7 +2287,7 @@ class RepoWindow(QMainWindow):
             msg = labdesk_core.repo_rebase_upstream(self.repo_path)
             self.footer.setText(str(msg))
             self.refresh()
-            QMessageBox.information(self, "Rebase", str(msg))
+            QMessageBox.information(self, tr("Rebase"), str(msg))
         except Exception as exc:
             code, msg = format_error(exc)
             if code == "LD-GIT-020":
@@ -2310,11 +2312,11 @@ class RepoWindow(QMainWindow):
     def _delete_branch(self) -> None:
         name = self._selected_branch_name()
         if not name:
-            QMessageBox.information(self, "Delete branch", "Select a local branch.")
+            QMessageBox.information(self, tr("Delete branch"), tr("Select a local branch."))
             return
         reply = QMessageBox.warning(
             self,
-            "Delete branch",
+            tr("Delete branch"),
             f"Delete local branch '{name}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -2347,22 +2349,22 @@ class RepoWindow(QMainWindow):
         base = self.compare_base.currentText().strip()
         if not other or not base:
             QMessageBox.information(
-                self, "Create from compare", "Pick base and other refs first."
+                self, tr("Create from compare"), tr("Pick base and other refs first.")
             )
             return
         if not self._network_available:
             QMessageBox.information(
                 self,
-                "Create from compare",
-                "Working offline — cannot create on the forge.",
+                tr("Create from compare"),
+                tr("Working offline — cannot create on the forge."),
             )
             return
         ahead = int(getattr(self, "_compare_ahead", 0) or 0)
         if ahead <= 0:
             QMessageBox.information(
                 self,
-                "Create from compare",
-                "Run Compare first when the other ref is ahead of the base.",
+                tr("Create from compare"),
+                tr("Run Compare first when the other ref is ahead of the base."),
             )
             return
         source = _ref_to_branch_name(other)
@@ -2385,7 +2387,7 @@ class RepoWindow(QMainWindow):
                 return
             src, tgt, title, description, draft = dlg.values()
             if not title:
-                QMessageBox.warning(self, f"Create {kind.lower()}", "Title is required.")
+                QMessageBox.warning(self, f"Create {kind.lower()}", tr("Title is required."))
                 return
         except Exception as exc:
             code, msg = format_error(exc)
@@ -2447,7 +2449,7 @@ class RepoWindow(QMainWindow):
         if not info.get("supports_mr_detail", True):
             QMessageBox.information(
                 self,
-                "Details",
+                tr("Details"),
                 f"{info.get('display_name') or 'This forge'} does not expose "
                 "MR/PR detail to LabDesk.",
             )
@@ -2455,8 +2457,8 @@ class RepoWindow(QMainWindow):
         if not self._network_available:
             QMessageBox.information(
                 self,
-                "Details",
-                "Working offline — open the forge in a browser, or reconnect.",
+                tr("Details"),
+                tr("Working offline — open the forge in a browser, or reconnect."),
             )
             return
         item = self.mr_list.currentItem()
@@ -2513,11 +2515,11 @@ class RepoWindow(QMainWindow):
             if hasattr(self, "commit_trunc_hint"):
                 if data.get("binary") or patch.startswith("(binary"):
                     self.commit_trunc_hint.setText(
-                        "Binary file — use Open external to view outside LabDesk."
+                        tr("Binary file — use Open external to view outside LabDesk.")
                     )
                 elif _diff_looks_truncated(patch):
                     self.commit_trunc_hint.setText(
-                        "Diff truncated — Open external for the full file."
+                        tr("Diff truncated — Open external for the full file.")
                     )
                 else:
                     self.commit_trunc_hint.setText("")
@@ -2529,14 +2531,14 @@ class RepoWindow(QMainWindow):
         path = getattr(self, "_commit_selected_path", None)
         if not path:
             QMessageBox.information(
-                self, "Open external", "Select a changed file first."
+                self, tr("Open external"), tr("Select a changed file first.")
             )
             return
         full = Path(self.repo_path) / path
         if not full.exists():
             QMessageBox.information(
                 self,
-                "Open external",
+                tr("Open external"),
                 f"{path} is not in the working tree (deleted or not checked out).",
             )
             return
@@ -2575,11 +2577,11 @@ class RepoWindow(QMainWindow):
             if hasattr(self, "compare_trunc_hint"):
                 if data.get("binary") or patch.startswith("(binary"):
                     self.compare_trunc_hint.setText(
-                        "Binary file — use Open external to view outside LabDesk."
+                        tr("Binary file — use Open external to view outside LabDesk.")
                     )
                 elif _diff_looks_truncated(patch):
                     self.compare_trunc_hint.setText(
-                        "Diff truncated — Open external for the full file."
+                        tr("Diff truncated — Open external for the full file.")
                     )
                 else:
                     self.compare_trunc_hint.setText("")
@@ -2591,14 +2593,14 @@ class RepoWindow(QMainWindow):
         path = getattr(self, "_compare_selected_path", None)
         if not path:
             QMessageBox.information(
-                self, "Open external", "Select a changed file first."
+                self, tr("Open external"), tr("Select a changed file first.")
             )
             return
         full = Path(self.repo_path) / path
         if not full.exists():
             QMessageBox.information(
                 self,
-                "Open external",
+                tr("Open external"),
                 f"{path} is not in the working tree (deleted or not checked out).",
             )
             return
@@ -2628,8 +2630,8 @@ class RepoWindow(QMainWindow):
         if not url:
             QMessageBox.information(
                 self,
-                "Job log",
-                "No job URL available. Use Open in … on the pipeline, or refresh online.",
+                tr("Job log"),
+                tr("No job URL available. Use Open in … on the pipeline, or refresh online."),
             )
             return
         try:
@@ -2667,7 +2669,7 @@ class RepoWindow(QMainWindow):
         if not hasattr(self, "project_runners"):
             return
         if not self._network_available:
-            self.runners_summary.setText("Offline — cannot load project runners.")
+            self.runners_summary.setText(tr("Offline — cannot load project runners."))
             return
         from labdesk_ui.utils.async_jobs import run_in_background
         from labdesk_ui.plugins.admin_view import _runner_row_text
@@ -2690,7 +2692,7 @@ class RepoWindow(QMainWindow):
             self.project_runners.clear()
             if data.get("error") == "no_project":
                 self.runners_summary.setText(
-                    "No forge project linked — clone/open from Projects to manage runners."
+                    tr("No forge project linked — clone/open from Projects to manage runners.")
                 )
                 return
             rows = list(data.get("rows") or [])
@@ -2720,7 +2722,7 @@ class RepoWindow(QMainWindow):
             if hasattr(self, "btn_runners_refresh")
             else [],
             status=lambda t: self.runners_summary.setText(t),
-            working_message="Loading project runners…",
+            working_message=tr("Loading project runners…"),
         )
 
     def _set_project_runner_paused(self, paused: bool) -> None:
@@ -2749,7 +2751,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=[self.btn_runner_pause, self.btn_runner_enable],
             status=lambda t: self.runners_summary.setText(t),
-            working_message="Updating runner…",
+            working_message=tr("Updating runner…"),
         )
 
     def _delete_project_runner(self) -> None:
@@ -2760,7 +2762,7 @@ class RepoWindow(QMainWindow):
         desc = row.get("description") or rid
         reply = QMessageBox.question(
             self,
-            "Delete runner?",
+            tr("Delete runner?"),
             f"Delete runner '{desc}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -2789,7 +2791,7 @@ class RepoWindow(QMainWindow):
             on_error=on_err,
             busy_widgets=[self.btn_runner_delete],
             status=lambda t: self.runners_summary.setText(t),
-            working_message="Deleting runner…",
+            working_message=tr("Deleting runner…"),
         )
 
     def _open_project_runner(self) -> None:
@@ -2798,8 +2800,8 @@ class RepoWindow(QMainWindow):
         if not url:
             QMessageBox.information(
                 self,
-                "Runners",
-                "No runner URL — use Admin → Open admin for the instance list.",
+                tr("Runners"),
+                tr("No runner URL — use Admin → Open admin for the instance list."),
             )
             return
         try:

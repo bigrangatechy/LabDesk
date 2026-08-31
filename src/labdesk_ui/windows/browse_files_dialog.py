@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from pathlib import Path
 
 from PySide6.QtCore import QSortFilterProxyModel, QStringListModel, Qt
@@ -38,18 +40,18 @@ class BrowseFilesDialog(QDialog):
         self.page_size = int(page_size or _DEFAULT_BROWSE_PAGE)
         if self.page_size < 1:
             self.page_size = _DEFAULT_BROWSE_PAGE
-        self.setWindowTitle("Browse tracked files")
+        self.setWindowTitle(tr("Browse tracked files"))
         self.resize(900, 560)
 
         layout = QVBoxLayout(self)
-        self.status = QLabel("Loading…")
+        self.status = QLabel(tr("Loading…"))
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
         filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel("Filter"))
+        filter_row.addWidget(QLabel(tr("Filter")))
         self.filter_edit = QLineEdit()
-        self.filter_edit.setPlaceholderText("Substring filter (case-insensitive)")
+        self.filter_edit.setPlaceholderText(tr("Substring filter (case-insensitive)"))
         self.filter_edit.textChanged.connect(self._on_filter)
         filter_row.addWidget(self.filter_edit, stretch=1)
         layout.addLayout(filter_row)
@@ -68,7 +70,7 @@ class BrowseFilesDialog(QDialog):
         self.preview = QTextEdit()
         self.preview.setReadOnly(True)
         self.preview.setFont(QFont("monospace"))
-        self.preview.setPlaceholderText("Select a file to preview (truncated for large files).")
+        self.preview.setPlaceholderText(tr("Select a file to preview (truncated for large files)."))
         split.addWidget(self.preview)
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 2)
@@ -76,15 +78,15 @@ class BrowseFilesDialog(QDialog):
         layout.addWidget(split, stretch=1)
 
         row = QHBoxLayout()
-        self.btn_open = QPushButton("Edit in LabDesk")
+        self.btn_open = QPushButton(tr("Edit in LabDesk"))
         self.btn_open.setEnabled(False)
         self.btn_open.clicked.connect(self._open_in_app)
         row.addWidget(self.btn_open)
-        self.btn_external = QPushButton("Open external")
+        self.btn_external = QPushButton(tr("Open external"))
         self.btn_external.setEnabled(False)
         self.btn_external.clicked.connect(self._open_external)
         row.addWidget(self.btn_external)
-        self.btn_more = QPushButton("Load more…")
+        self.btn_more = QPushButton(tr("Load more…"))
         self.btn_more.clicked.connect(self._load_more)
         row.addWidget(self.btn_more)
         row.addStretch(1)
@@ -151,7 +153,7 @@ class BrowseFilesDialog(QDialog):
             on_error=on_err,
             busy_widgets=[self.btn_more],
             status=self.status.setText,
-            working_message="Loading tracked files…",
+            working_message=tr("Loading tracked files…"),
         )
 
     def _load_more(self) -> None:

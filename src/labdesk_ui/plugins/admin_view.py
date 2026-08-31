@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -62,10 +64,10 @@ class AdminView(QWidget):
 
         layout = QVBoxLayout(self)
         header = QHBoxLayout()
-        back = QPushButton("← Back to Projects")
+        back = QPushButton(tr("← Back to Projects"))
         back.clicked.connect(lambda: self._ctx.switch_view("projects"))
         header.addWidget(back)
-        self.title = QLabel("Admin")
+        self.title = QLabel(tr("Admin"))
         header.addWidget(self.title, stretch=1)
         layout.addLayout(header)
 
@@ -74,8 +76,8 @@ class AdminView(QWidget):
         layout.addWidget(self.status)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_runners_tab(), "Runners")
-        self.tabs.addTab(self._build_users_tab(), "Users")
+        self.tabs.addTab(self._build_runners_tab(), tr("Runners"))
+        self.tabs.addTab(self._build_users_tab(), tr("Users"))
         layout.addWidget(self.tabs, stretch=1)
 
     def _build_runners_tab(self) -> QWidget:
@@ -86,22 +88,22 @@ class AdminView(QWidget):
         layout.addWidget(self.runners, stretch=1)
 
         row = QHBoxLayout()
-        self.btn_runners_refresh = QPushButton("Refresh")
+        self.btn_runners_refresh = QPushButton(tr("Refresh"))
         self.btn_runners_refresh.clicked.connect(self._load_runners)
         row.addWidget(self.btn_runners_refresh)
-        self.btn_pause = QPushButton("Pause")
+        self.btn_pause = QPushButton(tr("Pause"))
         self.btn_pause.clicked.connect(lambda: self._set_paused(True))
         row.addWidget(self.btn_pause)
-        self.btn_enable = QPushButton("Enable")
+        self.btn_enable = QPushButton(tr("Enable"))
         self.btn_enable.clicked.connect(lambda: self._set_paused(False))
         row.addWidget(self.btn_enable)
-        self.btn_delete = QPushButton("Delete…")
+        self.btn_delete = QPushButton(tr("Delete…"))
         self.btn_delete.clicked.connect(self._delete_runner)
         row.addWidget(self.btn_delete)
-        self.btn_open_runner = QPushButton("Open in forge")
+        self.btn_open_runner = QPushButton(tr("Open in forge"))
         self.btn_open_runner.clicked.connect(self._open_selected_runner)
         row.addWidget(self.btn_open_runner)
-        self.btn_open_runners_admin = QPushButton("Open admin…")
+        self.btn_open_runners_admin = QPushButton(tr("Open admin…"))
         self.btn_open_runners_admin.clicked.connect(self._open_runners_admin)
         row.addWidget(self.btn_open_runners_admin)
         row.addStretch(1)
@@ -115,14 +117,14 @@ class AdminView(QWidget):
         self.users = QListWidget()
         layout.addWidget(self.users, stretch=1)
         row = QHBoxLayout()
-        self.btn_users_refresh = QPushButton("Refresh")
+        self.btn_users_refresh = QPushButton(tr("Refresh"))
         self.btn_users_refresh.clicked.connect(self._load_users)
         row.addWidget(self.btn_users_refresh)
-        self.btn_open_user = QPushButton("Open user…")
+        self.btn_open_user = QPushButton(tr("Open user…"))
         self.btn_open_user.clicked.connect(self._open_selected_user)
         self.btn_open_user.setEnabled(False)
         row.addWidget(self.btn_open_user)
-        self.btn_open_users_admin = QPushButton("Open admin…")
+        self.btn_open_users_admin = QPushButton(tr("Open admin…"))
         self.btn_open_users_admin.clicked.connect(self._open_users_admin)
         row.addWidget(self.btn_open_users_admin)
         row.addStretch(1)
@@ -202,7 +204,7 @@ class AdminView(QWidget):
             on_error=on_err,
             busy_widgets=[self.btn_runners_refresh],
             status=self.status.setText,
-            working_message="Loading runners…",
+            working_message=tr("Loading runners…"),
         )
 
     def _load_users(self) -> None:
@@ -276,7 +278,7 @@ class AdminView(QWidget):
             on_error=on_err,
             busy_widgets=[self.btn_pause, self.btn_enable],
             status=self.status.setText,
-            working_message="Updating runner…",
+            working_message=tr("Updating runner…"),
         )
 
     def _delete_runner(self) -> None:
@@ -287,7 +289,7 @@ class AdminView(QWidget):
         desc = row.get("description") or rid
         reply = QMessageBox.question(
             self,
-            "Delete runner?",
+            tr("Delete runner?"),
             f"Delete runner '{desc}'?\nThis cannot be undone from LabDesk.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -315,7 +317,7 @@ class AdminView(QWidget):
             on_error=on_err,
             busy_widgets=[self.btn_delete],
             status=self.status.setText,
-            working_message="Deleting runner…",
+            working_message=tr("Deleting runner…"),
         )
 
     def _open_selected_runner(self) -> None:
@@ -376,4 +378,4 @@ def _factory(parent: QWidget, ctx: AppContext) -> QWidget:
     return AdminView(parent, ctx)
 
 
-register_view("admin", "Admin", _factory, order=40)
+register_view("admin", tr("Admin"), _factory, order=40)

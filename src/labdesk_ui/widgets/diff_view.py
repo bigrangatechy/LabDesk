@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from dataclasses import dataclass
 
 from PySide6.QtGui import QColor, QFont, QPalette, QTextCharFormat, QTextCursor
@@ -141,12 +143,12 @@ class DiffView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         bar = QHBoxLayout()
-        self.btn_unified = QPushButton("Unified")
+        self.btn_unified = QPushButton(tr("Unified"))
         self.btn_unified.setCheckable(True)
         self.btn_unified.setChecked(True)
         self.btn_unified.clicked.connect(lambda: self.set_mode(self.MODE_UNIFIED))
         bar.addWidget(self.btn_unified)
-        self.btn_side = QPushButton("Side by side")
+        self.btn_side = QPushButton(tr("Side by side"))
         self.btn_side.setCheckable(True)
         self.btn_side.clicked.connect(lambda: self.set_mode(self.MODE_SIDE))
         bar.addWidget(self.btn_side)
@@ -169,7 +171,7 @@ class DiffView(QWidget):
         split = QSplitter()
         self.left = QPlainTextEdit()
         self.right = QPlainTextEdit()
-        for pane, title in ((self.left, "Old (−)"), (self.right, "New (+)")):
+        for pane, title in ((self.left, tr("Old (−)")), (self.right, tr("New (+)"))):
             pane.setReadOnly(True)
             pane.setFont(QFont("monospace"))
             pane.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)

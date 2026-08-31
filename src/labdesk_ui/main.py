@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 import sys
 
 
@@ -26,6 +28,9 @@ def main() -> int:
     app.setDesktopFileName("com.bigrangatech.LabDesk")
     app.setOrganizationName("BigRanga Tech")
     app.setOrganizationDomain("bigrangatech.com")
+    from labdesk_ui.i18n import install_translators
+
+    install_translators(app)
     icon = app_icon()
     if not icon.isNull():
         app.setWindowIcon(icon)
@@ -39,14 +44,14 @@ def main() -> int:
     tray: QSystemTrayIcon | None = None
     if not icon.isNull() and QSystemTrayIcon.isSystemTrayAvailable():
         tray = QSystemTrayIcon(icon, app)
-        tray.setToolTip("LabDesk")
+        tray.setToolTip(tr("LabDesk"))
         menu = QMenu()
-        act_show = QAction("Show LabDesk", menu)
+        act_show = QAction(tr("Show LabDesk"), menu)
         act_show.triggered.connect(window.showNormal)
         act_show.triggered.connect(window.raise_)
         act_show.triggered.connect(window.activateWindow)
         menu.addAction(act_show)
-        act_quit = QAction("Quit", menu)
+        act_quit = QAction(tr("Quit"), menu)
         act_quit.triggered.connect(app.quit)
         menu.addAction(act_quit)
         tray.setContextMenu(menu)

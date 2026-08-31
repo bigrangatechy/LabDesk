@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from pathlib import Path
 
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QFont, QKeySequence
@@ -70,7 +72,7 @@ QFrame#SideRail {
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("LabDesk")
+        self.setWindowTitle(tr("LabDesk"))
         self.resize(1000, 640)
         self.setStyleSheet(_SHELL_STYLE)
         self._repo_windows: list[RepoWindow] = []
@@ -90,23 +92,23 @@ class MainWindow(QMainWindow):
         self._root_layout.setContentsMargins(14, 12, 14, 12)
         self._root_layout.setSpacing(8)
 
-        title = QLabel("LabDesk")
+        title = QLabel(tr("LabDesk"))
         title.setObjectName("LabDeskTitle")
         self._root_layout.addWidget(title)
 
-        self.status = QLabel("Loading…")
+        self.status = QLabel(tr("Loading…"))
         self.status.setObjectName("LabDeskStatus")
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._root_layout.addWidget(self.status)
 
         switch_row = QHBoxLayout()
-        switch_row.addWidget(QLabel("Host"))
+        switch_row.addWidget(QLabel(tr("Host")))
         self.combo_instance = QComboBox()
         self.combo_instance.setMinimumWidth(180)
         self.combo_instance.currentIndexChanged.connect(self._on_instance_combo)
         switch_row.addWidget(self.combo_instance, stretch=1)
-        switch_row.addWidget(QLabel("Account"))
+        switch_row.addWidget(QLabel(tr("Account")))
         self.combo_account = QComboBox()
         self.combo_account.setMinimumWidth(140)
         self.combo_account.currentIndexChanged.connect(self._on_account_combo)
@@ -227,7 +229,7 @@ class MainWindow(QMainWindow):
             layout = QVBoxLayout(self._nav_host)
             layout.setContentsMargins(0, 0, 8, 0)
             layout.setSpacing(6)
-            label = QLabel("Views")
+            label = QLabel(tr("Views"))
             f = QFont()
             f.setBold(True)
             label.setFont(f)
@@ -399,7 +401,7 @@ class MainWindow(QMainWindow):
         if menu is None:
             return
         menu.clear()
-        act_main = QAction("Main window", self)
+        act_main = QAction(tr("Main window"), self)
         act_main.triggered.connect(self._focus_main_window)
         menu.addAction(act_main)
         self._prune_repo_windows_silent()
@@ -473,7 +475,7 @@ class MainWindow(QMainWindow):
             start = ""
         chosen = QFileDialog.getExistingDirectory(
             self,
-            "Open existing repository",
+            tr("Open existing repository"),
             start,
             QFileDialog.Option.ShowDirsOnly,
         )
@@ -517,7 +519,7 @@ class MainWindow(QMainWindow):
             count = result.get("project_count", 0)
             QMessageBox.information(
                 self,
-                "Connected",
+                tr("Connected"),
                 f"Signed in as {user.get('name')} (@{user.get('username')}).\n"
                 f"Cached {count} projects.",
             )
@@ -659,8 +661,8 @@ class MainWindow(QMainWindow):
             accounts = cfg.get("accounts") or []
             if not accounts:
                 self.status.setText(
-                    "No forge account configured yet.\n"
-                    "Add a self-hosted host and account to get started."
+                    tr("No forge account configured yet.\n"
+                    "Add a self-hosted host and account to get started.")
                 )
                 self.detail.setText("")
                 self.set_network_available(True)
@@ -742,9 +744,9 @@ class MainWindow(QMainWindow):
             return
         reply = QMessageBox.question(
             self,
-            "Welcome to LabDesk",
-            "No forge account is configured yet.\n\n"
-            "Add a self-hosted host and account to get started?",
+            tr("Welcome to LabDesk"),
+            tr("No forge account is configured yet.\n\n"
+            "Add a self-hosted host and account to get started?"),
         )
         if reply == QMessageBox.StandardButton.Yes:
             self.show_connect_dialog()
@@ -782,7 +784,7 @@ class MainWindow(QMainWindow):
             self.set_detail(str(result.get("detail") or "Update available."))
             QMessageBox.information(
                 self,
-                "Update available",
+                tr("Update available"),
                 str(result.get("detail") or "A LabDesk Flatpak update is available."),
             )
 
@@ -846,29 +848,29 @@ class MainWindow(QMainWindow):
     def _build_menubar(self) -> None:
         menu = self.menuBar()
 
-        file_menu = menu.addMenu("&File")
-        act_connect = QAction("Add host / account…", self)
+        file_menu = menu.addMenu(tr("&File"))
+        act_connect = QAction(tr("Add host / account…"), self)
         act_connect.triggered.connect(self.show_connect_dialog)
         file_menu.addAction(act_connect)
-        act_add_account = QAction("Add account to host…", self)
+        act_add_account = QAction(tr("Add account to host…"), self)
         act_add_account.triggered.connect(
             lambda: self.show_connect_dialog(mode=InstanceConfigDialog.MODE_ADD_ACCOUNT)
         )
         file_menu.addAction(act_add_account)
-        act_open_repo = QAction("Open repository…", self)
+        act_open_repo = QAction(tr("Open repository…"), self)
         act_open_repo.setShortcut(QKeySequence.StandardKey.Open)
         act_open_repo.triggered.connect(self.open_repository_dialog)
         file_menu.addAction(act_open_repo)
-        self._recent_repos_menu = QMenu("Recent repositories", self)
+        self._recent_repos_menu = QMenu(tr("Recent repositories"), self)
         file_menu.addMenu(self._recent_repos_menu)
         self._rebuild_recent_repos_menu()
         file_menu.addSeparator()
-        act_quit = QAction("&Quit", self)
+        act_quit = QAction(tr("&Quit"), self)
         act_quit.setShortcut(QKeySequence.StandardKey.Quit)
         act_quit.triggered.connect(self.close)
         file_menu.addAction(act_quit)
 
-        view_menu = menu.addMenu("&View")
+        view_menu = menu.addMenu(tr("&View"))
         group = QActionGroup(self)
         group.setExclusive(True)
         for registered in list_views():
@@ -886,7 +888,10 @@ class MainWindow(QMainWindow):
         shell_group = QActionGroup(self)
         shell_group.setExclusive(True)
         self._shell_actions: dict[str, QAction] = {}
-        for shell_id, label in (("classic", "Classic layout"), ("sidebar", "Sidebar layout")):
+        for shell_id, label in (
+            ("classic", tr("Classic layout")),
+            ("sidebar", tr("Sidebar layout")),
+        ):
             act = QAction(label, self)
             act.setCheckable(True)
             act.setChecked(self._shell == shell_id)
@@ -898,20 +903,20 @@ class MainWindow(QMainWindow):
             self._shell_actions[shell_id] = act
         self._shell_group = shell_group
 
-        self._window_menu = menu.addMenu("&Window")
+        self._window_menu = menu.addMenu(tr("&Window"))
         self._rebuild_window_menu()
 
-        settings_menu = menu.addMenu("&Settings")
-        act_prefs = QAction("&Preferences…", self)
+        settings_menu = menu.addMenu(tr("&Settings"))
+        act_prefs = QAction(tr("&Preferences…"), self)
         act_prefs.setShortcut(QKeySequence.StandardKey.Preferences)
         act_prefs.triggered.connect(lambda: self.switch_view("settings"))
         settings_menu.addAction(act_prefs)
 
-        help_menu = menu.addMenu("&Help")
-        act_guide = QAction("&User Guide…", self)
+        help_menu = menu.addMenu(tr("&Help"))
+        act_guide = QAction(tr("&User Guide…"), self)
         act_guide.triggered.connect(self._user_guide)
         help_menu.addAction(act_guide)
-        act_about = QAction("&About LabDesk", self)
+        act_about = QAction(tr("&About LabDesk"), self)
         act_about.triggered.connect(self._about)
         help_menu.addAction(act_about)
 
@@ -929,7 +934,7 @@ class MainWindow(QMainWindow):
         except Exception:
             rows = []
         if not rows:
-            empty = QAction("(no recent repositories)", self)
+            empty = QAction(tr("(no recent repositories)"), self)
             empty.setEnabled(False)
             menu.addAction(empty)
             return
@@ -976,7 +981,7 @@ class MainWindow(QMainWindow):
             "Updates: Flatpak remote from Ranga/flatpaks"
         )
         box = QMessageBox(self)
-        box.setWindowTitle("About LabDesk")
+        box.setWindowTitle(tr("About LabDesk"))
         box.setTextFormat(Qt.TextFormat.PlainText)
         box.setText(text)
         icon = app_icon()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from labdesk_ui.i18n import tr
+
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -28,75 +30,75 @@ class InstanceConfigDialog(QDialog):
 
     def __init__(self, parent=None, *, mode: str | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Connect self-hosted forge")
+        self.setWindowTitle(tr("Connect self-hosted forge"))
         self.setMinimumWidth(460)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
         self.mode = QComboBox()
-        self.mode.addItem("New host", self.MODE_NEW_HOST)
-        self.mode.addItem("Add account to existing host", self.MODE_ADD_ACCOUNT)
-        form.addRow("Mode", self.mode)
+        self.mode.addItem(tr("New host"), self.MODE_NEW_HOST)
+        self.mode.addItem(tr("Add account to existing host"), self.MODE_ADD_ACCOUNT)
+        form.addRow(tr("Mode"), self.mode)
 
         self.host_pick = QComboBox()
-        form.addRow("Host", self.host_pick)
+        form.addRow(tr("Host"), self.host_pick)
 
         self.host_name = QLineEdit()
-        self.host_name.setPlaceholderText("My GitLab / Gitea / Forgejo / OneDev")
-        form.addRow("Host display name", self.host_name)
+        self.host_name.setPlaceholderText(tr("My GitLab / Gitea / Forgejo / OneDev"))
+        form.addRow(tr("Host display name"), self.host_name)
 
         self.forge = QComboBox()
-        self.forge.addItem("GitLab", "gitlab")
-        self.forge.addItem("Gitea", "gitea")
-        self.forge.addItem("Forgejo", "forgejo")
-        self.forge.addItem("OneDev", "onedev")
+        self.forge.addItem(tr("GitLab"), "gitlab")
+        self.forge.addItem(tr("Gitea"), "gitea")
+        self.forge.addItem(tr("Forgejo"), "forgejo")
+        self.forge.addItem(tr("OneDev"), "onedev")
         self.forge.setToolTip(
-            "Which forge software this host runs. LabDesk uses a dedicated "
-            "API backend for each; pick the correct one for connect/refresh."
+            tr("Which forge software this host runs. LabDesk uses a dedicated "
+            "API backend for each; pick the correct one for connect/refresh.")
         )
-        form.addRow("Forge", self.forge)
+        form.addRow(tr("Forge"), self.forge)
 
         self.base_url = QLineEdit()
         self.base_url.setPlaceholderText(
-            "https://git.example.com  or  http://192.168.x.x:port (LAN)"
+            tr("https://git.example.com  or  http://192.168.x.x:port (LAN)")
         )
         self.base_url.setToolTip(
-            "HTTPS required for public DNS names.\n"
+            tr("HTTPS required for public DNS names.\n"
             "http:// is allowed only for localhost / RFC1918 private IPs.\n"
-            "On plain HTTP the API PAT is sent in cleartext — trusted LAN only."
+            "On plain HTTP the API PAT is sent in cleartext — trusted LAN only.")
         )
-        form.addRow("Base URL", self.base_url)
+        form.addRow(tr("Base URL"), self.base_url)
 
         self.account_name = QLineEdit()
-        self.account_name.setPlaceholderText("Work / Personal / username")
-        form.addRow("Account label", self.account_name)
+        self.account_name.setPlaceholderText(tr("Work / Personal / username"))
+        form.addRow(tr("Account label"), self.account_name)
 
         self.pat = QLineEdit()
         self.pat.setEchoMode(QLineEdit.EchoMode.Password)
-        self.pat.setPlaceholderText("Personal access token")
-        form.addRow("API PAT", self.pat)
+        self.pat.setPlaceholderText(tr("Personal access token"))
+        form.addRow(tr("API PAT"), self.pat)
 
         self.ssl_mode = QComboBox()
-        self.ssl_mode.addItem("Strict (system trust)", "strict")
-        self.ssl_mode.addItem("Allow self-signed", "allow_self_signed")
-        self.ssl_mode.addItem("Imported CA", "imported_ca")
-        form.addRow("TLS mode", self.ssl_mode)
+        self.ssl_mode.addItem(tr("Strict (system trust)"), "strict")
+        self.ssl_mode.addItem(tr("Allow self-signed"), "allow_self_signed")
+        self.ssl_mode.addItem(tr("Imported CA"), "imported_ca")
+        form.addRow(tr("TLS mode"), self.ssl_mode)
 
         ca_row = QWidget()
         ca_layout = QHBoxLayout(ca_row)
         ca_layout.setContentsMargins(0, 0, 0, 0)
         self.ca_status = QLabel()
         self.ca_status.setWordWrap(True)
-        self.ca_import = QPushButton("Import CA…")
+        self.ca_import = QPushButton(tr("Import CA…"))
         self.ca_import.setToolTip(
-            "Copy a PEM/CRT into LabDesk’s trusted_certs/ folder "
-            "(used for API and git HTTPS when TLS mode is Imported CA)."
+            tr("Copy a PEM/CRT into LabDesk’s trusted_certs/ folder "
+            "(used for API and git HTTPS when TLS mode is Imported CA).")
         )
         self.ca_import.clicked.connect(self._on_import_ca)
         ca_layout.addWidget(self.ca_status, stretch=1)
         ca_layout.addWidget(self.ca_import)
-        form.addRow("Trusted CAs", ca_row)
+        form.addRow(tr("Trusted CAs"), ca_row)
         self._ca_row = ca_row
 
         layout.addLayout(form)
@@ -180,12 +182,12 @@ class InstanceConfigDialog(QDialog):
         if names:
             self.ca_status.setText(f"{len(names)} file(s): {', '.join(names)}")
         else:
-            self.ca_status.setText("No CA files yet — import a PEM or CRT.")
+            self.ca_status.setText(tr("No CA files yet — import a PEM or CRT."))
 
     def _on_import_ca(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Import CA certificate",
+            tr("Import CA certificate"),
             "",
             "Certificates (*.pem *.crt *.cer);;All files (*)",
         )
@@ -198,7 +200,7 @@ class InstanceConfigDialog(QDialog):
             name = (result or {}).get("name") or path
             QMessageBox.information(
                 self,
-                "CA imported",
+                tr("CA imported"),
                 f"Imported {name}.\n"
                 f"Stored under {(result or {}).get('trusted_certs_dir') or 'trusted_certs/'}.",
             )
@@ -206,7 +208,7 @@ class InstanceConfigDialog(QDialog):
         except Exception as exc:
             QMessageBox.critical(
                 self,
-                "Import failed",
+                tr("Import failed"),
                 f"Could not import certificate.\n\n{exc}",
             )
 
@@ -228,9 +230,9 @@ class InstanceConfigDialog(QDialog):
         ):
             QMessageBox.warning(
                 self,
-                "Import a CA first",
-                "TLS mode is Imported CA, but no certificates are in "
-                "trusted_certs/ yet.\n\nImport a PEM or CRT, then try again.",
+                tr("Import a CA first"),
+                tr("TLS mode is Imported CA, but no certificates are in "
+                "trusted_certs/ yet.\n\nImport a PEM or CRT, then try again."),
             )
             return
         self.accept()
