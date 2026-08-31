@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:49:43  01/09/2026** — Slice G SSH host-switch + richer diffs: SSH
+  `origin` retarget on host switch (incl. `ssh://`); Compare/History
+  per-file lists with binary badge; path-scoped diffs;
+  truncated/binary → **Open external…**. Docs + tests.
 - **00:44:52  01/09/2026** — Slice F MR/PR merge + read-only notes: Merge…
   offers default or squash (`LD-API-MR-003`); notes reload + load-more
   (page>1 empty on Gitea/Forgejo/OneDev to avoid duplicates); merge

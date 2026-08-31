@@ -1059,7 +1059,39 @@ fn repo_compare_branches(
         commits.append(row)?;
     }
     d.set_item("commits", commits)?;
+    let files = pyo3::types::PyList::empty(py);
+    for (path, binary) in cmp.files {
+        let row = PyDict::new(py);
+        row.set_item("path", path)?;
+        row.set_item("binary", binary)?;
+        files.append(row)?;
+    }
+    d.set_item("files", files)?;
     Ok(d.into())
+}
+
+#[pyfunction]
+fn repo_commit_diff_path(repo_path: String, oid: String, path: String) -> PyResult<String> {
+    Ok(git_ops::commit_diff_path(
+        std::path::Path::new(&repo_path),
+        &oid,
+        &path,
+    )?)
+}
+
+#[pyfunction]
+fn repo_compare_diff_path(
+    repo_path: String,
+    base_ref: String,
+    other_ref: String,
+    path: String,
+) -> PyResult<String> {
+    Ok(git_ops::compare_diff_path(
+        std::path::Path::new(&repo_path),
+        &base_ref,
+        &other_ref,
+        &path,
+    )?)
 }
 
 #[pyfunction]
@@ -2319,6 +2351,8 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(repo_list_branches, m)?)?;
     m.add_function(wrap_pyfunction!(repo_list_compare_refs, m)?)?;
     m.add_function(wrap_pyfunction!(repo_compare_branches, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_commit_diff_path, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_compare_diff_path, m)?)?;
     m.add_function(wrap_pyfunction!(remote_branch_exists, m)?)?;
     m.add_function(wrap_pyfunction!(repo_create_branch, m)?)?;
     m.add_function(wrap_pyfunction!(repo_checkout_branch, m)?)?;

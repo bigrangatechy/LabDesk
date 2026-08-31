@@ -88,11 +88,12 @@ switch; the Projects list follows the active account.
 **Same server, domain vs LAN:** add both URLs as separate hosts (each
 with its own account/PAT). When you switch **Host**, LabDesk retargets
 `origin` on local clones that still point at the previous host **and**
-whose project path exists under the newly selected account. It also
-rewrites cached project clone/web URLs onto the selected host’s Base
-URL, so **clone, fetch/pull/push, Open in …, and MR/pipeline links**
-all use that host — not only push. Unrelated hosts, SSH remotes, and
-accounts without that project are left alone. Some forges’ own clone
+whose project path exists under the newly selected account — including
+**SSH** remotes (`git@host:…` / `ssh://…`) rewritten onto the new
+hostname. It also rewrites cached project clone/web URLs onto the
+selected host’s Base URL, so **clone, fetch/pull/push, Open in …, and
+MR/pipeline links** all use that host — not only push. Unrelated hosts
+and accounts without that project are left alone. Some forges’ own clone
 URLs stay on the public hostname even when you talk to the LAN address —
 LabDesk prefers the selected host’s Base URL instead.
 
@@ -150,11 +151,15 @@ In the repo window:
   dirty tree, LabDesk offers to stash (with or without untracked) and,
   after a successful pull, to pop that stash.
 - **Compare:** pick two branches (local or `origin/…`), see ahead/behind,
-  recent commits, and a read-only tip diff (truncated if huge). When
+  recent commits, a per-file list (binary badge), and a read-only tip
+  diff (truncated if huge — **Open external…** for the full file). When
   online, LabDesk can check whether the other branch exists on the forge.
   If the other tip is **ahead** of the base, **Create MR/PR from
   compare…** pre-fills source/target (and optional draft where the forge
   supports it).
+- **History:** commit list with changed-file list (binary badge); select
+  a file for a path-scoped patch; truncated diffs offer **Open
+  external…**.
 - **Merge / pull requests:** opened items for this project (tab label
   follows the forge; refresh while online; last list kept for offline
   viewing). **Details…** (or double-click) shows title, description,

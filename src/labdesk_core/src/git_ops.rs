@@ -871,6 +871,8 @@ pub struct BranchCompare {
     pub behind: usize,
     pub commits: Vec<CompareCommit>,
     pub diff_text: String,
+    /// Paths changed tip-to-tip with binary flag.
+    pub files: Vec<(String, bool)>,
 }
 
 const COMPARE_COMMIT_LIMIT: usize = 50;
@@ -947,6 +949,19 @@ pub fn compare_branches(repo_path: &Path, base_ref: &str, other_ref: &str) -> Re
     let diff = repo
         .diff_tree_to_tree(Some(&base_tree), Some(&other_tree), Some(&mut opts))
         .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let mut files = Vec::new();
+    for delta in diff.deltas() {
+        let path = delta
+            .new_file()
+            .path()
+            .or_else(|| delta.old_file().path())
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if path.is_empty() {
+            continue;
+        }
+        files.push((path, delta_file_is_binary(&repo, &delta)));
+    }
     let mut buf = String::new();
     diff.print(DiffFormat::Patch, |_delta, _hunk, line| append_diff_line(&mut buf, &line))
         .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
@@ -959,6 +974,7 @@ pub fn compare_branches(repo_path: &Path, base_ref: &str, other_ref: &str) -> Re
         behind,
         commits,
         diff_text: buf,
+        files,
     })
 }
 
@@ -1226,9 +1242,127 @@ pub fn commit_changed_files(
         if path.is_empty() {
             continue;
         }
-        out.push((path, delta.new_file().is_binary() || delta.old_file().is_binary()));
+        out.push((path, delta_file_is_binary(&repo, &delta)));
     }
     Ok(out)
+}
+
+/// Unified diff for a single path in a commit (vs first parent).
+pub fn commit_diff_path(repo_path: &Path, oid_str: &str, path: &str) -> Result<String> {
+    let path = path.trim().trim_start_matches('/');
+    if path.is_empty() || path.contains("..") {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.").with_detail("invalid path"),
+        ));
+    }
+    let repo = open_repo(repo_path)?;
+    let oid = git2::Oid::from_str(oid_str.trim()).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail(e.message().to_string()),
+        )
+    })?;
+    let commit = repo.find_commit(oid).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail(e.message().to_string()),
+        )
+    })?;
+    let tree = commit.tree().map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail(e.message().to_string()),
+        )
+    })?;
+    let parent_tree = if commit.parent_count() > 0 {
+        Some(
+            commit
+                .parent(0)
+                .and_then(|p| p.tree())
+                .map_err(|e| {
+                    LabDeskError::App(
+                        ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                            .with_detail(e.message().to_string()),
+                    )
+                })?,
+        )
+    } else {
+        None
+    };
+    let mut opts = DiffOptions::new();
+    opts.pathspec(path);
+    let diff = repo
+        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                    .with_detail(e.message().to_string()),
+            )
+        })?;
+    for delta in diff.deltas() {
+        if delta_file_is_binary(&repo, &delta) {
+            return Ok(format!("(binary file: {path} — open externally to view)\n"));
+        }
+    }
+    let mut buf = String::new();
+    diff.print(DiffFormat::Patch, |_delta, _hunk, line| append_diff_line(&mut buf, &line))
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                    .with_detail(e.message().to_string()),
+            )
+        })?;
+    Ok(finish_diff_buf(
+        buf,
+        &format!("(no textual diff for {path})\n"),
+    ))
+}
+
+/// Unified tip-to-tip diff for a single path.
+pub fn compare_diff_path(
+    repo_path: &Path,
+    base_ref: &str,
+    other_ref: &str,
+    path: &str,
+) -> Result<String> {
+    let path = path.trim().trim_start_matches('/');
+    if path.is_empty() || path.contains("..") {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.").with_detail("invalid path"),
+        ));
+    }
+    let repo = open_repo(repo_path)?;
+    let base_commit = repo
+        .revparse_single(base_ref.trim())
+        .and_then(|o| o.peel_to_commit())
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let other_commit = repo
+        .revparse_single(other_ref.trim())
+        .and_then(|o| o.peel_to_commit())
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let base_tree = base_commit
+        .tree()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let other_tree = other_commit
+        .tree()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let mut opts = DiffOptions::new();
+    opts.pathspec(path);
+    let diff = repo
+        .diff_tree_to_tree(Some(&base_tree), Some(&other_tree), Some(&mut opts))
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    for delta in diff.deltas() {
+        if delta_file_is_binary(&repo, &delta) {
+            return Ok(format!("(binary file: {path} — open externally to view)\n"));
+        }
+    }
+    let mut buf = String::new();
+    diff.print(DiffFormat::Patch, |_delta, _hunk, line| append_diff_line(&mut buf, &line))
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    Ok(finish_diff_buf(
+        buf,
+        &format!("(no textual diff for {path})\n"),
+    ))
 }
 
 fn commit_to_info(commit: &git2::Commit<'_>) -> CommitInfo {
@@ -1384,6 +1518,23 @@ fn decode_file_bytes(bytes: &[u8]) -> String {
         return out;
     }
     text.into_owned()
+}
+
+fn delta_file_is_binary(repo: &Repository, delta: &git2::DiffDelta<'_>) -> bool {
+    if delta.new_file().is_binary() || delta.old_file().is_binary() {
+        return true;
+    }
+    for id in [delta.new_file().id(), delta.old_file().id()] {
+        if id.is_zero() {
+            continue;
+        }
+        if let Ok(blob) = repo.find_blob(id) {
+            if looks_binary(blob.content()) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn looks_binary(bytes: &[u8]) -> bool {
@@ -1959,6 +2110,68 @@ mod tests {
             Some("http://192.168.0.214:8929/Ranga/labdesk.git")
         );
         assert!(rebase_http_url_to_base("git@gitlab.example.com:Ranga/labdesk.git", base).is_none());
+    }
+
+    #[test]
+    fn retarget_ssh_rewrites_scp_and_url_forms() {
+        assert_eq!(
+            retarget_ssh_remote_url(
+                "git@gitlab.example.com:Ranga/labdesk.git",
+                "gitlab.example.com",
+                "10.0.0.5"
+            )
+            .as_deref(),
+            Some("git@10.0.0.5:Ranga/labdesk.git")
+        );
+        assert_eq!(
+            retarget_ssh_remote_url(
+                "ssh://git@gitlab.example.com/Ranga/nested/proj.git",
+                "gitlab.example.com",
+                "10.0.0.5"
+            )
+            .as_deref(),
+            Some("ssh://git@10.0.0.5/Ranga/nested/proj.git")
+        );
+        assert!(retarget_ssh_remote_url(
+            "git@other.example:Ranga/labdesk.git",
+            "gitlab.example.com",
+            "10.0.0.5"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn compare_includes_changed_files_with_binary_flag() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("labdesk-compare-files-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-b", "main"]);
+        fs::write(root.join("a.txt"), "one\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "base"]);
+        git(&root, &["checkout", "-b", "feature"]);
+        fs::write(root.join("a.txt"), "one\ntwo\n").unwrap();
+        fs::write(root.join("bin.dat"), [0u8, 1, 2, 0, 3]).unwrap();
+        git(&root, &["add", "a.txt", "bin.dat"]);
+        git(&root, &["commit", "-m", "change"]);
+        let cmp = compare_branches(&root, "main", "feature").expect("compare");
+        assert!(cmp.files.iter().any(|(p, _)| p == "a.txt"));
+        assert!(
+            cmp.files.iter().any(|(p, bin)| p == "bin.dat" && *bin),
+            "expected binary flag for bin.dat: {:?}",
+            cmp.files
+        );
+        let path_diff = commit_diff_path(
+            &root,
+            &cmp.commits.first().map(|c| c.oid.clone()).unwrap(),
+            "a.txt",
+        )
+        .expect("path diff");
+        assert!(path_diff.contains("two") || path_diff.contains("+"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

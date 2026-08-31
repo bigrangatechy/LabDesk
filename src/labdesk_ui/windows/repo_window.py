@@ -131,6 +131,27 @@ def _set_colored_diff(widget: QTextEdit, text: str) -> None:
     widget.moveCursor(QTextCursor.MoveOperation.Start)
 
 
+def _diff_looks_truncated(text: str) -> bool:
+    return "… (diff truncated)" in text or "(diff truncated)" in text
+
+
+def _populate_diff_file_list(widget: QListWidget, files: list) -> None:
+    widget.clear()
+    for f in files or []:
+        if isinstance(f, dict):
+            path = f.get("path") or ""
+            binary = bool(f.get("binary"))
+        else:
+            path = str(f)
+            binary = False
+        if not path:
+            continue
+        label = f"{path}  [binary]" if binary else path
+        item = QListWidgetItem(label)
+        item.setData(Qt.ItemDataRole.UserRole, {"path": path, "binary": binary})
+        widget.addItem(item)
+
+
 class RepoWindow(QMainWindow):
     def __init__(self, repo_path: str, title: str | None = None, parent=None) -> None:
         # No QWidget parent: owned windows must be true top-levels so the
@@ -363,15 +384,38 @@ class RepoWindow(QMainWindow):
         self.compare_summary.setWordWrap(True)
         layout.addWidget(self.compare_summary)
         self._compare_ahead = 0
+        self._compare_base_ref = ""
+        self._compare_other_ref = ""
+        self._compare_selected_path: str | None = None
 
         split = QSplitter()
         self.compare_commits = QListWidget()
         split.addWidget(self.compare_commits)
+
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        self.compare_files = QListWidget()
+        self.compare_files.setMaximumHeight(140)
+        self.compare_files.currentItemChanged.connect(self._on_compare_file_selected)
+        right_layout.addWidget(QLabel("Changed files"))
+        right_layout.addWidget(self.compare_files)
         self.compare_diff = QTextEdit()
         self.compare_diff.setReadOnly(True)
         self.compare_diff.setFont(QFont("monospace"))
         self.compare_diff.setPlaceholderText("Tip-to-tip unified diff.")
-        split.addWidget(self.compare_diff)
+        right_layout.addWidget(self.compare_diff, stretch=1)
+        diff_row = QHBoxLayout()
+        self.compare_trunc_hint = QLabel("")
+        self.compare_trunc_hint.setWordWrap(True)
+        diff_row.addWidget(self.compare_trunc_hint, stretch=1)
+        self.btn_compare_open = QPushButton("Open external…")
+        self.btn_compare_open.clicked.connect(self._open_compare_file_external)
+        self.btn_compare_open.setEnabled(False)
+        diff_row.addWidget(self.btn_compare_open)
+        right_layout.addLayout(diff_row)
+        split.addWidget(right)
+
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 3)
         split.setSizes([280, 700])
@@ -791,6 +835,15 @@ class RepoWindow(QMainWindow):
         self.commit_files.currentItemChanged.connect(self._on_commit_file_selected)
         right_layout.addWidget(QLabel("Changed files"))
         right_layout.addWidget(self.commit_files)
+        hist_diff_row = QHBoxLayout()
+        self.commit_trunc_hint = QLabel("")
+        self.commit_trunc_hint.setWordWrap(True)
+        hist_diff_row.addWidget(self.commit_trunc_hint, stretch=1)
+        self.btn_commit_open = QPushButton("Open external…")
+        self.btn_commit_open.clicked.connect(self._open_commit_file_external)
+        self.btn_commit_open.setEnabled(False)
+        hist_diff_row.addWidget(self.btn_commit_open)
+        right_layout.addLayout(hist_diff_row)
         split.addWidget(right)
 
         split.setStretchFactor(0, 1)
@@ -1254,21 +1307,25 @@ class RepoWindow(QMainWindow):
             self.commit_meta.setText("\n".join(lines))
 
             if hasattr(self, "commit_files"):
-                self.commit_files.clear()
                 try:
                     files = list(labdesk_core.repo_commit_files(self.repo_path, oid) or [])
-                    for f in files:
-                        path = f.get("path") if isinstance(f, dict) else str(f)
-                        binary = bool(f.get("binary")) if isinstance(f, dict) else False
-                        label = f"{path}  [binary]" if binary else path
-                        item = QListWidgetItem(label)
-                        item.setData(Qt.ItemDataRole.UserRole, {"path": path, "oid": oid})
-                        self.commit_files.addItem(item)
+                    _populate_diff_file_list(self.commit_files, files)
                 except Exception:
-                    pass
+                    self.commit_files.clear()
 
+            self._commit_selected_oid = oid
+            self._commit_selected_path = None
             patch = labdesk_core.repo_commit_diff(self.repo_path, oid)
             _set_colored_diff(self.commit_diff, patch)
+            if hasattr(self, "commit_trunc_hint"):
+                if _diff_looks_truncated(patch):
+                    self.commit_trunc_hint.setText(
+                        "Diff truncated — select a file and Open external for the full content."
+                    )
+                else:
+                    self.commit_trunc_hint.setText("")
+            if hasattr(self, "btn_commit_open"):
+                self.btn_commit_open.setEnabled(False)
         except Exception as exc:
             code, msg = format_error(exc)
             self.commit_meta.setText(f"[{code}] {msg}")
@@ -1568,6 +1625,9 @@ class RepoWindow(QMainWindow):
                 lines.append("Remote check skipped (offline).")
             self.compare_summary.setText("\n".join(lines))
             self._compare_ahead = ahead
+            self._compare_base_ref = base
+            self._compare_other_ref = other
+            self._compare_selected_path = None
             if hasattr(self, "btn_compare_mr"):
                 self.btn_compare_mr.setEnabled(
                     ahead > 0 and bool(self._network_available)
@@ -1582,7 +1642,19 @@ class RepoWindow(QMainWindow):
                 if author or when:
                     label += f"\n    {author}  {when}".rstrip()
                 self.compare_commits.addItem(QListWidgetItem(label))
-            _set_colored_diff(self.compare_diff, cmp.get("diff_text") or "")
+            if hasattr(self, "compare_files"):
+                _populate_diff_file_list(self.compare_files, cmp.get("files") or [])
+            patch = cmp.get("diff_text") or ""
+            _set_colored_diff(self.compare_diff, patch)
+            if hasattr(self, "compare_trunc_hint"):
+                if _diff_looks_truncated(patch):
+                    self.compare_trunc_hint.setText(
+                        "Diff truncated — select a file and Open external for the full content."
+                    )
+                else:
+                    self.compare_trunc_hint.setText("")
+            if hasattr(self, "btn_compare_open"):
+                self.btn_compare_open.setEnabled(False)
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
             self.compare_summary.setText(f"[{code}] {msg}")
@@ -2325,8 +2397,120 @@ class RepoWindow(QMainWindow):
         if not isinstance(data, dict):
             return
         path = data.get("path") or ""
-        if path:
-            self.footer.setText(f"Commit file: {path}")
+        if not path:
+            return
+        oid = getattr(self, "_commit_selected_oid", None) or ""
+        self._commit_selected_path = path
+        if hasattr(self, "btn_commit_open"):
+            self.btn_commit_open.setEnabled(True)
+        self.footer.setText(f"Commit file: {path}")
+        if not oid:
+            return
+        try:
+            import labdesk_core
+
+            if hasattr(labdesk_core, "repo_commit_diff_path"):
+                patch = labdesk_core.repo_commit_diff_path(self.repo_path, oid, path)
+            else:
+                patch = labdesk_core.repo_commit_diff(self.repo_path, oid)
+            _set_colored_diff(self.commit_diff, patch)
+            if hasattr(self, "commit_trunc_hint"):
+                if data.get("binary") or patch.startswith("(binary"):
+                    self.commit_trunc_hint.setText(
+                        "Binary file — use Open external to view outside LabDesk."
+                    )
+                elif _diff_looks_truncated(patch):
+                    self.commit_trunc_hint.setText(
+                        "Diff truncated — Open external for the full file."
+                    )
+                else:
+                    self.commit_trunc_hint.setText("")
+        except Exception as exc:
+            code, msg = format_error(exc)
+            self.commit_diff.setPlainText(f"[{code}] {msg}\n{exc}")
+
+    def _open_commit_file_external(self) -> None:
+        path = getattr(self, "_commit_selected_path", None)
+        if not path:
+            QMessageBox.information(
+                self, "Open external", "Select a changed file first."
+            )
+            return
+        full = Path(self.repo_path) / path
+        if not full.exists():
+            QMessageBox.information(
+                self,
+                "Open external",
+                f"{path} is not in the working tree (deleted or not checked out).",
+            )
+            return
+        try:
+            open_path(full)
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
+
+    def _on_compare_file_selected(self, current: QListWidgetItem | None, _prev) -> None:
+        if current is None:
+            return
+        data = current.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(data, dict):
+            return
+        path = data.get("path") or ""
+        if not path:
+            return
+        self._compare_selected_path = path
+        if hasattr(self, "btn_compare_open"):
+            self.btn_compare_open.setEnabled(True)
+        base = getattr(self, "_compare_base_ref", "") or ""
+        other = getattr(self, "_compare_other_ref", "") or ""
+        if not base or not other:
+            return
+        try:
+            import labdesk_core
+
+            if hasattr(labdesk_core, "repo_compare_diff_path"):
+                patch = labdesk_core.repo_compare_diff_path(
+                    self.repo_path, base, other, path
+                )
+            else:
+                return
+            _set_colored_diff(self.compare_diff, patch)
+            if hasattr(self, "compare_trunc_hint"):
+                if data.get("binary") or patch.startswith("(binary"):
+                    self.compare_trunc_hint.setText(
+                        "Binary file — use Open external to view outside LabDesk."
+                    )
+                elif _diff_looks_truncated(patch):
+                    self.compare_trunc_hint.setText(
+                        "Diff truncated — Open external for the full file."
+                    )
+                else:
+                    self.compare_trunc_hint.setText("")
+        except Exception as exc:
+            code, msg = format_error(exc)
+            self.compare_diff.setPlainText(f"[{code}] {msg}\n{exc}")
+
+    def _open_compare_file_external(self) -> None:
+        path = getattr(self, "_compare_selected_path", None)
+        if not path:
+            QMessageBox.information(
+                self, "Open external", "Select a changed file first."
+            )
+            return
+        full = Path(self.repo_path) / path
+        if not full.exists():
+            QMessageBox.information(
+                self,
+                "Open external",
+                f"{path} is not in the working tree (deleted or not checked out).",
+            )
+            return
+        try:
+            open_path(full)
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
 
     def _update_notify_chip(self, mrs: list, pipe: dict | None) -> None:
         if not hasattr(self, "notify_chip"):

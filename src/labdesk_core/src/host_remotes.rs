@@ -273,6 +273,33 @@ mod tests {
     }
 
     #[test]
+    fn host_switch_retargets_ssh_url_form() {
+        let (root, paths) = temp_paths();
+        let conn = cache::open(&paths).expect("cache");
+        let domain = "https://gitlab.example.com";
+        let lan = "http://10.0.0.5:8929";
+        let repo = root.join("ssh-url-clone");
+        init_repo_with_origin(&repo, "ssh://git@gitlab.example.com/Ranga/labdesk.git");
+        cache::replace_projects(&conn, "acc-lan", &[project(42, "Ranga/labdesk")]).unwrap();
+        cache::upsert_local_repo(
+            &conn,
+            "acc-domain",
+            Some(42),
+            &repo.display().to_string(),
+            "ssh://git@gitlab.example.com/Ranga/labdesk.git",
+        )
+        .unwrap();
+
+        let n = retarget_local_remotes_for_host_switch(&conn, domain, lan, "acc-lan").unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(
+            git_ops::remote_url(&repo, "origin").unwrap().as_deref(),
+            Some("ssh://git@10.0.0.5/Ranga/labdesk.git")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn same_base_url_is_noop() {
         let (root, paths) = temp_paths();
         let conn = cache::open(&paths).expect("cache");
