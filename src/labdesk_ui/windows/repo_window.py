@@ -2981,8 +2981,8 @@ class RepoWindow(QMainWindow):
             self.btn_lfs_pull.setEnabled(bool(lfs.get("available")))
             if not lfs.get("available"):
                 self.btn_lfs_pull.setToolTip(
-                    tr("Install git-lfs on the host to pull LFS objects "
-                    "(Flatpak does not bundle it in N.1).")
+                    tr("git-lfs was not found. The Flatpak build bundles it; "
+                    "unpackaged installs need git-lfs on PATH.")
                 )
             else:
                 self.btn_lfs_pull.setToolTip("")

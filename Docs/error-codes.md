@@ -96,7 +96,7 @@ Examples: `LD-AUTH-001`, `LD-CFG-010`, `LD-API-429`.
 | `LD-GIT-052` | Submodule update failed | "Failed to update submodule." | Check auth / network |
 | `LD-GIT-053` | Submodule sync failed | "Failed to sync submodule." | Retry; check URL |
 | `LD-GIT-054` | Named submodule missing | "Submodule not found." | Refresh list |
-| `LD-GIT-060` | Host `git-lfs` missing | "git-lfs is not available." | Install on host (not bundled in Flatpak N.1) |
+| `LD-GIT-060` | Host / sandbox `git-lfs` missing | "git-lfs is not available." | Flatpak ships git-lfs; unpackaged: install on host |
 | `LD-GIT-061` | `git lfs status` failed | "Failed to read LFS status." | Retry; check install |
 | `LD-GIT-062` | `git lfs pull` failed | "Failed to pull LFS objects." | Retry; check auth / LFS endpoint |
 

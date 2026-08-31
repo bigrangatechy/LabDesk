@@ -20,10 +20,12 @@ bullets without a stamp predate this convention.
 
  ### Added
 
+- **03:09:06  01/09/2026** — Flatpak smoke-test deps: bundle `git`
+  2.49 + `git-lfs` 3.8, `--socket=ssh-auth`, rebuild `.qm` at package
+  time, put `/app/bin` on the launcher PATH.
 - **02:58:07  01/09/2026** — Slice N submodule / LFS: repo **Git** tab
-  (libgit2 submodule list/init/update/sync; host `git-lfs` status +
-  pull when available); codes `LD-GIT-050`–`054`, `LD-GIT-060`–`062`.
-  Flatpak does not bundle git-lfs in N.1.
+  (libgit2 submodule list/init/update/sync; `git-lfs` status + pull
+  when available); codes `LD-GIT-050`–`054`, `LD-GIT-060`–`062`.
 - **02:48:23  01/09/2026** — Slice M MR/PR note posting: forge-aware
   `create_merge_request_note` on GitLab / Gitea / Forgejo / OneDev;
   capability `supports_mr_note_create`; MR detail composer with

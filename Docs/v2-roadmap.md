@@ -71,10 +71,10 @@ admin, localization, review, and git-extension surfaces. Delivery is
   comments, edit/delete.
 - **N — Submodule/LFS:** Repo window **Git** tab. Submodules via
   libgit2: list/status, **Init**, **Update…** (network, auth reused),
-  **Sync**. Git LFS: detect host `git-lfs`, show status, **Pull LFS
-  objects…** when available; otherwise gated with `LD-GIT-060` (not
-  bundled in Flatpak for N.1). Deferred (N.2): add/deinit submodule,
-  recurse-on-clone, LFS push/track/locks.
+  **Sync**. Git LFS: status + **Pull LFS objects…** when `git-lfs` is
+  available (`LD-GIT-060` if missing). Flatpak bundles `git` +
+  `git-lfs` and enables `--socket=ssh-auth`. Deferred (N.2):
+  add/deinit submodule, recurse-on-clone, LFS push/track/locks.
 - **UX — Polish pass:** After feature slices A–N, one pass for layout,
   density, keyboard/focus, empty states, and consistency — not new
   product features.

@@ -27,10 +27,49 @@ finish-args:
   - --talk-name=org.freedesktop.Flatpak
   # System tray (StatusNotifier) when the host provides one.
   - --talk-name=org.kde.StatusNotifierWatcher
+  # SSH remotes via libgit2 (ssh-agent); keys stay on the host agent.
+  - --socket=ssh-auth
   - --filesystem=xdg-documents
   - --filesystem=home
   - --env=PYTHONUNBUFFERED=1
 modules:
+  # CLI git for `git lfs …` (libgit2 covers ordinary clone/fetch/push).
+  - name: git
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=${FLATPAK_DEST} --without-tcltk
+      - make -j"${FLATPAK_BUILDER_N_JOBS}" NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PYTHON=YesPlease
+      - make install NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PYTHON=YesPlease
+    cleanup:
+      - /share/man
+      - /share/info
+      - /libexec/git-core/git-cvs*
+      - /libexec/git-core/git-svn*
+      - /bin/gitk
+    sources:
+      - type: archive
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.49.0.tar.xz
+        sha256: 618190cf590b7e9f6c11f91f23b1d267cd98c3ab33b850416d8758f8b5a85628
+
+  # Slice N: Git LFS client (status / pull). Prebuilt official binaries.
+  - name: git-lfs
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 git-lfs /app/bin/git-lfs
+    sources:
+      - type: archive
+        only-arches:
+          - x86_64
+        url: https://github.com/git-lfs/git-lfs/releases/download/v3.8.0/git-lfs-linux-amd64-v3.8.0.tar.gz
+        sha256: e455e00f15d9b95661b8d53498ffb0c3367962cf1ec73c31ab7369516cd6ab8d
+        strip-components: 1
+      - type: archive
+        only-arches:
+          - aarch64
+        url: https://github.com/git-lfs/git-lfs/releases/download/v3.8.0/git-lfs-linux-arm64-v3.8.0.tar.gz
+        sha256: ac9c8efac980bb0505ead384d087e2acb6486fd8498691a2165fa174ec6118c2
+        strip-components: 1
+
   # Rust core (maturin) + PySide6 + Python UI tree + launcher.
   - name: labdesk-core
     buildsystem: simple
@@ -52,6 +91,15 @@ modules:
         fi
       - pip3 install --prefix=/app --no-deps maturin || true
       - pip3 install --prefix=/app 'PySide6>=6.6,<6.9'
+      - |
+        set -euo pipefail
+        # Rebuild .qm so Flatpak ships current catalogs (Slice L).
+        export PATH="/app/bin:${PATH:-}"
+        if command -v pyside6-lrelease >/dev/null 2>&1 || [ -x /app/bin/pyside6-lrelease ]; then
+          python3 scripts/build_translations.py
+        else
+          echo "pyside6-lrelease missing; shipping committed .qm files"
+        fi
       - |
         set -euo pipefail
         if [ -f /usr/lib/sdk/rust-stable/enable.sh ]; then
@@ -95,6 +143,7 @@ modules:
         printf '%s\n' '#!/bin/sh' \
           'SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path(\"purelib\"))" 2>/dev/null || true)' \
           'export PYTHONPATH=/app/lib/labdesk:${SITE:+$SITE:}${PYTHONPATH:-}' \
+          'export PATH=/app/bin:${PATH:-}' \
           'exec python3 -m labdesk_ui.main "$@"' \
           > /app/bin/labdesk
         chmod 755 /app/bin/labdesk
@@ -129,4 +178,3 @@ modules:
           - flatpak-build
           - repo
           - .flatpak-builder
-

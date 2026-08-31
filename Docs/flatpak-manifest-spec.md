@@ -49,9 +49,19 @@ checkouts (see root `.gitignore`).
 | `--filesystem=xdg-download:ro` | Optional |
 | `--talk-name=org.freedesktop.Flatpak` | In-app update checks via `flatpak-spawn --host` |
 | `--talk-name=org.kde.StatusNotifierWatcher` | System tray icon |
+| `--socket=ssh-auth` | SSH remotes via ssh-agent (libgit2) |
+| Bundled `git` + `git-lfs` modules | Slice N LFS status/pull inside the sandbox |
 
 Exact YAML lives in `flatpak/com.bigrangatech.LabDesk.yml` and may grow;
 keep this table in sync when permissions change.
+
+### Runtime modules (beyond PySide6 / labdesk_core)
+
+| Module | Why |
+|--------|-----|
+| `git` 2.49 | Host for `git lfs …` (ordinary git I/O still uses libgit2) |
+| `git-lfs` 3.8 | LFS status / pull on the **Git** tab |
+| Qt Linguist `.qm` | Rebuilt during packaging when `pyside6-lrelease` is available |
 
 ### Build-date version
 
