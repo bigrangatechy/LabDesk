@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
  ### Fixed
 
+- **03:29:33  01/09/2026** — CI pytest: raise ``ModuleNotFoundError``
+  when the PyO3 extension is absent so pytest 8+ ``importorskip`` skips
+  instead of ERROR during collection.
 - **03:21:47  01/09/2026** — CI pytest: stop `PYTHONPATH=src` from
   treating the Rust crate as a namespace `labdesk_core`; UI tests stub
   the extension when maturin is absent; core-only tests skip cleanly.
