@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-labdesk_core = pytest.importorskip("labdesk_core")
+labdesk_core = pytest.importorskip("labdesk_core", exc_type=ImportError)
 if not hasattr(labdesk_core, "repo_stage"):
     pytest.skip("labdesk_core.repo_stage missing", allow_module_level=True)
 

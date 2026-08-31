@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-labdesk_core = pytest.importorskip("labdesk_core")
+labdesk_core = pytest.importorskip("labdesk_core", exc_type=ImportError)
 
 
 @pytest.mark.skipif(

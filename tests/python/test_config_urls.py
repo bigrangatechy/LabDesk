@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-labdesk_core = pytest.importorskip("labdesk_core")
+labdesk_core = pytest.importorskip("labdesk_core", exc_type=ImportError)
 if not hasattr(labdesk_core, "validate_base_url"):
     pytest.skip(
         "labdesk_core extension module not built (namespace package only)",

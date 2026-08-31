@@ -31,16 +31,15 @@ def test_connect_dialog_values_include_forge(qapp):
     dlg.close()
 
 
-labdesk_core = pytest.importorskip("labdesk_core")
-if not hasattr(labdesk_core, "validate_base_url"):
-    pytest.skip(
-        "labdesk_core extension module not built",
-        allow_module_level=True,
-    )
+def _labdesk_core():
+    mod = pytest.importorskip("labdesk_core", exc_type=ImportError)
+    if not hasattr(mod, "validate_base_url"):
+        pytest.skip("labdesk_core extension module not built")
+    return mod
 
 
-def _code(exc: BaseException) -> str:
-    return (labdesk_core.parse_error_message(str(exc)).get("code") or "")
+def _code(core, exc: BaseException) -> str:
+    return (core.parse_error_message(str(exc)).get("code") or "")
 
 
 @pytest.mark.parametrize(
@@ -53,6 +52,7 @@ def _code(exc: BaseException) -> str:
     ],
 )
 def test_saas_forges_rejected(url):
+    labdesk_core = _labdesk_core()
     with pytest.raises(Exception) as ei:
         labdesk_core.validate_base_url(url)
-    assert _code(ei.value) == "LD-CFG-004"
+    assert _code(labdesk_core, ei.value) == "LD-CFG-004"

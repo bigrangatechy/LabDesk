@@ -210,7 +210,7 @@ def test_browse_dialog_uses_list_view_model(qapp, monkeypatch):
 
 def test_repo_list_files_accepts_optional_limit(tmp_path):
     """Core must accept `limit` so the UI can cap tracked-file walks."""
-    labdesk_core = pytest.importorskip("labdesk_core")
+    labdesk_core = pytest.importorskip("labdesk_core", exc_type=ImportError)
     if not hasattr(labdesk_core, "repo_list_files"):
         pytest.skip("labdesk_core extension module not built")
 

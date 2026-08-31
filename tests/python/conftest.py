@@ -24,12 +24,17 @@ class _MissingCoreLoader(importlib.abc.Loader):
         return None
 
     def exec_module(self, module):  # noqa: ANN001
-        # ModuleNotFoundError: pytest 8+ importorskip skips only this by default
-        # (plain ImportError becomes a collection ERROR).
+        # Prefer ModuleNotFoundError for pytest 8+ default importorskip.
+        # Call sites should also pass exc_type=ImportError for older/newer pytest.
         raise ModuleNotFoundError(
             "labdesk_core PyO3 extension is not built "
             "(src/labdesk_core on PYTHONPATH is the Rust crate, not the module)"
         )
+
+
+def import_labdesk_core():
+    """Import the PyO3 extension or skip the test (CI has no maturin build)."""
+    return pytest.importorskip("labdesk_core", exc_type=ImportError)
 
 
 class _PreferBuiltLabdeskCore(importlib.abc.MetaPathFinder):

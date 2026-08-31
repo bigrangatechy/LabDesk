@@ -23,7 +23,7 @@ def _core_for_patch(monkeypatch):
 
 
 def test_forge_matrix_includes_runner_caps():
-    labdesk_core = pytest.importorskip("labdesk_core")
+    labdesk_core = pytest.importorskip("labdesk_core", exc_type=ImportError)
     if not hasattr(labdesk_core, "forge_feature_matrix"):
         pytest.skip("labdesk_core extension not built")
     matrix = labdesk_core.forge_feature_matrix()

@@ -44,7 +44,7 @@ def test_install_spanish_translates_settings(qapp):
 
 
 def test_set_locale_roundtrip_in_config(tmp_path, monkeypatch):
-    labdesk_core = pytest.importorskip("labdesk_core")
+    labdesk_core = pytest.importorskip("labdesk_core", exc_type=ImportError)
     if not hasattr(labdesk_core, "set_locale"):
         pytest.skip("labdesk_core extension not built")
     # Presence check is enough for CI without a writable config sandbox.

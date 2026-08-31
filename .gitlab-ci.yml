@@ -47,8 +47,9 @@ python_pytest:
     - apt-get update -qq && apt-get install -y -qq libgl1 libxkbcommon0 libegl1 libdbus-1-3 libxcb-cursor0 >/dev/null
     - pip install -q -r requirements-dev.txt 'PySide6>=6.6,<6.9' PyYAML
   script:
-    # UI regressions (async bridge, repo reopen). URL tests need labdesk_core
-    # (maturin) — run locally via ./scripts/run-tests.sh.
+    # UI regressions (async bridge, repo reopen). Core/maturin tests run
+    # locally via ./scripts/run-tests.sh; importorskip(exc_type=ImportError)
+    # skips them here when the PyO3 extension is absent.
     - PYTHONPATH=src pytest tests/python --ignore=tests/python/test_config_urls.py
 
 

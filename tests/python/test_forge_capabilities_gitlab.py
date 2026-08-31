@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-labdesk_core = pytest.importorskip("labdesk_core")
+labdesk_core = pytest.importorskip("labdesk_core", exc_type=ImportError)
 if not hasattr(labdesk_core, "forge_feature_matrix"):
     pytest.skip("labdesk_core missing forge_feature_matrix", allow_module_level=True)
 
