@@ -467,8 +467,16 @@ class RepoWindow(QMainWindow):
         self.btn_play_job = QPushButton("Play manual job…")
         self.btn_play_job.clicked.connect(self._play_selected_job)
         row.addWidget(self.btn_play_job)
+        self.btn_job_log = QPushButton("Job log…")
+        self.btn_job_log.clicked.connect(self._open_selected_job_log)
+        self.btn_job_log.setEnabled(False)
+        self.btn_job_log.setToolTip(
+            "Open the selected job in the forge (log tail in-app deferred)."
+        )
+        row.addWidget(self.btn_job_log)
         row.addStretch(1)
         layout.addLayout(row)
+        self.pipeline_jobs.currentItemChanged.connect(self._on_pipeline_job_selected)
         return page
 
     def refresh(self) -> None:
@@ -1506,6 +1514,8 @@ class RepoWindow(QMainWindow):
                 "Force push succeeded." if force else "Push succeeded.",
             )
             self._refresh_local_async()
+            if not force:
+                self._maybe_offer_set_upstream()
             if not force and self._network_available:
                 info = getattr(self, "_forge_info", None) or forge_info()
                 kind = pr_label(info)
@@ -1532,6 +1542,27 @@ class RepoWindow(QMainWindow):
             status=self.footer.setText,
             working_message="Working…",
         )
+
+    def _maybe_offer_set_upstream(self) -> None:
+        try:
+            import labdesk_core
+
+            sync = dict(labdesk_core.repo_ahead_behind(self.repo_path) or {})
+            if sync.get("upstream"):
+                return
+            branch = labdesk_core.repo_branch(self.repo_path)
+        except Exception:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Set upstream?",
+            f"No upstream tracking branch for '{branch}'.\n"
+            f"Set upstream to origin/{branch}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._set_upstream()
 
     def _refresh_compare_refs(self) -> None:
         if not hasattr(self, "compare_base"):
@@ -1690,7 +1721,8 @@ class RepoWindow(QMainWindow):
         self.btn_mr_open.setEnabled(False)
         if hasattr(self, "btn_mr_detail"):
             self.btn_mr_detail.setEnabled(False)
-        self._update_notify_chip(mrs, None)
+        self._last_mrs_for_notify = list(mrs)
+        self._update_notify_chip(mrs, getattr(self, "_last_pipe_for_notify", None))
 
     def _load_cached_mrs(self) -> None:
         from labdesk_ui.utils.async_jobs import run_in_background
@@ -1831,6 +1863,12 @@ class RepoWindow(QMainWindow):
             self.pipeline_jobs.clear()
             self.btn_pipeline_open.setEnabled(False)
             self.btn_play_job.setEnabled(False)
+            if hasattr(self, "btn_job_log"):
+                self.btn_job_log.setEnabled(False)
+            self._last_pipe_for_notify = None
+            self._update_notify_chip(
+                getattr(self, "_last_mrs_for_notify", []) or [], None
+            )
             return
         status = pipe.get("status") or "unknown"
         self._pipeline_web_url = pipe.get("web_url")
@@ -1855,6 +1893,12 @@ class RepoWindow(QMainWindow):
             item = QListWidgetItem(_format_job_row(job))
             item.setData(Qt.ItemDataRole.UserRole, job)
             self.pipeline_jobs.addItem(item)
+        self._last_pipe_for_notify = pipe
+        self._update_notify_chip(
+            getattr(self, "_last_mrs_for_notify", []) or [], pipe
+        )
+        if hasattr(self, "btn_job_log"):
+            self.btn_job_log.setEnabled(False)
 
     def _load_cached_pipelines(self) -> None:
         from labdesk_ui.utils.async_jobs import run_in_background
@@ -2508,6 +2552,36 @@ class RepoWindow(QMainWindow):
             return
         try:
             open_path(full)
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
+
+    def _on_pipeline_job_selected(self, current, _previous) -> None:
+        job = current.data(Qt.ItemDataRole.UserRole) if current else None
+        ok = isinstance(job, dict)
+        if hasattr(self, "btn_job_log"):
+            self.btn_job_log.setEnabled(
+                bool(ok and (job.get("web_url") or self._pipeline_web_url))
+            )
+
+    def _open_selected_job_log(self) -> None:
+        """Slice H stub: open job (or pipeline) in the forge — no in-app log tail yet."""
+        item = self.pipeline_jobs.currentItem() if hasattr(self, "pipeline_jobs") else None
+        job = item.data(Qt.ItemDataRole.UserRole) if item else None
+        url = None
+        if isinstance(job, dict):
+            url = job.get("web_url") or None
+        if not url:
+            url = getattr(self, "_pipeline_web_url", None)
+        if not url:
+            QMessageBox.information(
+                self,
+                "Job log",
+                "No job URL available. Use Open in … on the pipeline, or refresh online.",
+            )
+            return
+        try:
+            open_url(url)
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")

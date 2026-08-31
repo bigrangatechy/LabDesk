@@ -126,6 +126,7 @@ LabDesk prefers the selected host’s Base URL instead.
   configured translucent colour.
 - **Open local** / **Add existing…** attach an already-cloned folder.
 - Double-click a project or use Open local to open a **repo window**.
+- **File → Recent repositories** lists recently opened local clones.
 
 ---
 
@@ -133,7 +134,12 @@ LabDesk prefers the selected host’s Base URL instead.
 
 In the repo window:
 
-- **Changes:** stage / unstage / commit; read-only diffs. The list shows
+- Status chip under the header can show a failed/canceled pipeline on the
+  current branch and when the MR/PR list changed since last view
+  (updates on refresh/focus — no background daemon).
+- **Changes:** stage / unstage / commit / **Discard…**; read-only diffs.
+  Shortcuts: **Ctrl+S** stage, **Ctrl+Return** commit, **Ctrl+Shift+F**
+  fetch, **Ctrl+Shift+L** pull, **Ctrl+Shift+P** push. The list shows
   **dirty paths only**. Use **Browse files…** for a filtered, scrollable
   tracked-file listing (capped / load-more on large repos). Untracked
   directories (for example `build/` or `node_modules/`) appear as **one**
@@ -141,8 +147,10 @@ In the repo window:
   directory (like `git add <dir>/`). Very large file or diff previews
   are truncated — use **Open in editor** for the full content.
 - **Open in editor:** opens the selected file with the desktop default.
-- **Branches:** list, switch, create, merge into current. On conflict,
-  use the conflict resolve panel (or open files externally).
+- **Branches:** list, switch, create, merge into current, **Delete…**,
+  **Set upstream**. On conflict, use the conflict resolve panel (or open
+  files externally). After a successful push with no upstream, LabDesk
+  may offer to set `origin/<branch>`.
 - **Sync:** header shows ↑ahead / ↓behind / diverged. With fetch-on-focus
   enabled (default), LabDesk fetches when you open or refresh a repo
   window so remote changes are visible. Pull fast-forwards when possible;
@@ -199,6 +207,8 @@ If someone else pushed while you were committing locally:
 - Job list shows stage, name, and status. On GitLab, rows marked **▶**
   are waiting for manual start — select one and **Play manual job…**
   (confirm first). Other forges hide Play when unsupported.
+  **Job log…** opens the selected job (or pipeline) in the forge browser
+  for now; an in-app log tail may come later.
 - After an online refresh, the last status and jobs are kept so you can
   still see them offline. **Play is disabled offline.**
 

@@ -398,6 +398,17 @@ pub fn upsert_local_repo(
     Ok(id)
 }
 
+/// Bump `last_opened_at` for a known local clone path (Recent repos menu).
+pub fn touch_local_repo_opened(conn: &Connection, path: &str) -> Result<()> {
+    let stamp = fetched_stamp();
+    conn.execute(
+        "UPDATE local_repos SET last_opened_at = ?1 WHERE path = ?2",
+        params![stamp, path],
+    )
+    .map_err(cache_err)?;
+    Ok(())
+}
+
 pub fn find_local_repo_by_project(
     conn: &Connection,
     account_id: &str,

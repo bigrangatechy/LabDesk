@@ -33,8 +33,8 @@ admin, localization, review, and git-extension surfaces. Delivery is
 | E | MR detail / edit / create-from-Compare | Done |
 | F | MR merge via API + read-only notes | Done |
 | G | SSH host-switch + richer diffs | Done |
-| H | Notifications + V1 completeness pack | Next |
-| I | Full in-app code editor (from scratch on Qt; no QScintilla) | — |
+| H | Notifications + V1 completeness pack | Done |
+| I | Full in-app code editor (from scratch on Qt; no QScintilla) | Next |
 | J | Admin / runner management | — |
 | K | Side-by-side fancy diff editor | — |
 | L | Localization | — |

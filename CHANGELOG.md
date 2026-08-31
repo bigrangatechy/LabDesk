@@ -20,6 +20,11 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:54:36  01/09/2026** — Slice H notifications + V1 completeness:
+  notify chip wires pipeline failure + MR list changes; **File → Recent
+  repositories**; touch `last_opened_at` on open; post-push **Set
+  upstream?**; **Job log…** opens forge URL (stub). Shortcuts/docs
+  already covered discard/delete/search/filter.
 - **00:49:43  01/09/2026** — Slice G SSH host-switch + richer diffs: SSH
   `origin` retarget on host switch (incl. `ssh://`); Compare/History
   per-file lists with binary badge; path-scoped diffs;

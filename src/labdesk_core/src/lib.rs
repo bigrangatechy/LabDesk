@@ -2260,6 +2260,14 @@ fn list_recent_repos(py: Python<'_>, limit: Option<u32>) -> PyResult<PyObject> {
 }
 
 #[pyfunction]
+fn touch_local_repo_opened(repo_path: String) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    let conn = cache::open(&paths)?;
+    cache::touch_local_repo_opened(&conn, &repo_path)?;
+    Ok(())
+}
+
+#[pyfunction]
 fn set_fetch_on_focus(enabled: bool) -> PyResult<()> {
     let paths = paths::AppPaths::detect();
     let mut cfg = config::load_or_default(&paths)?;
@@ -2399,6 +2407,7 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(merge_merge_request, m)?)?;
     m.add_function(wrap_pyfunction!(list_merge_request_notes, m)?)?;
     m.add_function(wrap_pyfunction!(list_recent_repos, m)?)?;
+    m.add_function(wrap_pyfunction!(touch_local_repo_opened, m)?)?;
     m.add_function(wrap_pyfunction!(set_fetch_on_focus, m)?)?;
     m.add_function(wrap_pyfunction!(set_check_for_updates, m)?)?;
     m.add_function(wrap_pyfunction!(set_active_ui_view, m)?)?;

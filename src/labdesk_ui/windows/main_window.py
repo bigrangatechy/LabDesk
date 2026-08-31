@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSizePolicy,
@@ -318,6 +319,14 @@ class MainWindow(QMainWindow):
                 visible = False
             if visible:
                 self._focus_repo_window(win)
+                try:
+                    import labdesk_core
+
+                    if hasattr(labdesk_core, "touch_local_repo_opened"):
+                        labdesk_core.touch_local_repo_opened(resolved)
+                except Exception:
+                    pass
+                self._rebuild_recent_repos_menu()
                 return
             try:
                 self._repo_windows.remove(win)
@@ -328,10 +337,18 @@ class MainWindow(QMainWindow):
         win.set_network_available(self._online)
         win.destroyed.connect(self._prune_repo_windows)
         self._repo_windows.append(win)
+        try:
+            import labdesk_core
+
+            if hasattr(labdesk_core, "touch_local_repo_opened"):
+                labdesk_core.touch_local_repo_opened(resolved)
+        except Exception:
+            pass
         win.show()
         win.raise_()
         win.activateWindow()
         self._rebuild_window_menu()
+        self._rebuild_recent_repos_menu()
 
     @staticmethod
     def _repo_window_alive(win: RepoWindow) -> bool:
@@ -842,6 +859,9 @@ class MainWindow(QMainWindow):
         act_open_repo.setShortcut(QKeySequence.StandardKey.Open)
         act_open_repo.triggered.connect(self.open_repository_dialog)
         file_menu.addAction(act_open_repo)
+        self._recent_repos_menu = QMenu("Recent repositories", self)
+        file_menu.addMenu(self._recent_repos_menu)
+        self._rebuild_recent_repos_menu()
         file_menu.addSeparator()
         act_quit = QAction("&Quit", self)
         act_quit.setShortcut(QKeySequence.StandardKey.Quit)
@@ -894,6 +914,40 @@ class MainWindow(QMainWindow):
         act_about = QAction("&About LabDesk", self)
         act_about.triggered.connect(self._about)
         help_menu.addAction(act_about)
+
+    def _rebuild_recent_repos_menu(self) -> None:
+        menu = getattr(self, "_recent_repos_menu", None)
+        if menu is None:
+            return
+        menu.clear()
+        rows: list = []
+        try:
+            import labdesk_core
+
+            if hasattr(labdesk_core, "list_recent_repos"):
+                rows = list(labdesk_core.list_recent_repos(12) or [])
+        except Exception:
+            rows = []
+        if not rows:
+            empty = QAction("(no recent repositories)", self)
+            empty.setEnabled(False)
+            menu.addAction(empty)
+            return
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            path = (row.get("path") or "").strip()
+            if not path:
+                continue
+            label = Path(path).name or path
+            act = QAction(label, self)
+            act.setToolTip(path)
+            act.triggered.connect(
+                lambda checked=False, p=path: self.open_repo_window(
+                    p, title=f"LabDesk — {Path(p).name}"
+                )
+            )
+            menu.addAction(act)
 
     def _user_guide(self) -> None:
         from labdesk_ui.windows.help_dialog import UserGuideDialog
