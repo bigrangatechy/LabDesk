@@ -12,6 +12,7 @@ mod forge_types;
 mod forgejo;
 mod onedev;
 mod git_ops;
+mod git_ext;
 mod git_progress;
 mod gitea;
 mod gitlab;
@@ -2300,6 +2301,103 @@ fn repo_delete_local_branch(repo_path: String, name: String) -> PyResult<()> {
     Ok(())
 }
 
+fn submodule_to_dict(py: Python<'_>, s: &git_ext::SubmoduleInfo) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("name", &s.name)?;
+    d.set_item("path", &s.path)?;
+    d.set_item("url", s.url.as_deref())?;
+    d.set_item("head_id", s.head_id.as_deref())?;
+    d.set_item("index_id", s.index_id.as_deref())?;
+    d.set_item("workdir_id", s.workdir_id.as_deref())?;
+    d.set_item("initialized", s.initialized)?;
+    d.set_item("dirty", s.dirty)?;
+    d.set_item("status_summary", &s.status_summary)?;
+    Ok(d.into())
+}
+
+#[pyfunction]
+fn repo_list_submodules(py: Python<'_>, repo_path: String) -> PyResult<PyObject> {
+    let list = git_ext::list_submodules(std::path::Path::new(&repo_path))?;
+    let out = pyo3::types::PyList::empty(py);
+    for s in &list {
+        out.append(submodule_to_dict(py, s)?)?;
+    }
+    Ok(out.into())
+}
+
+#[pyfunction]
+#[pyo3(signature = (repo_path, name_or_path=None))]
+fn repo_submodule_init(repo_path: String, name_or_path: Option<String>) -> PyResult<usize> {
+    Ok(git_ext::submodule_init(
+        std::path::Path::new(&repo_path),
+        name_or_path.as_deref(),
+    )?)
+}
+
+#[pyfunction]
+#[pyo3(signature = (repo_path, name_or_path=None))]
+fn repo_submodule_update(
+    py: Python<'_>,
+    repo_path: String,
+    name_or_path: Option<String>,
+) -> PyResult<usize> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let pat = secrets::load_pat(&acc.keyring_account).ok();
+    let (ssl_insecure, ssl_ca_bundle) = ssl_git_opts(&inst.ssl_mode)?;
+    py.allow_threads(|| {
+        let auth = git_ops::AuthOptions {
+            pat_fallback: pat.as_deref(),
+            ssl_insecure,
+            prefer_ssh: false,
+            ssl_ca_bundle: ssl_ca_bundle.as_deref(),
+        };
+        git_ext::submodule_update(
+            std::path::Path::new(&repo_path),
+            name_or_path.as_deref(),
+            &auth,
+        )
+    })
+    .map_err(Into::into)
+}
+
+#[pyfunction]
+#[pyo3(signature = (repo_path, name_or_path=None))]
+fn repo_submodule_sync(repo_path: String, name_or_path: Option<String>) -> PyResult<usize> {
+    Ok(git_ext::submodule_sync(
+        std::path::Path::new(&repo_path),
+        name_or_path.as_deref(),
+    )?)
+}
+
+#[pyfunction]
+fn repo_lfs_status(py: Python<'_>, repo_path: String) -> PyResult<PyObject> {
+    let info = git_ext::lfs_status(std::path::Path::new(&repo_path))?;
+    let d = PyDict::new(py);
+    d.set_item("available", info.available)?;
+    d.set_item("mentions_lfs", info.mentions_lfs)?;
+    d.set_item("version", info.version.as_deref())?;
+    d.set_item("summary", info.summary)?;
+    Ok(d.into())
+}
+
+#[pyfunction]
+fn repo_lfs_pull(repo_path: String) -> PyResult<String> {
+    Ok(git_ext::lfs_pull(std::path::Path::new(&repo_path))?)
+}
+
+#[pyfunction]
+fn repo_lfs_available() -> bool {
+    git_ext::lfs_cli_available()
+}
+
 #[pyfunction]
 fn repo_set_upstream(repo_path: String, branch: String) -> PyResult<()> {
     v2_git::set_upstream(std::path::Path::new(&repo_path), "origin", &branch)?;
@@ -2677,6 +2775,13 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(repo_continue_rebase, m)?)?;
     m.add_function(wrap_pyfunction!(repo_discard_path, m)?)?;
     m.add_function(wrap_pyfunction!(repo_delete_local_branch, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_list_submodules, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_submodule_init, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_submodule_update, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_submodule_sync, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_lfs_status, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_lfs_pull, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_lfs_available, m)?)?;
     m.add_function(wrap_pyfunction!(repo_set_upstream, m)?)?;
     m.add_function(wrap_pyfunction!(repo_commit_files, m)?)?;
     m.add_function(wrap_pyfunction!(get_merge_request, m)?)?;

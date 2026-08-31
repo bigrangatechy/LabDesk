@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
  ### Added
 
+- **02:58:07  01/09/2026** — Slice N submodule / LFS: repo **Git** tab
+  (libgit2 submodule list/init/update/sync; host `git-lfs` status +
+  pull when available); codes `LD-GIT-050`–`054`, `LD-GIT-060`–`062`.
+  Flatpak does not bundle git-lfs in N.1.
 - **02:48:23  01/09/2026** — Slice M MR/PR note posting: forge-aware
   `create_merge_request_note` on GitLab / Gitea / Forgejo / OneDev;
   capability `supports_mr_note_create`; MR detail composer with

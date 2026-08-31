@@ -91,6 +91,14 @@ Examples: `LD-AUTH-001`, `LD-CFG-010`, `LD-API-429`.
 | `LD-GIT-040` | Missing `user.name` / `user.email` | "Git user.name / user.email not configured." | Configure git identity |
 | `LD-GIT-041` | Empty commit message | "Commit message is required." | Focus message field |
 | `LD-GIT-042` | Commit with nothing staged | "Nothing staged to commit." | Stage files first |
+| `LD-GIT-050` | List / inspect submodules failed | "Failed to list submodules." | Retry; check `.gitmodules` |
+| `LD-GIT-051` | Submodule init failed | "Failed to init submodule." | Retry selected/all |
+| `LD-GIT-052` | Submodule update failed | "Failed to update submodule." | Check auth / network |
+| `LD-GIT-053` | Submodule sync failed | "Failed to sync submodule." | Retry; check URL |
+| `LD-GIT-054` | Named submodule missing | "Submodule not found." | Refresh list |
+| `LD-GIT-060` | Host `git-lfs` missing | "git-lfs is not available." | Install on host (not bundled in Flatpak N.1) |
+| `LD-GIT-061` | `git lfs status` failed | "Failed to read LFS status." | Retry; check install |
+| `LD-GIT-062` | `git lfs pull` failed | "Failed to pull LFS objects." | Retry; check auth / LFS endpoint |
 
 ### API — GitLab REST
 

@@ -242,6 +242,7 @@ class RepoWindow(QMainWindow):
         self.tabs.addTab(self._build_history_tab(), tr("History"))
         self.tabs.addTab(self._build_branches_tab(), tr("Branches"))
         self.tabs.addTab(self._build_compare_tab(), tr("Compare"))
+        self.tabs.addTab(self._build_git_tab(), tr("Git"))
         self._pipelines_tab_index = self.tabs.addTab(
             self._build_pipelines_tab(), tr("Pipelines")
         )
@@ -363,7 +364,63 @@ class RepoWindow(QMainWindow):
             )
         if hasattr(self, "btn_mr_refresh"):
             widgets.extend([self.btn_mr_refresh, self.btn_mr_open])
+        if hasattr(self, "btn_mr_refresh"):
+            widgets.extend([self.btn_mr_refresh, self.btn_mr_open])
+        if hasattr(self, "btn_sub_update"):
+            widgets.extend(
+                [
+                    self.btn_sub_refresh,
+                    self.btn_sub_init,
+                    self.btn_sub_update,
+                    self.btn_sub_sync,
+                    self.btn_lfs_refresh,
+                    self.btn_lfs_pull,
+                ]
+            )
         return widgets
+
+    def _build_git_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        layout.addWidget(QLabel(tr("Submodules")))
+        self.submodules_summary = QLabel(tr("No submodules loaded yet."))
+        self.submodules_summary.setWordWrap(True)
+        layout.addWidget(self.submodules_summary)
+        self.submodules_list = QListWidget()
+        self.submodules_list.currentItemChanged.connect(self._on_submodule_selected)
+        layout.addWidget(self.submodules_list, stretch=1)
+        sub_row = QHBoxLayout()
+        self.btn_sub_refresh = QPushButton(tr("Refresh"))
+        self.btn_sub_refresh.clicked.connect(self._refresh_git_ext)
+        sub_row.addWidget(self.btn_sub_refresh)
+        self.btn_sub_init = QPushButton(tr("Init"))
+        self.btn_sub_init.clicked.connect(self._submodule_init)
+        sub_row.addWidget(self.btn_sub_init)
+        self.btn_sub_update = QPushButton(tr("Update…"))
+        self.btn_sub_update.clicked.connect(self._submodule_update)
+        sub_row.addWidget(self.btn_sub_update)
+        self.btn_sub_sync = QPushButton(tr("Sync"))
+        self.btn_sub_sync.clicked.connect(self._submodule_sync)
+        sub_row.addWidget(self.btn_sub_sync)
+        sub_row.addStretch(1)
+        layout.addLayout(sub_row)
+
+        layout.addWidget(QLabel(tr("Git LFS")))
+        self.lfs_summary = QLabel(tr("LFS status not loaded yet."))
+        self.lfs_summary.setWordWrap(True)
+        layout.addWidget(self.lfs_summary)
+        lfs_row = QHBoxLayout()
+        self.btn_lfs_refresh = QPushButton(tr("Refresh LFS"))
+        self.btn_lfs_refresh.clicked.connect(self._refresh_git_ext)
+        lfs_row.addWidget(self.btn_lfs_refresh)
+        self.btn_lfs_pull = QPushButton(tr("Pull LFS objects…"))
+        self.btn_lfs_pull.clicked.connect(self._lfs_pull)
+        lfs_row.addWidget(self.btn_lfs_pull)
+        lfs_row.addStretch(1)
+        layout.addLayout(lfs_row)
+        self._set_submodule_actions(False)
+        return page
 
     def _build_compare_tab(self) -> QWidget:
         page = QWidget()
@@ -525,6 +582,7 @@ class RepoWindow(QMainWindow):
         self._refresh_pipelines()
         self._refresh_project_runners()
         self._refresh_mrs()
+        self._refresh_git_ext()
 
     def _refresh_local_async(self) -> None:
         from labdesk_ui.utils.async_jobs import run_in_background
@@ -2827,4 +2885,258 @@ class RepoWindow(QMainWindow):
         if newest:
             self._last_mr_updated = newest
         self.notify_chip.setText(" · ".join(notes))
+
+    def _set_submodule_actions(self, has_selection: bool) -> None:
+        # Init / Update / Sync work on selection when present, else all.
+        for btn in (
+            getattr(self, "btn_sub_init", None),
+            getattr(self, "btn_sub_update", None),
+            getattr(self, "btn_sub_sync", None),
+        ):
+            if btn is not None:
+                btn.setEnabled(True)
+        _ = has_selection  # selection only changes the target scope
+
+    def _on_submodule_selected(self, current, _prev) -> None:
+        ok = bool(current and isinstance(current.data(Qt.ItemDataRole.UserRole), dict))
+        self._set_submodule_actions(ok)
+
+    def _selected_submodule(self) -> dict | None:
+        item = (
+            self.submodules_list.currentItem()
+            if hasattr(self, "submodules_list")
+            else None
+        )
+        if item is None:
+            return None
+        data = item.data(Qt.ItemDataRole.UserRole)
+        return data if isinstance(data, dict) else None
+
+    def _submodule_target(self) -> str | None:
+        row = self._selected_submodule()
+        if not row:
+            return None
+        return str(row.get("name") or row.get("path") or "") or None
+
+    @staticmethod
+    def _format_submodule_row(row: dict) -> str:
+        path = row.get("path") or row.get("name") or "?"
+        status = row.get("status_summary") or "?"
+        oid = row.get("workdir_id") or row.get("index_id") or row.get("head_id") or "—"
+        flags = []
+        if not row.get("initialized"):
+            flags.append("uninit")
+        if row.get("dirty"):
+            flags.append("dirty")
+        flag_s = f" [{', '.join(flags)}]" if flags else ""
+        return f"{path}  {oid}  ({status}){flag_s}"
+
+    def _refresh_git_ext(self) -> None:
+        if not hasattr(self, "submodules_list"):
+            return
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+
+        def work():
+            import labdesk_core
+
+            subs = [
+                dict(s) if hasattr(s, "items") else s
+                for s in (labdesk_core.repo_list_submodules(path) or [])
+            ]
+            lfs = dict(labdesk_core.repo_lfs_status(path) or {})
+            return {"submodules": subs, "lfs": lfs}
+
+        def on_ok(data) -> None:
+            data = data or {}
+            self.submodules_list.clear()
+            rows = list(data.get("submodules") or [])
+            for row in rows:
+                item = QListWidgetItem(self._format_submodule_row(row))
+                item.setData(Qt.ItemDataRole.UserRole, row)
+                self.submodules_list.addItem(item)
+            if not rows:
+                self.submodules_summary.setText(tr("No submodules in this repository."))
+            else:
+                dirty = sum(1 for r in rows if r.get("dirty"))
+                uninit = sum(1 for r in rows if not r.get("initialized"))
+                self.submodules_summary.setText(
+                    tr("{n} submodule(s) — {u} uninitialized, {d} dirty.").format(
+                        n=len(rows), u=uninit, d=dirty
+                    )
+                )
+            lfs = dict(data.get("lfs") or {})
+            ver = lfs.get("version") or ""
+            summary = lfs.get("summary") or ""
+            bits = []
+            if lfs.get("available"):
+                bits.append(ver or tr("git-lfs available"))
+            else:
+                bits.append(tr("git-lfs not available on host"))
+            if lfs.get("mentions_lfs"):
+                bits.append(tr("repo references LFS"))
+            head = " · ".join(bits)
+            self.lfs_summary.setText(f"{head}\n{summary}".strip())
+            self.btn_lfs_pull.setEnabled(bool(lfs.get("available")))
+            if not lfs.get("available"):
+                self.btn_lfs_pull.setToolTip(
+                    tr("Install git-lfs on the host to pull LFS objects "
+                    "(Flatpak does not bundle it in N.1).")
+                )
+            else:
+                self.btn_lfs_pull.setToolTip("")
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self.submodules_summary.setText(f"[{code}] {msg}")
+            self.lfs_summary.setText(f"[{code}] {msg}\n{exc}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[
+                self.btn_sub_refresh,
+                self.btn_lfs_refresh,
+            ],
+            status=lambda t: self.submodules_summary.setText(t),
+            working_message=tr("Loading submodules / LFS…"),
+        )
+
+    def _submodule_init(self) -> None:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+        target = self._submodule_target()
+
+        def work():
+            import labdesk_core
+
+            return labdesk_core.repo_submodule_init(path, target)
+
+        def on_ok(n) -> None:
+            QMessageBox.information(
+                self, tr("Submodules"), tr("Initialized {n} submodule(s).").format(n=n)
+            )
+            self._refresh_git_ext()
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=self._network_busy_widgets(),
+            status=lambda t: self.submodules_summary.setText(t),
+            working_message=tr("Initializing submodules…"),
+        )
+
+    def _submodule_update(self) -> None:
+        target = self._submodule_target()
+        scope = tr("selected submodule") if target else tr("all submodules")
+        reply = QMessageBox.question(
+            self,
+            tr("Update submodules?"),
+            tr("Fetch and check out {scope}? This may use the network.").format(scope=scope),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+
+        def work():
+            import labdesk_core
+
+            return labdesk_core.repo_submodule_update(path, target)
+
+        def on_ok(n) -> None:
+            QMessageBox.information(
+                self, tr("Submodules"), tr("Updated {n} submodule(s).").format(n=n)
+            )
+            self._refresh_git_ext()
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=self._network_busy_widgets(),
+            status=lambda t: self.submodules_summary.setText(t),
+            working_message=tr("Updating submodules…"),
+        )
+
+    def _submodule_sync(self) -> None:
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+        target = self._submodule_target()
+
+        def work():
+            import labdesk_core
+
+            return labdesk_core.repo_submodule_sync(path, target)
+
+        def on_ok(n) -> None:
+            QMessageBox.information(
+                self, tr("Submodules"), tr("Synced {n} submodule(s).").format(n=n)
+            )
+            self._refresh_git_ext()
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_sub_sync],
+            status=lambda t: self.submodules_summary.setText(t),
+            working_message=tr("Syncing submodule URLs…"),
+        )
+
+    def _lfs_pull(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            tr("Pull LFS objects?"),
+            tr("Run git lfs pull for this repository?"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        path = self.repo_path
+
+        def work():
+            import labdesk_core
+
+            return labdesk_core.repo_lfs_pull(path)
+
+        def on_ok(msg) -> None:
+            QMessageBox.information(self, tr("Git LFS"), str(msg or tr("LFS pull completed.")))
+            self._refresh_git_ext()
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=self._network_busy_widgets(),
+            status=lambda t: self.lfs_summary.setText(t),
+            working_message=tr("Pulling LFS objects…"),
+        )
 

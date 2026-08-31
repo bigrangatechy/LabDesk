@@ -1773,7 +1773,7 @@ pub fn host_from_base_url(base: &str) -> Option<String> {
     }
 }
 
-fn make_callbacks(
+pub(crate) fn make_callbacks(
     url: String,
     pat: Option<String>,
     prefer_ssh: bool,

@@ -318,8 +318,8 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
 - **Localization (Slice L):** Qt Linguist UI translations (`tr()` +
   `.qm`); `general.locale`; Settings Language. English remains the
   source language.
-- **MR reply posting, submodule/LFS UIs:** planned as Slices M–N; not
-  before then.
+- **MR reply posting, submodule/LFS UIs:** Slices M–N landed; see
+  `v2-roadmap.md` for deferred M.2 / N.2 items.
 - **No OAuth/SSO** for the API in this roadmap; PAT / forge tokens only.
 - **Linux only.** No Windows or macOS.
 - **V2 roadmap:** slices A–N + post-feature UI/UX pass — see

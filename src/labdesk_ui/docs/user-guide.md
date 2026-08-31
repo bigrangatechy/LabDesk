@@ -178,6 +178,9 @@ In the repo window:
   If the other tip is **ahead** of the base, **Create MR/PR from
   compare…** pre-fills source/target (and optional draft where the forge
   supports it).
+- **Git:** submodules (list/status, **Init**, **Update…**, **Sync**) and
+  Git LFS status; **Pull LFS objects…** when host `git-lfs` is installed
+  (`LD-GIT-060` if missing). Not a full LFS server.
 - **History:** commit list with changed-file list (binary badge); select
   a file for a path-scoped patch (**Unified** / **Side by side**);
   truncated diffs offer **Open external…**.

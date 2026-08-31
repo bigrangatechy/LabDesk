@@ -39,8 +39,8 @@ admin, localization, review, and git-extension surfaces. Delivery is
 | K | Side-by-side fancy diff editor | Done |
 | L | Localization | Done |
 | M | MR comment replies / full review workflows | Done |
-| N | Submodule / LFS management UIs | Next |
-| UX | UI/UX polish pass (after I–N) | — |
+| N | Submodule / LFS management UIs | Done |
+| UX | UI/UX polish pass (after I–N) | Next |
 
 ### Slice notes (I–N + UX)
 
@@ -69,8 +69,12 @@ admin, localization, review, and git-extension surfaces. Delivery is
   `LD-API-MR-005` (or `LD-API-MR-004` if gated). Deferred (M.2):
   threaded discussions/resolve, approve/unapprove, inline diff
   comments, edit/delete.
-- **N — Submodule/LFS:** Management UIs for submodules and Git LFS
-  (status, sync, common operations — not a full LFS server).
+- **N — Submodule/LFS:** Repo window **Git** tab. Submodules via
+  libgit2: list/status, **Init**, **Update…** (network, auth reused),
+  **Sync**. Git LFS: detect host `git-lfs`, show status, **Pull LFS
+  objects…** when available; otherwise gated with `LD-GIT-060` (not
+  bundled in Flatpak for N.1). Deferred (N.2): add/deinit submodule,
+  recurse-on-clone, LFS push/track/locks.
 - **UX — Polish pass:** After feature slices A–N, one pass for layout,
   density, keyboard/focus, empty states, and consistency — not new
   product features.
