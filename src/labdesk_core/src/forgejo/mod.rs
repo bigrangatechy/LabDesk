@@ -52,9 +52,14 @@ struct RawRepo {
 struct RawPull {
     number: i64,
     title: Option<String>,
+    #[serde(default)]
+    body: Option<String>,
     state: Option<String>,
     html_url: Option<String>,
     updated_at: Option<String>,
+    #[serde(default)]
+    draft: Option<bool>,
+    user: Option<RawUser>,
     head: Option<RawRef>,
     base: Option<RawRef>,
 }
@@ -353,6 +358,7 @@ pub fn create_merge_request(
     title: &str,
     description: Option<&str>,
     path_hint: Option<&str>,
+    draft: bool,
 ) -> Result<CreatedPullRequest> {
     let title = title.trim();
     if title.is_empty() {
@@ -369,6 +375,9 @@ pub fn create_merge_request(
         "base": target_branch.trim(),
         "title": title,
     });
+    if draft {
+        body["draft"] = serde_json::Value::Bool(true);
+    }
     if let Some(desc) = description {
         body["body"] = serde_json::Value::String(desc.to_string());
     }
@@ -605,6 +614,226 @@ pub fn play_job(
             "Forgejo Actions does not support playing manual jobs from LabDesk.",
         ),
     ))
+}
+
+fn map_pull_detail(p: RawPull) -> crate::forge_types::ForgePullRequestDetail {
+    let state = p.state.map(|s| {
+        if s.eq_ignore_ascii_case("open") {
+            "opened".into()
+        } else {
+            s
+        }
+    });
+    crate::forge_types::ForgePullRequestDetail {
+        iid: p.number,
+        title: p.title,
+        description: p.body,
+        state,
+        web_url: p.html_url,
+        source_branch: branch_from_ref(&p.head),
+        target_branch: branch_from_ref(&p.base),
+        author: p.user.map(|u| u.login),
+        draft: p.draft.unwrap_or(false),
+        updated_at: p.updated_at,
+    }
+}
+
+pub fn get_merge_request(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    path_hint: Option<&str>,
+) -> Result<crate::forge_types::ForgePullRequestDetail> {
+    let (owner, repo) = resolve_owner_repo(base_url, pat, ssl_mode, project_id, path_hint)?;
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/repos/{}/{}/pulls/{}",
+        api_root(base_url),
+        owner,
+        repo,
+        mr_iid
+    );
+    let resp = client
+        .get(&url)
+        .header("Authorization", auth_header(pat))
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    let raw: RawPull = serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "Forgejo API error.")
+                .with_detail(format!("decode pull: {e}")),
+        )
+    })?;
+    Ok(map_pull_detail(raw))
+}
+
+pub fn update_merge_request(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    title: Option<&str>,
+    description: Option<&str>,
+    target_branch: Option<&str>,
+    path_hint: Option<&str>,
+) -> Result<crate::forge_types::ForgePullRequestDetail> {
+    let (owner, repo) = resolve_owner_repo(base_url, pat, ssl_mode, project_id, path_hint)?;
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/repos/{}/{}/pulls/{}",
+        api_root(base_url),
+        owner,
+        repo,
+        mr_iid
+    );
+    let mut body = serde_json::Map::new();
+    if let Some(t) = title {
+        body.insert("title".into(), serde_json::Value::String(t.to_string()));
+    }
+    if let Some(d) = description {
+        body.insert("body".into(), serde_json::Value::String(d.to_string()));
+    }
+    if let Some(t) = target_branch {
+        body.insert("base".into(), serde_json::Value::String(t.to_string()));
+    }
+    let resp = client
+        .patch(&url)
+        .header("Authorization", auth_header(pat))
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-002", "Failed to update MR.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    get_merge_request(base_url, pat, ssl_mode, project_id, mr_iid, path_hint)
+}
+
+pub fn merge_merge_request(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    merge_method: Option<&str>,
+    path_hint: Option<&str>,
+) -> Result<crate::forge_types::ForgePullRequestDetail> {
+    let (owner, repo) = resolve_owner_repo(base_url, pat, ssl_mode, project_id, path_hint)?;
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/repos/{}/{}/pulls/{}/merge",
+        api_root(base_url),
+        owner,
+        repo,
+        mr_iid
+    );
+    let style = match merge_method.map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("squash") => "squash",
+        Some("rebase") => "rebase",
+        _ => "merge",
+    };
+    let body = serde_json::json!({ "Do": style });
+    let resp = client
+        .post(&url)
+        .header("Authorization", auth_header(pat))
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-003", "Failed to merge MR.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    get_merge_request(base_url, pat, ssl_mode, project_id, mr_iid, path_hint)
+}
+
+pub fn list_merge_request_notes(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    _page: u32,
+    path_hint: Option<&str>,
+) -> Result<Vec<crate::forge_types::ForgeNote>> {
+    let (owner, repo) = resolve_owner_repo(base_url, pat, ssl_mode, project_id, path_hint)?;
+    let client = client_for(ssl_mode)?;
+    // Gitea PR comments share the issue comments endpoint.
+    let url = format!(
+        "{}/repos/{}/{}/issues/{}/comments",
+        api_root(base_url),
+        owner,
+        repo,
+        mr_iid
+    );
+    let resp = client
+        .get(&url)
+        .header("Authorization", auth_header(pat))
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    #[derive(Deserialize)]
+    struct RawComment {
+        id: i64,
+        body: Option<String>,
+        created_at: Option<String>,
+        user: Option<RawUser>,
+    }
+    let raw: Vec<RawComment> = serde_json::from_str(&body).unwrap_or_default();
+    Ok(raw
+        .into_iter()
+        .map(|c| crate::forge_types::ForgeNote {
+            id: c.id,
+            body: c.body,
+            author: c.user.map(|u| u.login),
+            created_at: c.created_at,
+        })
+        .collect())
 }
 
 #[cfg(test)]

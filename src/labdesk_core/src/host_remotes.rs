@@ -13,12 +13,10 @@ fn remote_url_is_ssh(url: &str) -> bool {
 
 /// Rewrite `origin` on known local clones when the active host `base_url` changes.
 ///
-/// A clone is retargeted only when:
-/// - `origin` is http(s) and its host matches `old_base`
+/// A clone is retargeted when:
+/// - `origin` is http(s) and its host matches `old_base`, or
+/// - `origin` is SSH and its host matches the hostname of `old_base`
 /// - the repo path matches a project on `new_account_id`
-///
-/// SSH remotes and clones without a matching project on the new account are
-/// left alone (different GitLab / different user).
 pub fn retarget_local_remotes_for_host_switch(
     conn: &Connection,
     old_base: &str,
@@ -35,6 +33,9 @@ pub fn retarget_local_remotes_for_host_switch(
         return Ok(0);
     }
 
+    let old_host = git_ops::host_from_base_url(old_base);
+    let new_host = git_ops::host_from_base_url(new_base);
+
     let rows = cache::list_local_repos(conn)?;
     let mut n = 0usize;
     for row in rows {
@@ -45,25 +46,43 @@ pub fn retarget_local_remotes_for_host_switch(
         let Some(origin) = git_ops::remote_url(path, "origin")? else {
             continue;
         };
-        if remote_url_is_ssh(&origin) {
-            continue;
-        }
-        let Some(pwn) = git_ops::path_with_namespace_under_base(&origin, old_base) else {
-            continue;
+
+        let (pwn, new_url) = if remote_url_is_ssh(&origin) {
+            let (Some(oh), Some(nh)) = (old_host.as_deref(), new_host.as_deref()) else {
+                continue;
+            };
+            let Some(rewritten) = git_ops::retarget_ssh_remote_url(&origin, oh, nh) else {
+                continue;
+            };
+            // Derive path_with_namespace from SSH URL
+            let pwn = ssh_path_with_namespace(&origin).or_else(|| {
+                ssh_path_with_namespace(&rewritten)
+            });
+            let Some(pwn) = pwn else { continue };
+            (pwn, rewritten)
+        } else {
+            let Some(pwn) = git_ops::path_with_namespace_under_base(&origin, old_base) else {
+                continue;
+            };
+            let new_url = git_ops::retarget_http_remote_url(&origin, old_base, new_base)
+                .unwrap_or_else(|| {
+                    git_ops::http_clone_url_for(new_base, &pwn)
+                });
+            (pwn, new_url)
         };
+
         let Some(project) = cache::find_project_by_path(conn, new_account_id, &pwn)? else {
             continue;
         };
-        let new_url = git_ops::retarget_http_remote_url(&origin, old_base, new_base)
-            .unwrap_or_else(|| {
-                git_ops::http_clone_url_for(new_base, &project.path_with_namespace)
-            });
-        if git_ops::http_remote_matches_base(&origin, new_base) {
+        if !remote_url_is_ssh(&origin) && git_ops::http_remote_matches_base(&origin, new_base) {
             let a = origin.trim().trim_end_matches('/');
             let b = new_url.trim().trim_end_matches('/');
             if a.eq_ignore_ascii_case(b) {
                 continue;
             }
+        }
+        if origin.trim() == new_url.trim() {
+            continue;
         }
         git_ops::set_remote_url(path, "origin", &new_url)?;
         cache::update_local_repo_binding(
@@ -76,6 +95,25 @@ pub fn retarget_local_remotes_for_host_switch(
         n += 1;
     }
     Ok(n)
+}
+
+fn ssh_path_with_namespace(url: &str) -> Option<String> {
+    let u = url.trim();
+    let path = if let Some(rest) = u.strip_prefix("git@") {
+        rest.split_once(':')?.1
+    } else if let Some(rest) = u.strip_prefix("ssh://") {
+        let after_auth = rest.split_once('@').map(|(_, h)| h).unwrap_or(rest);
+        let (_, path) = after_auth.split_once('/')?;
+        path
+    } else {
+        return None;
+    };
+    let path = path.trim_start_matches('/').trim_end_matches(".git");
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -208,7 +246,7 @@ mod tests {
     }
 
     #[test]
-    fn host_switch_skips_ssh_remotes() {
+    fn host_switch_retargets_ssh_remotes() {
         let (root, paths) = temp_paths();
         let conn = cache::open(&paths).expect("cache");
         let domain = "https://gitlab.example.com";
@@ -226,10 +264,10 @@ mod tests {
         .unwrap();
 
         let n = retarget_local_remotes_for_host_switch(&conn, domain, lan, "acc-lan").unwrap();
-        assert_eq!(n, 0);
+        assert_eq!(n, 1);
         assert_eq!(
             git_ops::remote_url(&repo, "origin").unwrap().as_deref(),
-            Some("git@gitlab.example.com:Ranga/labdesk.git")
+            Some("git@10.0.0.5:Ranga/labdesk.git")
         );
         let _ = fs::remove_dir_all(root);
     }

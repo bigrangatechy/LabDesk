@@ -80,7 +80,11 @@ Examples: `LD-AUTH-001`, `LD-CFG-010`, `LD-API-429`.
 | `LD-GIT-003` | 2FA blocked password git auth | "Password git auth blocked. Use SSH or a PAT." | ADR-008 options |
 | `LD-GIT-010` | Push rejected (non-fast-forward, etc.) | "Push rejected. Pull first?" | Offer pull; force push separate |
 | `LD-GIT-011` | Force push failed | "Force push failed: {summary}" | Preserve branch; show remote message |
-| `LD-GIT-020` | Merge conflict detected | "Conflicts detected. Resolve externally." | No in-app resolve |
+| `LD-GIT-020` | Merge/rebase conflict detected | "Conflicts detected. Resolve in LabDesk or externally." | Offer conflict UI; Abort available |
+| `LD-GIT-021` | Rebase failed | "Rebase failed: {summary}" | Leave or abort rebase with guidance |
+| `LD-GIT-022` | Stash failed | "Stash failed: {summary}" | Preserve working tree |
+| `LD-GIT-023` | Continue merge/rebase failed | "Could not continue: {summary}" | Stay in conflict UI |
+| `LD-GIT-024` | Pull non-fast-forward (diverged) | "Histories have diverged. Choose merge or rebase." | Offer merge/rebase |
 | `LD-GIT-030` | Clone failed | "Clone failed: {summary}" | Keep dialog data |
 | `LD-GIT-031` | Local repo path missing | "Repository folder is missing." | Mark local_repos row; offer remove/re-add |
 | `LD-GIT-032` | Path is not a git repository | "Not a git repository." | Pick another folder / clone |
@@ -100,6 +104,9 @@ Examples: `LD-AUTH-001`, `LD-CFG-010`, `LD-API-429`.
 | `LD-API-429` | HTTP 429 | "Rate limited. Retrying in N seconds." | Backoff |
 | `LD-API-5XX` | HTTP 5xx | "GitLab server error ({status})." | Bounded retry then fail |
 | `LD-API-MR-001` | Create MR failed (mapped) | "Failed to create MR: {error}" | Preserve form |
+| `LD-API-MR-002` | Update MR/PR metadata failed | "Failed to update MR." | Preserve form |
+| `LD-API-MR-003` | Merge MR/PR via API failed | "Failed to merge MR." | Preserve UI; allow retry |
+| `LD-API-MR-004` | MR/PR feature unsupported on this forge | "… is not supported on this forge." | Disable control; do not retry same action |
 | `LD-API-JOB-001` | Play / pipeline job failed | "Failed to run CI job: {summary}" | Preserve UI; allow retry |
 
 Prefer mapping HTTP failures to `LD-API-<status>` when the status is the

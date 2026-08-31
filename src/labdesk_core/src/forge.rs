@@ -2,10 +2,19 @@
 
 use crate::error::{ErrorInfo, LabDeskError, Result};
 use crate::forge_types::{
-    CreatedPullRequest, ForgeJob, ForgeKind, ForgePipeline, ForgeProject, ForgePullRequest,
-    ForgeUser, ForgeVersion,
+    CreatedPullRequest, ForgeJob, ForgeKind, ForgeNote, ForgePipeline, ForgeProject,
+    ForgePullRequest, ForgePullRequestDetail, ForgeUser, ForgeVersion,
 };
 use crate::{forgejo, gitea, gitlab, onedev};
+
+fn unsupported_mr(forge: ForgeKind, code: &'static str, message: &str, feature: &str) -> LabDeskError {
+    LabDeskError::App(
+        ErrorInfo::new(code, message).with_detail(format!(
+            "{} does not support {feature} from LabDesk.",
+            forge.forge_display_name()
+        )),
+    )
+}
 
 pub fn get_user(
     forge: ForgeKind,
@@ -60,7 +69,16 @@ pub fn create_merge_request(
     title: &str,
     description: Option<&str>,
     path_hint: Option<&str>,
+    draft: bool,
 ) -> Result<CreatedPullRequest> {
+    if draft && !forge.supports_draft_mr() {
+        return Err(unsupported_mr(
+            forge,
+            "LD-API-MR-004",
+            "Draft MRs are not supported on this forge.",
+            "draft merge/pull requests",
+        ));
+    }
     match forge {
         ForgeKind::Gitlab => gitlab::create_merge_request(
             base_url,
@@ -71,6 +89,7 @@ pub fn create_merge_request(
             target_branch,
             title,
             description,
+            draft,
         ),
         ForgeKind::Gitea => gitea::create_merge_request(
             base_url,
@@ -82,6 +101,7 @@ pub fn create_merge_request(
             title,
             description,
             path_hint,
+            draft,
         ),
         ForgeKind::Forgejo => forgejo::create_merge_request(
             base_url,
@@ -93,6 +113,7 @@ pub fn create_merge_request(
             title,
             description,
             path_hint,
+            draft,
         ),
         ForgeKind::Onedev => onedev::create_merge_request(
             base_url,
@@ -104,6 +125,7 @@ pub fn create_merge_request(
             title,
             description,
             path_hint,
+            draft,
         ),
     }
 }
@@ -243,5 +265,290 @@ pub fn play_job(
         ForgeKind::Gitea => gitea::play_job(base_url, pat, ssl_mode, project_id, job_id),
         ForgeKind::Forgejo => forgejo::play_job(base_url, pat, ssl_mode, project_id, job_id),
         ForgeKind::Onedev => onedev::play_job(base_url, pat, ssl_mode, project_id, job_id),
+    }
+}
+
+pub fn get_merge_request(
+    forge: ForgeKind,
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    path_hint: Option<&str>,
+) -> Result<ForgePullRequestDetail> {
+    if !forge.supports_mr_detail() {
+        return Err(unsupported_mr(
+            forge,
+            "LD-API-MR-004",
+            "MR detail is not supported on this forge.",
+            "MR/PR detail",
+        ));
+    }
+    match forge {
+        ForgeKind::Gitlab => {
+            gitlab::get_merge_request(base_url, pat, ssl_mode, project_id, mr_iid)
+        }
+        ForgeKind::Gitea => {
+            gitea::get_merge_request(base_url, pat, ssl_mode, project_id, mr_iid, path_hint)
+        }
+        ForgeKind::Forgejo => {
+            forgejo::get_merge_request(base_url, pat, ssl_mode, project_id, mr_iid, path_hint)
+        }
+        ForgeKind::Onedev => {
+            onedev::get_merge_request(base_url, pat, ssl_mode, project_id, mr_iid, path_hint)
+        }
+    }
+}
+
+pub fn update_merge_request(
+    forge: ForgeKind,
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    title: Option<&str>,
+    description: Option<&str>,
+    target_branch: Option<&str>,
+    path_hint: Option<&str>,
+) -> Result<ForgePullRequestDetail> {
+    if !forge.supports_mr_update() {
+        return Err(unsupported_mr(
+            forge,
+            "LD-API-MR-004",
+            "Updating MRs is not supported on this forge.",
+            "MR/PR metadata update",
+        ));
+    }
+    if target_branch.is_some() && !forge.supports_mr_retarget() {
+        return Err(unsupported_mr(
+            forge,
+            "LD-API-MR-004",
+            "Changing the target branch is not supported on this forge.",
+            "changing MR/PR target branch",
+        ));
+    }
+    match forge {
+        ForgeKind::Gitlab => gitlab::update_merge_request(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            title,
+            description,
+            target_branch,
+        ),
+        ForgeKind::Gitea => gitea::update_merge_request(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            title,
+            description,
+            target_branch,
+            path_hint,
+        ),
+        ForgeKind::Forgejo => forgejo::update_merge_request(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            title,
+            description,
+            target_branch,
+            path_hint,
+        ),
+        ForgeKind::Onedev => onedev::update_merge_request(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            title,
+            description,
+            target_branch,
+            path_hint,
+        ),
+    }
+}
+
+pub fn merge_merge_request(
+    forge: ForgeKind,
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    merge_method: Option<&str>,
+    path_hint: Option<&str>,
+) -> Result<ForgePullRequestDetail> {
+    if !forge.supports_mr_merge() {
+        return Err(unsupported_mr(
+            forge,
+            "LD-API-MR-004",
+            "Merging MRs is not supported on this forge.",
+            "MR/PR merge via API",
+        ));
+    }
+    match forge {
+        ForgeKind::Gitlab => {
+            gitlab::merge_merge_request(base_url, pat, ssl_mode, project_id, mr_iid, merge_method)
+        }
+        ForgeKind::Gitea => gitea::merge_merge_request(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            merge_method,
+            path_hint,
+        ),
+        ForgeKind::Forgejo => forgejo::merge_merge_request(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            merge_method,
+            path_hint,
+        ),
+        ForgeKind::Onedev => onedev::merge_merge_request(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            merge_method,
+            path_hint,
+        ),
+    }
+}
+
+pub fn list_merge_request_notes(
+    forge: ForgeKind,
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    page: u32,
+    path_hint: Option<&str>,
+) -> Result<Vec<ForgeNote>> {
+    if !forge.supports_mr_notes() {
+        return Err(unsupported_mr(
+            forge,
+            "LD-API-MR-004",
+            "MR notes are not supported on this forge.",
+            "MR/PR notes",
+        ));
+    }
+    match forge {
+        ForgeKind::Gitlab => {
+            gitlab::list_merge_request_notes(base_url, pat, ssl_mode, project_id, mr_iid, page)
+        }
+        ForgeKind::Gitea => gitea::list_merge_request_notes(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            page,
+            path_hint,
+        ),
+        ForgeKind::Forgejo => forgejo::list_merge_request_notes(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            page,
+            path_hint,
+        ),
+        ForgeKind::Onedev => onedev::list_merge_request_notes(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            page,
+            path_hint,
+        ),
+    }
+}
+
+#[cfg(test)]
+mod unsupported_feature_tests {
+    use super::*;
+
+    #[test]
+    fn gitea_play_job_is_rejected_with_job_code() {
+        let err = play_job(ForgeKind::Gitea, "http://gitea.lan", "tok", "strict", 1, 9)
+            .expect_err("gitea play");
+        assert_eq!(err.info().code, "LD-API-JOB-001");
+        assert!(err.info().detail.as_deref().unwrap_or("").contains("Gitea"));
+    }
+
+    #[test]
+    fn forgejo_play_job_is_rejected_with_job_code() {
+        let err = play_job(ForgeKind::Forgejo, "http://fj.lan", "tok", "strict", 1, 9)
+            .expect_err("forgejo play");
+        assert_eq!(err.info().code, "LD-API-JOB-001");
+        assert!(err.info().detail.as_deref().unwrap_or("").contains("Forgejo"));
+    }
+
+    #[test]
+    fn onedev_play_job_is_rejected_with_job_code() {
+        let err = play_job(ForgeKind::Onedev, "http://od.lan", "tok", "strict", 1, 9)
+            .expect_err("onedev play");
+        assert_eq!(err.info().code, "LD-API-JOB-001");
+        assert!(err.info().detail.as_deref().unwrap_or("").contains("OneDev"));
+    }
+
+    #[test]
+    fn onedev_draft_create_is_rejected_with_mr_004() {
+        let err = create_merge_request(
+            ForgeKind::Onedev,
+            "http://od.lan",
+            "tok",
+            "strict",
+            1,
+            "feature",
+            "main",
+            "Title",
+            None,
+            Some("proj"),
+            true,
+        )
+        .expect_err("onedev draft");
+        assert_eq!(err.info().code, "LD-API-MR-004");
+    }
+
+    #[test]
+    fn onedev_retarget_update_is_rejected_with_mr_004() {
+        let err = update_merge_request(
+            ForgeKind::Onedev,
+            "http://od.lan",
+            "tok",
+            "strict",
+            1,
+            3,
+            Some("t"),
+            None,
+            Some("develop"),
+            Some("proj"),
+        )
+        .expect_err("onedev retarget");
+        assert_eq!(err.info().code, "LD-API-MR-004");
+    }
+
+    #[test]
+    fn gitlab_full_mr_capabilities_enabled() {
+        assert!(ForgeKind::Gitlab.supports_draft_mr());
+        assert!(ForgeKind::Gitlab.supports_play_job());
+        assert!(ForgeKind::Gitlab.supports_mr_retarget());
     }
 }

@@ -570,10 +570,10 @@ pub fn pull(repo_path: &Path, remote_name: &str, auth: &AuthOptions<'_>) -> Resu
 
     Err(LabDeskError::App(
         ErrorInfo::new(
-            "LD-GIT-020",
-            "Conflicts detected. Resolve externally.",
+            "LD-GIT-024",
+            "Histories have diverged. Choose merge or rebase.",
         )
-        .with_detail("non-fast-forward pull; merge/conflict UI not in V1"),
+        .with_detail("non-fast-forward pull"),
     ))
 }
 
@@ -676,19 +676,21 @@ pub fn merge_local_branch(repo_path: &Path, their_branch: &str) -> Result<String
         map_git_error(e, "LD-GIT-001", "Git operation failed.")
     })?;
     if index.has_conflicts() {
-        let _ = repo.cleanup_state();
-        // Best-effort reset index/worktree to HEAD to leave a clean tree.
-        if let Ok(obj) = repo.revparse_single("HEAD") {
-            let _ = repo.reset(&obj, git2::ResetType::Hard, None);
-        }
+        // Leave conflicts in place for the V2 conflict UI (do not hard-reset).
+        let paths = crate::v2_git::list_conflicted_paths(repo_path).unwrap_or_default();
         return Err(LabDeskError::App(
             ErrorInfo::new(
                 "LD-GIT-020",
-                "Conflicts detected. Resolve externally.",
+                "Conflicts detected. Resolve in LabDesk or externally.",
             )
-            .with_detail(format!(
-                "Merge of {their_branch} into HEAD has conflicts; aborted. Resolve in an external tool, then continue."
-            )),
+            .with_detail(if paths.is_empty() {
+                format!("Merge of {their_branch} into HEAD has conflicts.")
+            } else {
+                format!(
+                    "Merge of {their_branch} into HEAD has conflicts:\n{}",
+                    paths.join("\n")
+                )
+            }),
         ));
     }
 
@@ -1165,6 +1167,70 @@ pub fn commit_diff(repo_path: &Path, oid_str: &str) -> Result<String> {
     Ok(finish_diff_buf(buf, "(no textual diff for this commit)\n"))
 }
 
+/// Paths changed in a commit (vs first parent), with binary flag.
+pub fn commit_changed_files(
+    repo_path: &Path,
+    oid_str: &str,
+) -> Result<Vec<(String, bool)>> {
+    let repo = open_repo(repo_path)?;
+    let oid = git2::Oid::from_str(oid_str.trim()).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail(e.message().to_string()),
+        )
+    })?;
+    let commit = repo.find_commit(oid).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail(e.message().to_string()),
+        )
+    })?;
+    let tree = commit.tree().map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail(e.message().to_string()),
+        )
+    })?;
+    let parent_tree = if commit.parent_count() > 0 {
+        Some(
+            commit
+                .parent(0)
+                .and_then(|p| p.tree())
+                .map_err(|e| {
+                    LabDeskError::App(
+                        ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                            .with_detail(e.message().to_string()),
+                    )
+                })?,
+        )
+    } else {
+        None
+    };
+    let mut opts = DiffOptions::new();
+    let diff = repo
+        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                    .with_detail(e.message().to_string()),
+            )
+        })?;
+    let mut out = Vec::new();
+    for delta in diff.deltas() {
+        let path = delta
+            .new_file()
+            .path()
+            .or_else(|| delta.old_file().path())
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if path.is_empty() {
+            continue;
+        }
+        out.push((path, delta.new_file().is_binary() || delta.old_file().is_binary()));
+    }
+    Ok(out)
+}
+
 fn commit_to_info(commit: &git2::Commit<'_>) -> CommitInfo {
     let oid = commit.id().to_string();
     let short_oid = oid[..7.min(oid.len())].to_string();
@@ -1325,7 +1391,7 @@ fn looks_binary(bytes: &[u8]) -> bool {
     sample.contains(&0) || sample.iter().filter(|b| **b < 9 && **b != b'\t' && **b != b'\n' && **b != b'\r').count() > sample.len() / 10
 }
 
-fn open_repo(path: &Path) -> Result<Repository> {
+pub(crate) fn open_repo(path: &Path) -> Result<Repository> {
     if !path.join(".git").exists() && Repository::discover(path).is_err() {
         return Err(LabDeskError::App(
             ErrorInfo::new("LD-GIT-031", "Repository folder is missing.")
@@ -1507,6 +1573,55 @@ pub fn retarget_http_remote_url(
     Some(http_clone_url_for(to_base, &path))
 }
 
+/// Rewrite `git@old:group/proj.git` / `ssh://old/...` when host matches `from_host`.
+pub fn retarget_ssh_remote_url(
+    remote_url: &str,
+    from_host: &str,
+    to_host: &str,
+) -> Option<String> {
+    let from_host = from_host.trim().trim_end_matches('/').to_ascii_lowercase();
+    let to_host = to_host.trim().trim_end_matches('/').to_ascii_lowercase();
+    if from_host.is_empty() || to_host.is_empty() || from_host == to_host {
+        return None;
+    }
+    let u = remote_url.trim();
+    if let Some(rest) = u.strip_prefix("git@") {
+        let (host, path) = rest.split_once(':')?;
+        if host.eq_ignore_ascii_case(&from_host) {
+            return Some(format!("git@{to_host}:{path}"));
+        }
+        return None;
+    }
+    if let Some(rest) = u.strip_prefix("ssh://") {
+        // ssh://[user@]host[:port]/path
+        let after_auth = rest.split_once('@').map(|(_, h)| h).unwrap_or(rest);
+        let (host_port, path) = after_auth.split_once('/')?;
+        let host = host_port.split(':').next().unwrap_or(host_port);
+        if host.eq_ignore_ascii_case(&from_host) {
+            let user = if rest.contains('@') {
+                rest.split_once('@').map(|(u, _)| u).unwrap_or("git")
+            } else {
+                "git"
+            };
+            return Some(format!("ssh://{user}@{to_host}/{path}"));
+        }
+    }
+    None
+}
+
+pub fn host_from_base_url(base: &str) -> Option<String> {
+    let b = base.trim().trim_end_matches('/');
+    let without = b
+        .strip_prefix("https://")
+        .or_else(|| b.strip_prefix("http://"))?;
+    let host = without.split('/').next()?.split(':').next()?;
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_string())
+    }
+}
+
 fn make_callbacks(
     url: String,
     pat: Option<String>,
@@ -1583,7 +1698,7 @@ fn credentials_cb(
     ))
 }
 
-fn map_git_error(e: git2::Error, code: &'static str, message: &str) -> LabDeskError {
+pub(crate) fn map_git_error(e: git2::Error, code: &'static str, message: &str) -> LabDeskError {
     let msg = e.message().to_string();
     let lower = msg.to_lowercase();
     if lower.contains("authentication")

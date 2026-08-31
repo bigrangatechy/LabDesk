@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -24,11 +25,13 @@ class MRDialog(QDialog):
         project_label: str = "",
         parent=None,
         kind_label: str | None = None,
+        title_prefill: str = "",
+        description_prefill: str = "",
     ) -> None:
         super().__init__(parent)
         label = kind_label or pr_label(forge_info())
         self.setWindowTitle(f"Create {label.lower()}")
-        self.resize(480, 360)
+        self.resize(480, 400)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -38,16 +41,24 @@ class MRDialog(QDialog):
 
         self.source = QLineEdit(source_branch)
         self.target = QLineEdit(target_branch or "main")
-        self.title = QLineEdit()
+        self.title = QLineEdit(title_prefill)
         self.title.setPlaceholderText("Short title (required)")
         self.description = QTextEdit()
         self.description.setPlaceholderText("Optional description")
+        if description_prefill:
+            self.description.setPlainText(description_prefill)
+        self.draft = QCheckBox("Create as draft (where supported)")
 
         form.addRow("Source branch", self.source)
         form.addRow("Target branch", self.target)
         form.addRow("Title", self.title)
         form.addRow("Description", self.description)
+        form.addRow("", self.draft)
         layout.addLayout(form)
+
+        # Hide draft when the active forge cannot create drafts.
+        info = forge_info()
+        self.draft.setVisible(bool(info.get("supports_draft_mr", True)))
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -58,10 +69,11 @@ class MRDialog(QDialog):
 
         self.title.setFocus()
 
-    def values(self) -> tuple[str, str, str, str]:
+    def values(self) -> tuple[str, str, str, str, bool]:
         return (
             self.source.text().strip(),
             self.target.text().strip(),
             self.title.text().strip(),
             self.description.toPlainText().strip(),
+            self.draft.isChecked(),
         )

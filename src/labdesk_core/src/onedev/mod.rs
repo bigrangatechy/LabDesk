@@ -56,6 +56,8 @@ struct RawPull {
     #[serde(default)]
     number: Option<i64>,
     title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
     status: Option<String>,
     #[serde(default)]
     url: Option<String>,
@@ -65,6 +67,8 @@ struct RawPull {
     target_branch: Option<String>,
     #[serde(default, alias = "lastActivityDate")]
     updated_at: Option<String>,
+    #[serde(default, alias = "submitterId")]
+    submitter_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -323,6 +327,7 @@ pub fn create_merge_request(
     title: &str,
     description: Option<&str>,
     path_hint: Option<&str>,
+    _draft: bool,
 ) -> Result<CreatedPullRequest> {
     let title = title.trim();
     if title.is_empty() {
@@ -333,7 +338,7 @@ pub fn create_merge_request(
     }
     let path = path_for_project(base_url, pat, ssl_mode, project_id, path_hint)?;
     let client = client_for(ssl_mode)?;
-    let url = format!("{}/pull-requests", api_root(base_url));
+    let url = format!("{}/pulls", api_root(base_url));
     let mut body = serde_json::json!({
         "targetProjectId": project_id,
         "sourceProjectId": project_id,
@@ -390,7 +395,7 @@ pub fn list_project_merge_requests(
     // OneDev query language: open PRs targeting this project.
     let query = format!(r#""Target Project" is "{path}" and open is true"#);
     let url = format!(
-        "{}/pull-requests?query={}&count=50&offset=0",
+        "{}/pulls?query={}&count=50&offset=0",
         api_root(base_url),
         urlencoding_ref(&query)
     );
@@ -571,6 +576,281 @@ pub fn play_job(
     ))
 }
 
+
+fn pulls_root(base_url: &str) -> String {
+    format!("{}/pulls", api_root(base_url))
+}
+
+/// Resolve UI-facing PR number (iid) to OneDev request id.
+fn resolve_pull_request_id(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    path_hint: Option<&str>,
+) -> Result<i64> {
+    let path = path_for_project(base_url, pat, ssl_mode, project_id, path_hint)?;
+    let client = client_for(ssl_mode)?;
+    // Prefer path#number query used by OneDev help docs.
+    let query = format!(r#""Number" is "{path}#{mr_iid}""#);
+    let url = format!(
+        "{}?query={}&count=1&offset=0",
+        pulls_root(base_url),
+        urlencoding_ref(&query)
+    );
+    let resp = apply_auth(client.get(&url), pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if status.is_success() {
+        let rows: Vec<RawPull> = serde_json::from_str(&body).unwrap_or_default();
+        if let Some(p) = rows.into_iter().next() {
+            return Ok(p.id);
+        }
+    }
+    // Fallback: treat mr_iid as the request id itself.
+    let _ = (status, body);
+    Ok(mr_iid)
+}
+
+fn map_pull_detail(p: RawPull, base_url: &str, path: &str) -> crate::forge_types::ForgePullRequestDetail {
+    let mapped = map_pull(RawPull {
+        id: p.id,
+        number: p.number,
+        title: p.title.clone(),
+        description: p.description.clone(),
+        status: p.status.clone(),
+        url: p.url.clone(),
+        source_branch: p.source_branch.clone(),
+        target_branch: p.target_branch.clone(),
+        updated_at: p.updated_at.clone(),
+        submitter_id: p.submitter_id,
+    }, base_url, path);
+    crate::forge_types::ForgePullRequestDetail {
+        iid: mapped.iid,
+        title: mapped.title,
+        description: p.description,
+        state: mapped.state,
+        web_url: mapped.web_url,
+        source_branch: mapped.source_branch,
+        target_branch: mapped.target_branch,
+        author: p.submitter_id.map(|id| format!("user-{id}")),
+        draft: false,
+        updated_at: mapped.updated_at,
+    }
+}
+
+fn get_pull_by_id(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    request_id: i64,
+    path: &str,
+) -> Result<crate::forge_types::ForgePullRequestDetail> {
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/{}", pulls_root(base_url), request_id);
+    let resp = apply_auth(client.get(&url), pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    let raw: RawPull = serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "OneDev API error.")
+                .with_detail(format!("decode pull: {e}")),
+        )
+    })?;
+    Ok(map_pull_detail(raw, base_url, path))
+}
+
+pub fn get_merge_request(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    path_hint: Option<&str>,
+) -> Result<crate::forge_types::ForgePullRequestDetail> {
+    let path = path_for_project(base_url, pat, ssl_mode, project_id, path_hint)?;
+    let request_id = resolve_pull_request_id(base_url, pat, ssl_mode, project_id, mr_iid, path_hint)?;
+    get_pull_by_id(base_url, pat, ssl_mode, request_id, &path)
+}
+
+pub fn update_merge_request(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    title: Option<&str>,
+    description: Option<&str>,
+    target_branch: Option<&str>,
+    path_hint: Option<&str>,
+) -> Result<crate::forge_types::ForgePullRequestDetail> {
+    if target_branch.is_some() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new(
+                "LD-API-MR-004",
+                "Changing the target branch is not supported on this forge.",
+            )
+            .with_detail("OneDev does not support changing PR target branch from LabDesk."),
+        ));
+    }
+    let path = path_for_project(base_url, pat, ssl_mode, project_id, path_hint)?;
+    let request_id = resolve_pull_request_id(base_url, pat, ssl_mode, project_id, mr_iid, path_hint)?;
+    let client = client_for(ssl_mode)?;
+    if let Some(t) = title {
+        let url = format!("{}/{}/title", pulls_root(base_url), request_id);
+        let resp = apply_auth(client.post(&url), pat)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(&serde_json::Value::String(t.to_string()))
+            .send()
+            .map_err(|e| {
+                LabDeskError::App(
+                    ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                        .with_detail(e.to_string()),
+                )
+            })?;
+        let status = resp.status();
+        let text = resp.text().unwrap_or_default();
+        if !status.is_success() {
+            return Err(LabDeskError::App(
+                ErrorInfo::new("LD-API-MR-002", "Failed to update MR.")
+                    .with_detail(truncate(&text, 200)),
+            ));
+        }
+    }
+    if let Some(d) = description {
+        let url = format!("{}/{}/description", pulls_root(base_url), request_id);
+        let resp = apply_auth(client.post(&url), pat)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(&serde_json::Value::String(d.to_string()))
+            .send()
+            .map_err(|e| {
+                LabDeskError::App(
+                    ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                        .with_detail(e.to_string()),
+                )
+            })?;
+        let status = resp.status();
+        let text = resp.text().unwrap_or_default();
+        if !status.is_success() {
+            return Err(LabDeskError::App(
+                ErrorInfo::new("LD-API-MR-002", "Failed to update MR.")
+                    .with_detail(truncate(&text, 200)),
+            ));
+        }
+    }
+    get_pull_by_id(base_url, pat, ssl_mode, request_id, &path)
+}
+
+pub fn merge_merge_request(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    _merge_method: Option<&str>,
+    path_hint: Option<&str>,
+) -> Result<crate::forge_types::ForgePullRequestDetail> {
+    let path = path_for_project(base_url, pat, ssl_mode, project_id, path_hint)?;
+    let request_id = resolve_pull_request_id(base_url, pat, ssl_mode, project_id, mr_iid, path_hint)?;
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/{}/merge", pulls_root(base_url), request_id);
+    let resp = apply_auth(client.post(&url), pat)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({}))
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-003", "Failed to merge MR.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    get_pull_by_id(base_url, pat, ssl_mode, request_id, &path)
+}
+
+pub fn list_merge_request_notes(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    _page: u32,
+    path_hint: Option<&str>,
+) -> Result<Vec<crate::forge_types::ForgeNote>> {
+    let request_id = resolve_pull_request_id(base_url, pat, ssl_mode, project_id, mr_iid, path_hint)?;
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/{}/comments", pulls_root(base_url), request_id);
+    let resp = apply_auth(client.get(&url), pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    #[derive(Deserialize)]
+    struct RawComment {
+        id: i64,
+        #[serde(default)]
+        content: Option<String>,
+        #[serde(default)]
+        user_id: Option<i64>,
+        #[serde(default, alias = "userId")]
+        user_id_alt: Option<i64>,
+        #[serde(default, alias = "date")]
+        created_at: Option<String>,
+    }
+    let raw: Vec<RawComment> = serde_json::from_str(&body).unwrap_or_default();
+    Ok(raw
+        .into_iter()
+        .map(|c| {
+            let uid = c.user_id.or(c.user_id_alt);
+            crate::forge_types::ForgeNote {
+                id: c.id,
+                body: c.content,
+                author: uid.map(|id| format!("user-{id}")),
+                created_at: c.created_at,
+            }
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,11 +886,13 @@ mod tests {
             id: 1,
             number: Some(4),
             title: Some("Hi".into()),
+            description: None,
             status: Some("OPEN".into()),
             url: None,
             source_branch: Some("feat".into()),
             target_branch: Some("main".into()),
             updated_at: None,
+            submitter_id: None,
         };
         let m = map_pull(p, "https://od.lan", "Ranga/labdesk");
         assert_eq!(m.iid, 4);

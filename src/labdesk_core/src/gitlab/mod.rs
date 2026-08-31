@@ -147,6 +147,7 @@ pub fn create_merge_request(
     target_branch: &str,
     title: &str,
     description: Option<&str>,
+    draft: bool,
 ) -> Result<CreatedPullRequest> {
     let title = title.trim();
     if title.is_empty() {
@@ -161,6 +162,7 @@ pub fn create_merge_request(
         "source_branch": source_branch.trim(),
         "target_branch": target_branch.trim(),
         "title": title,
+        "draft": draft,
     });
     if let Some(desc) = description {
         body["description"] = serde_json::Value::String(desc.to_string());
@@ -405,6 +407,240 @@ pub fn play_job(
 #[allow(dead_code)]
 pub fn project_path_hint(_project_id: i64) -> Option<String> {
     None
+}
+
+#[derive(Debug, Deserialize)]
+struct RawMrDetail {
+    iid: i64,
+    title: Option<String>,
+    description: Option<String>,
+    state: Option<String>,
+    web_url: Option<String>,
+    source_branch: Option<String>,
+    target_branch: Option<String>,
+    updated_at: Option<String>,
+    draft: Option<bool>,
+    work_in_progress: Option<bool>,
+    author: Option<RawAuthor>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawAuthor {
+    username: Option<String>,
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawNote {
+    id: i64,
+    body: Option<String>,
+    created_at: Option<String>,
+    author: Option<RawAuthor>,
+}
+
+pub fn get_merge_request(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+) -> Result<crate::forge_types::ForgePullRequestDetail> {
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/projects/{}/merge_requests/{}",
+        api_root(base_url),
+        project_id,
+        mr_iid
+    );
+    let resp = client
+        .get(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    let raw: RawMrDetail = serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode mr: {e}")),
+        )
+    })?;
+    let draft = raw.draft.unwrap_or(false) || raw.work_in_progress.unwrap_or(false);
+    let author = raw.author.and_then(|a| a.username.or(a.name));
+    Ok(crate::forge_types::ForgePullRequestDetail {
+        iid: raw.iid,
+        title: raw.title,
+        description: raw.description,
+        state: raw.state,
+        web_url: raw.web_url,
+        source_branch: raw.source_branch,
+        target_branch: raw.target_branch,
+        author,
+        draft,
+        updated_at: raw.updated_at,
+    })
+}
+
+pub fn update_merge_request(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    title: Option<&str>,
+    description: Option<&str>,
+    target_branch: Option<&str>,
+) -> Result<crate::forge_types::ForgePullRequestDetail> {
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/projects/{}/merge_requests/{}",
+        api_root(base_url),
+        project_id,
+        mr_iid
+    );
+    let mut body = serde_json::Map::new();
+    if let Some(t) = title {
+        body.insert("title".into(), serde_json::Value::String(t.to_string()));
+    }
+    if let Some(d) = description {
+        body.insert(
+            "description".into(),
+            serde_json::Value::String(d.to_string()),
+        );
+    }
+    if let Some(t) = target_branch {
+        body.insert(
+            "target_branch".into(),
+            serde_json::Value::String(t.to_string()),
+        );
+    }
+    let resp = client
+        .put(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-002", "Failed to update MR.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    get_merge_request(base_url, pat, ssl_mode, project_id, mr_iid)
+}
+
+pub fn merge_merge_request(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    merge_method: Option<&str>,
+) -> Result<crate::forge_types::ForgePullRequestDetail> {
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/projects/{}/merge_requests/{}/merge",
+        api_root(base_url),
+        project_id,
+        mr_iid
+    );
+    let mut body = serde_json::json!({});
+    if let Some(m) = merge_method {
+        // GitLab uses merge_commit / squash / etc via squash + merge_commit_message;
+        // accept "merge" | "squash" loosely.
+        if m.eq_ignore_ascii_case("squash") {
+            body["squash"] = serde_json::Value::Bool(true);
+        }
+    }
+    let resp = client
+        .put(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-003", "Failed to merge MR.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    get_merge_request(base_url, pat, ssl_mode, project_id, mr_iid)
+}
+
+pub fn list_merge_request_notes(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    page: u32,
+) -> Result<Vec<crate::forge_types::ForgeNote>> {
+    let client = client_for(ssl_mode)?;
+    let page = page.max(1);
+    let url = format!(
+        "{}/projects/{}/merge_requests/{}/notes?per_page=50&page={page}&sort=asc&order_by=created_at",
+        api_root(base_url),
+        project_id,
+        mr_iid
+    );
+    let resp = client
+        .get(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    let raw: Vec<RawNote> = serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode notes: {e}")),
+        )
+    })?;
+    Ok(raw
+        .into_iter()
+        .map(|n| crate::forge_types::ForgeNote {
+            id: n.id,
+            body: n.body,
+            author: n.author.and_then(|a| a.username.or(a.name)),
+            created_at: n.created_at,
+        })
+        .collect())
 }
 
 #[cfg(test)]

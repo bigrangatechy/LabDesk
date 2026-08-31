@@ -18,6 +18,42 @@ bullets without a stamp predate this convention.
 
 ## [Unreleased]
 
+### Added
+
+- **00:13:27  01/09/2026** — Forge capability matrix (`forge_feature_matrix` /
+  `active_forge_info` flags): play-job, MR detail/update/retarget/merge/notes,
+  draft create. Unsupported actions return `LD-API-MR-004` or `LD-API-JOB-001`
+  with forge-named detail. OneDev PR detail/update/merge/notes via `~api/pulls`.
+  Dedicated capability tests per forge (Rust + Python).
+- **23:49:20  31/08/2026** — V2 roadmap (`Docs/v2-roadmap.md`): sync banner,
+  large-repo UX, stash/rebase, in-app conflict resolve, MR detail/merge/notes,
+  SSH host-switch, notifications. ADR-006 + tech spec/error codes updated for
+  structured conflict UI.
+  **Forgejo**, and **OneDev** alongside GitLab (dedicated Rust API modules +
+  shared UI). Connect dialog forge picker; `[[instances]].forge`; SaaS reject
+  list extended (`gitea.com`, `codeberg.org`, `code.onedev.io`). ADR-001
+  updated; API contract stubs per forge.
+
+- **20:26:22  27/08/2026** — Projects **table/cards** layout option; clone/push
+  progress as a translucent fill on the matching row/card (colour + alpha
+  in Settings). Core exposes `get_git_op_progress`.
+- **21:17:29  13/08/2026** — `ssl_mode = imported_ca`: trust PEMs in
+  `trusted_certs/` for API (reqwest) and git HTTPS (`GIT_SSL_CAINFO`
+  bundle); Connect dialog **Import CA…**; empty folder → `LD-NET-010`.
+- **20:45:45  13/08/2026** — Projects list shows a default-branch pipeline
+  status icon (filled on **Refresh projects**; cached offline). Schema v6
+  stores `pipeline_status` / `pipeline_web_url` on project rows.
+- **19:51:52  13/08/2026** — Repo window **Compare** tab (local tip
+  compare + optional remote branch check) and **Merge requests** tab
+  (opened MRs + SQLite cache). Uses existing Flatpak-bundled stack only
+  (vendored libgit2 / PySide6; no host system libs).
+- **19:03:02  13/08/2026** — Multi-host instances + multi-account users
+  per host (switchers, unique keyring ids); Projects list filter;
+  cache keyed by `account_id`.
+- **17:55:36  13/08/2026** — Pipeline offline cache (latest per branch +
+  jobs JSON); richer Pipelines job list; Help → User Guide… (bundled
+  `user-guide.md`).
+
 ### Fixed
 
 - **23:30:07  31/08/2026** — Staging an untracked directory row (shown as a
@@ -46,34 +82,6 @@ bullets without a stamp predate this convention.
 - **20:53:08  27/08/2026** — Projects **Cards** layout sticks: Settings applies
   the choice immediately (not only via Save/Done), persists with `itemData`,
   and Projects switches via `QStackedWidget` instead of hide/show.
-
-### Added
-
-- **03:20:21  30/08/2026** — Multi-forge backends: self-hosted **Gitea**,
-  **Forgejo**, and **OneDev** alongside GitLab (dedicated Rust API modules +
-  shared UI). Connect dialog forge picker; `[[instances]].forge`; SaaS reject
-  list extended (`gitea.com`, `codeberg.org`, `code.onedev.io`). ADR-001
-  updated; API contract stubs per forge.
-
-- **20:26:22  27/08/2026** — Projects **table/cards** layout option; clone/push
-  progress as a translucent fill on the matching row/card (colour + alpha
-  in Settings). Core exposes `get_git_op_progress`.
-- **21:17:29  13/08/2026** — `ssl_mode = imported_ca`: trust PEMs in
-  `trusted_certs/` for API (reqwest) and git HTTPS (`GIT_SSL_CAINFO`
-  bundle); Connect dialog **Import CA…**; empty folder → `LD-NET-010`.
-- **20:45:45  13/08/2026** — Projects list shows a default-branch pipeline
-  status icon (filled on **Refresh projects**; cached offline). Schema v6
-  stores `pipeline_status` / `pipeline_web_url` on project rows.
-- **19:51:52  13/08/2026** — Repo window **Compare** tab (local tip
-  compare + optional remote branch check) and **Merge requests** tab
-  (opened MRs + SQLite cache). Uses existing Flatpak-bundled stack only
-  (vendored libgit2 / PySide6; no host system libs).
-- **19:03:02  13/08/2026** — Multi-host instances + multi-account users
-  per host (switchers, unique keyring ids); Projects list filter;
-  cache keyed by `account_id`.
-- **17:55:36  13/08/2026** — Pipeline offline cache (latest per branch +
-  jobs JSON); richer Pipelines job list; Help → User Guide… (bundled
-  `user-guide.md`).
 
 ### Changed
 

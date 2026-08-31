@@ -140,8 +140,13 @@ In the repo window:
   (like `git add <dir>/`). Very large file or diff previews are
   truncated — use **Open in editor** for the full content.
 - **Open in editor:** opens the selected file with the desktop default.
-- **Branches:** list, switch, create, merge into current (clean merges
-  only; if there are conflicts, resolve them outside LabDesk).
+- **Branches:** list, switch, create, merge into current. On conflict,
+  use the conflict resolve panel (or open files externally).
+- **Sync:** header shows ↑ahead / ↓behind / diverged. With fetch-on-focus
+  enabled (default), LabDesk fetches when you open or refresh a repo
+  window so remote changes are visible. Pull fast-forwards when possible;
+  if histories diverged, choose merge or rebase (conflicts → resolve UI).
+  Stash is available when the tree is dirty before pull.
 - **Compare:** pick two branches (local or `origin/…`), see ahead/behind,
   recent commits, and a read-only tip diff (truncated if huge). When
   online, LabDesk can check whether the other branch exists on the forge.

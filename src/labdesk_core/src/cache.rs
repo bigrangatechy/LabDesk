@@ -467,13 +467,16 @@ pub struct LocalRepoRow {
     pub project_id: Option<i64>,
     #[allow(dead_code)]
     pub clone_url: Option<String>,
+    pub last_opened_at: Option<String>,
 }
 
-/// All known local working copies (any account).
+/// All known local working copies (any account), newest opened first.
 pub fn list_local_repos(conn: &Connection) -> Result<Vec<LocalRepoRow>> {
     let mut stmt = conn
         .prepare(
-            "SELECT path, account_id, project_id, clone_url FROM local_repos ORDER BY path",
+            "SELECT path, account_id, project_id, clone_url, last_opened_at
+             FROM local_repos
+             ORDER BY COALESCE(last_opened_at, added_at) DESC, path",
         )
         .map_err(cache_err)?;
     let rows = stmt
@@ -483,6 +486,7 @@ pub fn list_local_repos(conn: &Connection) -> Result<Vec<LocalRepoRow>> {
                 account_id: row.get(1)?,
                 project_id: row.get(2)?,
                 clone_url: row.get(3)?,
+                last_opened_at: row.get(4)?,
             })
         })
         .map_err(cache_err)?;

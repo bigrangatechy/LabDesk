@@ -67,12 +67,95 @@ impl ForgeKind {
         matches!(self, Self::Gitlab)
     }
 
+    /// Fetch single MR/PR detail (title, description, branches, …).
+    pub fn supports_mr_detail(self) -> bool {
+        true
+    }
+
+    /// Update title / description (and target branch where supported).
+    pub fn supports_mr_update(self) -> bool {
+        true
+    }
+
+    /// Change target branch via API (OneDev has no retarget endpoint in LabDesk).
+    pub fn supports_mr_retarget(self) -> bool {
+        matches!(self, Self::Gitlab | Self::Gitea | Self::Forgejo)
+    }
+
+    /// Merge / accept MR/PR via API.
+    pub fn supports_mr_merge(self) -> bool {
+        true
+    }
+
+    /// List read-only notes/comments on an MR/PR.
+    pub fn supports_mr_notes(self) -> bool {
+        true
+    }
+
+    /// Draft / WIP flag on create.
+    pub fn supports_draft_mr(self) -> bool {
+        matches!(self, Self::Gitlab | Self::Gitea | Self::Forgejo)
+    }
+
     pub fn ci_tab_label(self) -> &'static str {
         match self {
             Self::Gitlab => "Pipelines",
             Self::Gitea | Self::Forgejo => "Actions",
             Self::Onedev => "Builds",
         }
+    }
+}
+
+#[cfg(test)]
+mod capability_tests {
+    use super::ForgeKind;
+
+    #[test]
+    fn gitlab_supports_full_mr_surface_and_play_job() {
+        let f = ForgeKind::Gitlab;
+        assert!(f.supports_play_job());
+        assert!(f.supports_mr_detail());
+        assert!(f.supports_mr_update());
+        assert!(f.supports_mr_retarget());
+        assert!(f.supports_mr_merge());
+        assert!(f.supports_mr_notes());
+        assert!(f.supports_draft_mr());
+    }
+
+    #[test]
+    fn gitea_supports_mr_surface_but_not_play_job() {
+        let f = ForgeKind::Gitea;
+        assert!(!f.supports_play_job());
+        assert!(f.supports_mr_detail());
+        assert!(f.supports_mr_update());
+        assert!(f.supports_mr_retarget());
+        assert!(f.supports_mr_merge());
+        assert!(f.supports_mr_notes());
+        assert!(f.supports_draft_mr());
+    }
+
+    #[test]
+    fn forgejo_matches_gitea_capabilities() {
+        let f = ForgeKind::Forgejo;
+        assert!(!f.supports_play_job());
+        assert!(f.supports_mr_detail());
+        assert!(f.supports_mr_update());
+        assert!(f.supports_mr_retarget());
+        assert!(f.supports_mr_merge());
+        assert!(f.supports_mr_notes());
+        assert!(f.supports_draft_mr());
+    }
+
+    #[test]
+    fn onedev_supports_mr_ops_except_draft_and_retarget_and_play() {
+        let f = ForgeKind::Onedev;
+        assert!(!f.supports_play_job());
+        assert!(f.supports_mr_detail());
+        assert!(f.supports_mr_update());
+        assert!(!f.supports_mr_retarget());
+        assert!(f.supports_mr_merge());
+        assert!(f.supports_mr_notes());
+        assert!(!f.supports_draft_mr());
     }
 }
 
@@ -121,6 +204,28 @@ pub struct ForgePullRequest {
     pub source_branch: Option<String>,
     pub target_branch: Option<String>,
     pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ForgePullRequestDetail {
+    pub iid: i64,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub state: Option<String>,
+    pub web_url: Option<String>,
+    pub source_branch: Option<String>,
+    pub target_branch: Option<String>,
+    pub author: Option<String>,
+    pub draft: bool,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ForgeNote {
+    pub id: i64,
+    pub body: Option<String>,
+    pub author: Option<String>,
+    pub created_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

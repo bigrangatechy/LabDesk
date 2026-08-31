@@ -274,7 +274,8 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
 | API rate limited     | `LD-API-429`   | "Rate limited. Retrying in N seconds."       | Exponential backoff                |
 | Git push rejected    | `LD-GIT-010`   | "Push rejected. Pull first?"                 | Offer pull; force push only via separate confirmed action |
 | Force push confirm   | `LD-UI-002`    | "Force push to {branch}? This can overwrite remote history." | Proceed only on explicit yes |
-| Merge conflict       | `LD-GIT-020`   | "Conflicts detected. Resolve externally."    | Do not offer in-app resolve        |
+| Merge conflict       | `LD-GIT-020`   | "Conflicts detected. Resolve in LabDesk or externally." | Offer conflict UI; Abort available |
+
 | MR creation fails    | `LD-API-MR-001`| "Failed to create MR: {error}"               | Preserve form data; allow retry    |
 | SQLite corruption    | `LD-CACHE-001` | "Cache corrupted. Rebuilding."               | Delete + recreate cache.db         |
 | Keyring unavailable  | `LD-AUTH-002`  | "Cannot access system keyring."              | Block PAT save; explain            |
@@ -295,16 +296,15 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
   passwords are not stored in `config.toml` either.
 - **Force push** is available behind an explicit confirmation dialog;
   it is not the default recovery from a rejected push.
-- **No in-app code editing.** Diff view is read-only. Open files with
-  an external editor via `xdg-open` / portal. A future in-app editor,
-  if any, would be built from scratch.
-- **No conflict resolution UI.** Conflicts are detected; user resolves
-  externally. Clean local merges are supported.
+- **No in-app code editing.** Diff and conflict previews use read-only
+  `QTextEdit` (plus structured ours/theirs actions). Open files with an
+  external editor via `xdg-open` / portal. A future full in-app editor,
+  if any, would be built from scratch (not QScintilla).
+- **Conflict resolution (V2):** structured in-app resolve is supported;
+  users may still resolve externally. See ADR-006 and `Docs/v2-roadmap.md`.
 - **No admin/runner management.** Developer workflow only.
 - **English-only UI.** Localization deferred.
-- **No repository search** in V1 (may change if SQLite caching makes it
-  trivial).
 - **Linux only.** No Windows or macOS.
-- **Richer branch comparison** remains nice-to-have (not a V1 blocker).
-- **Post-V1 shipped/planned:** LAN HTTP allowlist, build-date version,
-  background workers, pipeline status + play manual jobs.
+- **V2 roadmap:** sync banner, large-repo virtualization, stash/rebase,
+  MR detail/merge/notes, SSH host-switch, notifications — see
+  [`v2-roadmap.md`](v2-roadmap.md).

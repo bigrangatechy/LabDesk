@@ -12,6 +12,12 @@ def forge_info() -> dict:
         "pull_request_label_plural": "Merge requests",
         "ci_tab_label": "Pipelines",
         "supports_play_job": True,
+        "supports_mr_detail": True,
+        "supports_mr_update": True,
+        "supports_mr_retarget": True,
+        "supports_mr_merge": True,
+        "supports_mr_notes": True,
+        "supports_draft_mr": True,
         "open_in_label": "Open in GitLab",
     }
     try:

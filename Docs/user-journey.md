@@ -84,9 +84,10 @@ to SSH.
 4. Enter commit message → **commit** locally (libgit2; uses git
    `user.name` / `user.email`).
 5. Create / switch branches locally (**Branches** tab).
-6. Optional: local **merge** when there are no conflicts. On conflict,
-   LabDesk explains and sends the user to resolve externally — no
-   in-app conflict UI. (Local merge UI not shipped yet.)
+6. Optional: local **merge** when clean. On conflict, LabDesk opens the
+   **conflict resolve** panel (ours / theirs / open external / mark
+   resolved; continue or abort). You may still resolve entirely outside
+   LabDesk.
 
 Network is not required for this journey. Use **Open in editor** to
 edit a selected file outside LabDesk.

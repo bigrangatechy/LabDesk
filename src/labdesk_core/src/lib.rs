@@ -20,6 +20,7 @@ mod http_client;
 mod paths;
 mod secrets;
 mod tls;
+mod v2_git;
 
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict};
@@ -111,6 +112,9 @@ fn config_to_dict(py: Python<'_>, cfg: &config::AppConfig) -> PyResult<PyObject>
         "progress_overlay_alpha",
         cfg.general.progress_overlay_alpha,
     )?;
+    general.set_item("fetch_on_focus", cfg.general.fetch_on_focus)?;
+    general.set_item("history_page_size", cfg.general.history_page_size)?;
+    general.set_item("browse_files_page_size", cfg.general.browse_files_page_size)?;
     root.set_item("general", general)?;
 
     let instances = pyo3::types::PyList::empty(py);
@@ -1177,7 +1181,7 @@ fn resolve_repo_project(py: Python<'_>, repo_path: String) -> PyResult<PyObject>
 }
 
 #[pyfunction]
-#[pyo3(signature = (project_id, source_branch, target_branch, title, description=None))]
+#[pyo3(signature = (project_id, source_branch, target_branch, title, description=None, draft=false))]
 fn create_merge_request(
     py: Python<'_>,
     project_id: i64,
@@ -1185,6 +1189,7 @@ fn create_merge_request(
     target_branch: String,
     title: String,
     description: Option<String>,
+    draft: bool,
 ) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
     let cfg = config::load_or_default(&paths)?;
@@ -1218,6 +1223,7 @@ fn create_merge_request(
             &title,
             description.as_deref(),
             hint.as_deref(),
+            draft,
         )
     })?;
     let web = mr
@@ -1757,11 +1763,41 @@ fn active_forge_info(py: Python<'_>) -> PyResult<PyObject> {
     )?;
     d.set_item("ci_tab_label", forge.ci_tab_label())?;
     d.set_item("supports_play_job", forge.supports_play_job())?;
+    d.set_item("supports_mr_detail", forge.supports_mr_detail())?;
+    d.set_item("supports_mr_update", forge.supports_mr_update())?;
+    d.set_item("supports_mr_retarget", forge.supports_mr_retarget())?;
+    d.set_item("supports_mr_merge", forge.supports_mr_merge())?;
+    d.set_item("supports_mr_notes", forge.supports_mr_notes())?;
+    d.set_item("supports_draft_mr", forge.supports_draft_mr())?;
     d.set_item(
         "open_in_label",
         format!("Open in {}", forge.forge_display_name()),
     )?;
     Ok(d.into())
+}
+
+/// Capability matrix for all forges (UI + tests; no network).
+#[pyfunction]
+fn forge_feature_matrix(py: Python<'_>) -> PyResult<PyObject> {
+    let out = PyDict::new(py);
+    for forge in [
+        ForgeKind::Gitlab,
+        ForgeKind::Gitea,
+        ForgeKind::Forgejo,
+        ForgeKind::Onedev,
+    ] {
+        let d = PyDict::new(py);
+        d.set_item("display_name", forge.forge_display_name())?;
+        d.set_item("supports_play_job", forge.supports_play_job())?;
+        d.set_item("supports_mr_detail", forge.supports_mr_detail())?;
+        d.set_item("supports_mr_update", forge.supports_mr_update())?;
+        d.set_item("supports_mr_retarget", forge.supports_mr_retarget())?;
+        d.set_item("supports_mr_merge", forge.supports_mr_merge())?;
+        d.set_item("supports_mr_notes", forge.supports_mr_notes())?;
+        d.set_item("supports_draft_mr", forge.supports_draft_mr())?;
+        out.set_item(forge.as_str(), d)?;
+    }
+    Ok(out.into())
 }
 
 /// Validate instance base URL (SaaS reject + LAN HTTP allowlist).
@@ -1891,6 +1927,307 @@ fn set_active_ui_view(view_id: String) -> PyResult<()> {
     Ok(())
 }
 
+
+fn pr_detail_to_dict(py: Python<'_>, d: &crate::forge_types::ForgePullRequestDetail) -> PyResult<PyObject> {
+    let out = PyDict::new(py);
+    out.set_item("iid", d.iid)?;
+    out.set_item("title", d.title.as_deref())?;
+    out.set_item("description", d.description.as_deref())?;
+    out.set_item("state", d.state.as_deref())?;
+    out.set_item("web_url", d.web_url.as_deref())?;
+    out.set_item("source_branch", d.source_branch.as_deref())?;
+    out.set_item("target_branch", d.target_branch.as_deref())?;
+    out.set_item("author", d.author.as_deref())?;
+    out.set_item("draft", d.draft)?;
+    out.set_item("updated_at", d.updated_at.as_deref())?;
+    Ok(out.into())
+}
+
+fn path_hint_for_project(paths: &paths::AppPaths, account_id: &str, project_id: i64) -> Option<String> {
+    let conn = cache::open(paths).ok()?;
+    let projects = cache::list_projects(&conn, account_id).ok()?;
+    projects
+        .into_iter()
+        .find(|p| p.project_id == project_id)
+        .map(|p| p.path_with_namespace)
+}
+
+#[pyfunction]
+fn repo_list_conflicts(repo_path: String) -> PyResult<Vec<String>> {
+    Ok(v2_git::list_conflicted_paths(std::path::Path::new(&repo_path))?)
+}
+
+#[pyfunction]
+fn repo_git_state(repo_path: String) -> PyResult<String> {
+    Ok(v2_git::repo_in_merge_or_rebase(std::path::Path::new(&repo_path))?)
+}
+
+#[pyfunction]
+fn repo_merge_upstream(repo_path: String) -> PyResult<String> {
+    Ok(v2_git::merge_upstream(std::path::Path::new(&repo_path), "origin")?)
+}
+
+#[pyfunction]
+fn repo_continue_merge(repo_path: String) -> PyResult<String> {
+    Ok(v2_git::continue_merge(std::path::Path::new(&repo_path))?)
+}
+
+#[pyfunction]
+fn repo_abort_merge(repo_path: String) -> PyResult<String> {
+    Ok(v2_git::abort_merge(std::path::Path::new(&repo_path))?)
+}
+
+#[pyfunction]
+fn repo_checkout_ours(repo_path: String, path: String) -> PyResult<()> {
+    v2_git::checkout_ours(std::path::Path::new(&repo_path), &path)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn repo_checkout_theirs(repo_path: String, path: String) -> PyResult<()> {
+    v2_git::checkout_theirs(std::path::Path::new(&repo_path), &path)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn repo_mark_resolved(repo_path: String, path: String) -> PyResult<()> {
+    v2_git::mark_resolved(std::path::Path::new(&repo_path), &path)?;
+    Ok(())
+}
+
+#[pyfunction]
+#[pyo3(signature = (repo_path, include_untracked=false))]
+fn repo_stash_save(repo_path: String, include_untracked: bool) -> PyResult<String> {
+    Ok(v2_git::stash_save(std::path::Path::new(&repo_path), include_untracked)?)
+}
+
+#[pyfunction]
+fn repo_stash_pop(repo_path: String) -> PyResult<String> {
+    Ok(v2_git::stash_pop(std::path::Path::new(&repo_path))?)
+}
+
+#[pyfunction]
+fn repo_rebase_upstream(repo_path: String) -> PyResult<String> {
+    Ok(v2_git::rebase_onto_upstream(std::path::Path::new(&repo_path), "origin")?)
+}
+
+#[pyfunction]
+fn repo_abort_rebase(repo_path: String) -> PyResult<String> {
+    Ok(v2_git::abort_rebase(std::path::Path::new(&repo_path))?)
+}
+
+#[pyfunction]
+fn repo_continue_rebase(repo_path: String) -> PyResult<String> {
+    Ok(v2_git::continue_rebase(std::path::Path::new(&repo_path))?)
+}
+
+#[pyfunction]
+fn repo_discard_path(repo_path: String, path: String) -> PyResult<()> {
+    v2_git::discard_path(std::path::Path::new(&repo_path), &path)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn repo_delete_local_branch(repo_path: String, name: String) -> PyResult<()> {
+    v2_git::delete_local_branch(std::path::Path::new(&repo_path), &name)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn repo_set_upstream(repo_path: String, branch: String) -> PyResult<()> {
+    v2_git::set_upstream(std::path::Path::new(&repo_path), "origin", &branch)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn repo_commit_files(py: Python<'_>, repo_path: String, oid: String) -> PyResult<PyObject> {
+    let files = git_ops::commit_changed_files(std::path::Path::new(&repo_path), &oid)?;
+    let list = pyo3::types::PyList::empty(py);
+    for (path, binary) in files {
+        let d = PyDict::new(py);
+        d.set_item("path", path)?;
+        d.set_item("binary", binary)?;
+        list.append(d)?;
+    }
+    Ok(list.into())
+}
+
+#[pyfunction]
+fn get_merge_request(py: Python<'_>, project_id: i64, mr_iid: i64) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let pat = secrets::load_pat(&acc.keyring_account)?;
+    let forge = forge_kind_of(inst);
+    let hint = path_hint_for_project(&paths, &acc.id, project_id);
+    let detail = forge::get_merge_request(
+        forge,
+        &inst.base_url,
+        &pat,
+        &inst.ssl_mode,
+        project_id,
+        mr_iid,
+        hint.as_deref(),
+    )?;
+    let mut detail = detail;
+    if let Some(web) = detail
+        .web_url
+        .as_ref()
+        .and_then(|u| git_ops::rebase_http_url_to_base(u, &inst.base_url))
+    {
+        detail.web_url = Some(web);
+    }
+    pr_detail_to_dict(py, &detail)
+}
+
+#[pyfunction]
+#[pyo3(signature = (project_id, mr_iid, title=None, description=None, target_branch=None))]
+fn update_merge_request(
+    py: Python<'_>,
+    project_id: i64,
+    mr_iid: i64,
+    title: Option<String>,
+    description: Option<String>,
+    target_branch: Option<String>,
+) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let pat = secrets::load_pat(&acc.keyring_account)?;
+    let forge = forge_kind_of(inst);
+    let hint = path_hint_for_project(&paths, &acc.id, project_id);
+    let detail = forge::update_merge_request(
+        forge,
+        &inst.base_url,
+        &pat,
+        &inst.ssl_mode,
+        project_id,
+        mr_iid,
+        title.as_deref(),
+        description.as_deref(),
+        target_branch.as_deref(),
+        hint.as_deref(),
+    )?;
+    pr_detail_to_dict(py, &detail)
+}
+
+#[pyfunction]
+#[pyo3(signature = (project_id, mr_iid, merge_method=None))]
+fn merge_merge_request(
+    py: Python<'_>,
+    project_id: i64,
+    mr_iid: i64,
+    merge_method: Option<String>,
+) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let pat = secrets::load_pat(&acc.keyring_account)?;
+    let forge = forge_kind_of(inst);
+    let hint = path_hint_for_project(&paths, &acc.id, project_id);
+    let detail = forge::merge_merge_request(
+        forge,
+        &inst.base_url,
+        &pat,
+        &inst.ssl_mode,
+        project_id,
+        mr_iid,
+        merge_method.as_deref(),
+        hint.as_deref(),
+    )?;
+    pr_detail_to_dict(py, &detail)
+}
+
+#[pyfunction]
+#[pyo3(signature = (project_id, mr_iid, page=1))]
+fn list_merge_request_notes(
+    py: Python<'_>,
+    project_id: i64,
+    mr_iid: i64,
+    page: u32,
+) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let pat = secrets::load_pat(&acc.keyring_account)?;
+    let forge = forge_kind_of(inst);
+    let hint = path_hint_for_project(&paths, &acc.id, project_id);
+    let notes = forge::list_merge_request_notes(
+        forge,
+        &inst.base_url,
+        &pat,
+        &inst.ssl_mode,
+        project_id,
+        mr_iid,
+        page,
+        hint.as_deref(),
+    )?;
+    let list = pyo3::types::PyList::empty(py);
+    for n in notes {
+        let d = PyDict::new(py);
+        d.set_item("id", n.id)?;
+        d.set_item("body", n.body.as_deref())?;
+        d.set_item("author", n.author.as_deref())?;
+        d.set_item("created_at", n.created_at.as_deref())?;
+        list.append(d)?;
+    }
+    Ok(list.into())
+}
+
+#[pyfunction]
+#[pyo3(signature = (limit=None))]
+fn list_recent_repos(py: Python<'_>, limit: Option<u32>) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let conn = cache::open(&paths)?;
+    let rows = cache::list_local_repos(&conn)?;
+    let lim = limit.unwrap_or(20) as usize;
+    let list = pyo3::types::PyList::empty(py);
+    for row in rows.into_iter().take(lim) {
+        let d = PyDict::new(py);
+        d.set_item("path", row.path)?;
+        d.set_item("project_id", row.project_id)?;
+        d.set_item("account_id", row.account_id)?;
+        d.set_item("clone_url", row.clone_url.as_deref())?;
+        d.set_item("last_opened_at", row.last_opened_at.as_deref())?;
+        list.append(d)?;
+    }
+    Ok(list.into())
+}
+
+#[pyfunction]
+fn set_fetch_on_focus(enabled: bool) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    let mut cfg = config::load_or_default(&paths)?;
+    cfg.general.fetch_on_focus = enabled;
+    config::save(&paths, &mut cfg)?;
+    let _ = config::save_known_good(&paths);
+    Ok(())
+}
+
 /// Persist `general.check_for_updates`.
 #[pyfunction]
 fn set_check_for_updates(enabled: bool) -> PyResult<()> {
@@ -1996,6 +2333,29 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_default_clone_dir, m)?)?;
     m.add_function(wrap_pyfunction!(set_default_clone_dir, m)?)?;
     m.add_function(wrap_pyfunction!(set_theme, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_list_conflicts, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_git_state, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_merge_upstream, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_continue_merge, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_abort_merge, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_checkout_ours, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_checkout_theirs, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_mark_resolved, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_stash_save, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_stash_pop, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_rebase_upstream, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_abort_rebase, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_continue_rebase, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_discard_path, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_delete_local_branch, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_set_upstream, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_commit_files, m)?)?;
+    m.add_function(wrap_pyfunction!(get_merge_request, m)?)?;
+    m.add_function(wrap_pyfunction!(update_merge_request, m)?)?;
+    m.add_function(wrap_pyfunction!(merge_merge_request, m)?)?;
+    m.add_function(wrap_pyfunction!(list_merge_request_notes, m)?)?;
+    m.add_function(wrap_pyfunction!(list_recent_repos, m)?)?;
+    m.add_function(wrap_pyfunction!(set_fetch_on_focus, m)?)?;
     m.add_function(wrap_pyfunction!(set_check_for_updates, m)?)?;
     m.add_function(wrap_pyfunction!(set_active_ui_view, m)?)?;
     m.add_function(wrap_pyfunction!(set_ui_shell, m)?)?;
@@ -2006,6 +2366,7 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(http_clone_url_for, m)?)?;
     m.add_function(wrap_pyfunction!(rebase_http_url_to_base, m)?)?;
     m.add_function(wrap_pyfunction!(active_forge_info, m)?)?;
+    m.add_function(wrap_pyfunction!(forge_feature_matrix, m)?)?;
     m.add_function(wrap_pyfunction!(revert_config_to_known_good, m)?)?;
     m.add_function(wrap_pyfunction!(parse_error_message, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

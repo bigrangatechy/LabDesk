@@ -39,6 +39,12 @@ pub struct GeneralConfig {
     pub progress_overlay_color: String,
     /// Alpha 0–255 for the progress fill.
     pub progress_overlay_alpha: u8,
+    /// When true, repo windows fetch on focus/Refresh (V2 sync awareness).
+    pub fetch_on_focus: bool,
+    /// History tab page size (load-more chunk).
+    pub history_page_size: u32,
+    /// Opt-in tracked-file browse page size.
+    pub browse_files_page_size: u32,
 }
 
 /// Forge host (machine).
@@ -92,6 +98,9 @@ impl Default for GeneralConfig {
             projects_layout: "table".into(),
             progress_overlay_color: "#2ecc71".into(),
             progress_overlay_alpha: 70,
+            fetch_on_focus: true,
+            history_page_size: 200,
+            browse_files_page_size: 200,
         }
     }
 }
@@ -261,6 +270,9 @@ fn default_config() -> AppConfig {
     general["projects_layout"] = value("table");
     general["progress_overlay_color"] = value("#2ecc71");
     general["progress_overlay_alpha"] = Item::Value(Value::from(70i64));
+    general["fetch_on_focus"] = Item::Value(Value::from(true));
+    general["history_page_size"] = Item::Value(Value::from(200i64));
+    general["browse_files_page_size"] = Item::Value(Value::from(200i64));
     document["general"] = Item::Table(general);
     document["instances"] = Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
     document["accounts"] = Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
@@ -326,6 +338,22 @@ fn read_general(doc: &DocumentMut) -> Result<GeneralConfig> {
             .and_then(|v| v.as_integer())
             .and_then(|n| u8::try_from(n).ok())
             .unwrap_or(70),
+        fetch_on_focus: table
+            .get("fetch_on_focus")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+        history_page_size: table
+            .get("history_page_size")
+            .and_then(|v| v.as_integer())
+            .and_then(|n| u32::try_from(n).ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(200),
+        browse_files_page_size: table
+            .get("browse_files_page_size")
+            .and_then(|v| v.as_integer())
+            .and_then(|n| u32::try_from(n).ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(200),
     })
 }
 
@@ -605,6 +633,11 @@ fn sync_document(cfg: &mut AppConfig) {
     general["progress_overlay_color"] = value(&cfg.general.progress_overlay_color);
     general["progress_overlay_alpha"] =
         Item::Value(Value::from(i64::from(cfg.general.progress_overlay_alpha)));
+    general["fetch_on_focus"] = Item::Value(Value::from(cfg.general.fetch_on_focus));
+    general["history_page_size"] =
+        Item::Value(Value::from(i64::from(cfg.general.history_page_size)));
+    general["browse_files_page_size"] =
+        Item::Value(Value::from(i64::from(cfg.general.browse_files_page_size)));
 
     let mut inst_array = toml_edit::ArrayOfTables::new();
     for inst in &cfg.instances {
