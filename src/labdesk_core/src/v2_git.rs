@@ -175,6 +175,67 @@ pub fn checkout_theirs(repo_path: &Path, rel: &str) -> Result<()> {
     checkout_stage(repo_path, rel, 3)
 }
 
+/// Read conflict side text for preview (`ours` = stage 2, `theirs` = stage 3,
+/// `work` = working-tree file with markers if present).
+pub fn conflict_side_text(repo_path: &Path, rel: &str, side: &str) -> Result<String> {
+    let rel = rel.trim_start_matches('/');
+    if rel.is_empty() || rel.contains("..") {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.").with_detail("invalid path"),
+        ));
+    }
+    const CAP: usize = 200_000;
+    let truncate = |mut s: String| -> String {
+        if s.len() > CAP {
+            s.truncate(CAP);
+            s.push_str("\n\n… truncated …");
+        }
+        s
+    };
+    match side {
+        "work" | "working" | "working_tree" => {
+            let full = repo_path.join(rel);
+            let bytes = std::fs::read(&full).map_err(|e| {
+                LabDeskError::App(
+                    ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                        .with_detail(format!("read {rel}: {e}")),
+                )
+            })?;
+            if bytes.iter().any(|&b| b == 0) {
+                return Ok(format!("(binary file, {} bytes)", bytes.len()));
+            }
+            Ok(truncate(String::from_utf8_lossy(&bytes).into_owned()))
+        }
+        "ours" => Ok(truncate(read_index_stage_text(repo_path, rel, 2)?)),
+        "theirs" => Ok(truncate(read_index_stage_text(repo_path, rel, 3)?)),
+        other => Err(LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail(format!("unknown conflict side: {other}")),
+        )),
+    }
+}
+
+fn read_index_stage_text(repo_path: &Path, rel: &str, stage: i32) -> Result<String> {
+    let repo = open_repo(repo_path)?;
+    let index = repo
+        .index()
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let entry = index.get_path(Path::new(rel), stage).ok_or_else(|| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-GIT-001", "Git operation failed.")
+                .with_detail(format!("no stage {stage} for {rel}")),
+        )
+    })?;
+    let blob = repo
+        .find_blob(entry.id)
+        .map_err(|e| map_git_error(e, "LD-GIT-001", "Git operation failed."))?;
+    let content = blob.content();
+    if content.iter().any(|&b| b == 0) {
+        return Ok(format!("(binary blob, {} bytes)", content.len()));
+    }
+    Ok(String::from_utf8_lossy(content).into_owned())
+}
+
 fn checkout_stage(repo_path: &Path, rel: &str, stage: i32) -> Result<()> {
     let rel = rel.trim_start_matches('/');
     if rel.is_empty() || rel.contains("..") {
@@ -653,5 +714,97 @@ mod tests {
         let _ = fs::remove_dir_all(bare);
         let _ = fs::remove_dir_all(clone);
         let _ = fs::remove_dir_all(other);
+    }
+
+    #[test]
+    fn merge_conflict_accept_ours_then_continue() {
+        let root = temp_root("merge-ours");
+        git(&root, &["init", "-b", "main"]);
+        git(&root, &["config", "user.name", "Test"]);
+        git(&root, &["config", "user.email", "t@example.com"]);
+        fs::write(root.join("a.txt"), "base\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "base"]);
+
+        git(&root, &["checkout", "-b", "feature"]);
+        fs::write(root.join("a.txt"), "theirs\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "feature"]);
+
+        git(&root, &["checkout", "main"]);
+        fs::write(root.join("a.txt"), "ours\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "main"]);
+
+        // Leave conflicts in place (CLI merge).
+        let st = Command::new("git")
+            .args(["merge", "feature", "--no-edit"])
+            .current_dir(&root)
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .status()
+            .expect("merge");
+        assert!(!st.success(), "expected conflict");
+
+        let paths = list_conflicted_paths(&root).expect("list");
+        assert_eq!(paths, vec!["a.txt".to_string()]);
+        assert!(conflict_side_text(&root, "a.txt", "ours")
+            .unwrap()
+            .contains("ours"));
+        assert!(conflict_side_text(&root, "a.txt", "theirs")
+            .unwrap()
+            .contains("theirs"));
+
+        checkout_ours(&root, "a.txt").expect("ours");
+        mark_resolved(&root, "a.txt").expect("mark");
+        assert!(list_conflicted_paths(&root).unwrap().is_empty());
+        continue_merge(&root).expect("continue");
+        assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "ours\n");
+        let state = repo_in_merge_or_rebase(&root).unwrap();
+        assert!(
+            !state.to_lowercase().contains("merge"),
+            "expected clean, got {state}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn merge_conflict_accept_theirs_then_continue() {
+        let root = temp_root("merge-theirs");
+        git(&root, &["init", "-b", "main"]);
+        git(&root, &["config", "user.name", "Test"]);
+        git(&root, &["config", "user.email", "t@example.com"]);
+        fs::write(root.join("a.txt"), "base\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "base"]);
+
+        git(&root, &["checkout", "-b", "feature"]);
+        fs::write(root.join("a.txt"), "theirs\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "feature"]);
+
+        git(&root, &["checkout", "main"]);
+        fs::write(root.join("a.txt"), "ours\n").unwrap();
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-m", "main"]);
+
+        let st = Command::new("git")
+            .args(["merge", "feature", "--no-edit"])
+            .current_dir(&root)
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .status()
+            .expect("merge");
+        assert!(!st.success(), "expected conflict");
+
+        checkout_theirs(&root, "a.txt").expect("theirs");
+        mark_resolved(&root, "a.txt").expect("mark");
+        continue_merge(&root).expect("continue");
+        assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "theirs\n");
+        let _ = fs::remove_dir_all(root);
     }
 }

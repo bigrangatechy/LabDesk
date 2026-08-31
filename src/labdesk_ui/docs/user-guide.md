@@ -170,8 +170,9 @@ If someone else pushed while you were committing locally:
    have new files), then **Pull**.
 3. Pull fast-forwards when histories did not diverge. If they did
    (`LD-GIT-024`), choose **merge** or **rebase onto upstream**.
-4. On conflicts (`LD-GIT-020`), use **Resolve conflicts…** (ours /
-   theirs / open external / mark resolved), then Continue — or Abort
+4. On conflicts (`LD-GIT-020`), use **Resolve conflicts…**: preview
+   Working tree / Ours / Theirs, then Accept ours, Accept theirs, Open
+   external, or Mark resolved. Continue when clear — or Abort
    merge/rebase to get back to a clean state.
 5. **Pop stash** when you are ready to restore local work.
 

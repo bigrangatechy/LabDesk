@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-01  
-**Updated:** 2026-08-07 (dependency license accuracy; QScintilla rejected)
+**Updated:** 2026-09-01 (reaffirm QScintilla rejected; editor is from-scratch per ADR-002)
 
 ## Context
 
@@ -29,6 +29,8 @@ version 2 or later (GPLv2+)**.
   under GPLv2+.
 - Dependencies that would force the combined work to **GPLv3-only**
   (notably Riverbank QScintilla) are **not** accepted; see ADR-002.
+  The in-app editor (Slice I) is built from scratch on PySide6/Qt for
+  the same reason.
 
 ### Dependency license notes (verified for docs; not legal advice)
 
@@ -37,7 +39,7 @@ version 2 or later (GPLv2+)**.
 | PySide6 | `LGPL-3.0 OR GPL-2.0 OR GPL-3.0` | Use under GPLv2-compatible option |
 | libgit2 | GPLv2 **with linking exception** | Accepted |
 | Rust crates (typical) | MIT / Apache-2.0 | Accepted |
-| Riverbank QScintilla | GPLv3 or commercial | **Rejected** (ADR-002) |
+| Riverbank QScintilla | GPLv3 or commercial | **Rejected** (ADR-002; editor from scratch) |
 | Qt `QTextEdit` | Via PySide6/Qt | Accepted |
 
 ## Consequences

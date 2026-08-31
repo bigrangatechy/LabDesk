@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QDialog,
@@ -15,6 +14,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
 )
@@ -30,8 +30,8 @@ class ConflictDialog(QDialog):
         super().__init__(parent)
         self.repo_path = str(Path(repo_path).resolve())
         self.mode = mode  # merge | rebase
-        self.setWindowTitle("Resolve conflicts")
-        self.resize(900, 560)
+        self.setWindowTitle(f"Resolve conflicts ({self.mode})")
+        self.resize(960, 600)
 
         layout = QVBoxLayout(self)
         self.status = QLabel("")
@@ -44,10 +44,21 @@ class ConflictDialog(QDialog):
         split.addWidget(self.paths, stretch=1)
 
         right = QVBoxLayout()
-        self.preview = QTextEdit()
-        self.preview.setReadOnly(True)
-        self.preview.setFont(QFont("monospace"))
-        right.addWidget(self.preview, stretch=1)
+        self.tabs = QTabWidget()
+        mono = QFont("monospace")
+        self.preview_work = QTextEdit()
+        self.preview_work.setReadOnly(True)
+        self.preview_work.setFont(mono)
+        self.preview_ours = QTextEdit()
+        self.preview_ours.setReadOnly(True)
+        self.preview_ours.setFont(mono)
+        self.preview_theirs = QTextEdit()
+        self.preview_theirs.setReadOnly(True)
+        self.preview_theirs.setFont(mono)
+        self.tabs.addTab(self.preview_work, "Working tree")
+        self.tabs.addTab(self.preview_ours, "Ours")
+        self.tabs.addTab(self.preview_theirs, "Theirs")
+        right.addWidget(self.tabs, stretch=1)
 
         actions = QHBoxLayout()
         self.btn_ours = QPushButton("Accept ours")
@@ -87,6 +98,15 @@ class ConflictDialog(QDialog):
             return None
         return item.text()
 
+    def _set_path_actions_enabled(self, enabled: bool) -> None:
+        for btn in (
+            self.btn_ours,
+            self.btn_theirs,
+            self.btn_external,
+            self.btn_mark,
+        ):
+            btn.setEnabled(enabled)
+
     def _reload(self) -> None:
         import labdesk_core
 
@@ -97,32 +117,57 @@ class ConflictDialog(QDialog):
         except Exception as exc:
             code, msg = format_error(exc)
             self.status.setText(f"[{code}] {msg}")
+            self.btn_continue.setEnabled(False)
+            self._set_path_actions_enabled(False)
             return
         self.status.setText(
-            f"{len(conflicts)} conflicted path(s). Repo state: {state}"
+            f"{len(conflicts)} conflicted path(s). Mode: {self.mode}. Repo state: {state}"
         )
         for p in conflicts:
             self.paths.addItem(QListWidgetItem(p))
+        # Continue only when nothing remains conflicted (still allow Abort).
+        self.btn_continue.setEnabled(len(conflicts) == 0)
+        self._set_path_actions_enabled(bool(conflicts))
         if conflicts:
             self.paths.setCurrentRow(0)
         else:
-            self.preview.setPlainText(
-                "No conflicts remain. Continue merge/rebase, or Abort."
-            )
+            for view in (self.preview_work, self.preview_ours, self.preview_theirs):
+                view.setPlainText(
+                    "No conflicts remain. Continue merge/rebase, or Abort."
+                )
 
     def _on_selected(self, current: QListWidgetItem | None, _prev) -> None:
         if current is None:
             return
         rel = current.text()
+        try:
+            import labdesk_core
+
+            if hasattr(labdesk_core, "repo_conflict_side_text"):
+                self.preview_work.setPlainText(
+                    labdesk_core.repo_conflict_side_text(self.repo_path, rel, "work")
+                )
+                self.preview_ours.setPlainText(
+                    labdesk_core.repo_conflict_side_text(self.repo_path, rel, "ours")
+                )
+                self.preview_theirs.setPlainText(
+                    labdesk_core.repo_conflict_side_text(self.repo_path, rel, "theirs")
+                )
+                return
+        except Exception as exc:
+            # Fall through to working-tree-only preview.
+            code, msg = format_error(exc)
+            self.preview_ours.setPlainText(f"[{code}] {msg}")
+            self.preview_theirs.setPlainText(f"[{code}] {msg}")
+
         full = Path(self.repo_path) / rel
         try:
             text = full.read_text(encoding="utf-8", errors="replace")
-            # Cap preview for huge conflicted files
             if len(text) > 200_000:
                 text = text[:200_000] + "\n\n… truncated …"
-            self.preview.setPlainText(text)
+            self.preview_work.setPlainText(text)
         except OSError as exc:
-            self.preview.setPlainText(f"(could not read {rel}: {exc})")
+            self.preview_work.setPlainText(f"(could not read {rel}: {exc})")
 
     def _accept_ours(self) -> None:
         rel = self._selected_path()
@@ -187,6 +232,15 @@ class ConflictDialog(QDialog):
             self.accept()
         except Exception as exc:
             code, msg = format_error(exc)
+            # Another conflict step (rebase): stay open and refresh.
+            if code == "LD-GIT-020":
+                QMessageBox.warning(
+                    self,
+                    "More conflicts",
+                    f"[{code}] {msg}\n\nResolve the next conflicted path(s).",
+                )
+                self._reload()
+                return
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
             self._reload()
 

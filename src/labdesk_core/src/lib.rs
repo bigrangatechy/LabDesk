@@ -1996,6 +1996,15 @@ fn repo_mark_resolved(repo_path: String, path: String) -> PyResult<()> {
 }
 
 #[pyfunction]
+fn repo_conflict_side_text(repo_path: String, path: String, side: String) -> PyResult<String> {
+    Ok(v2_git::conflict_side_text(
+        std::path::Path::new(&repo_path),
+        &path,
+        &side,
+    )?)
+}
+
+#[pyfunction]
 #[pyo3(signature = (repo_path, include_untracked=false))]
 fn repo_stash_save(repo_path: String, include_untracked: bool) -> PyResult<String> {
     Ok(v2_git::stash_save(std::path::Path::new(&repo_path), include_untracked)?)
@@ -2341,6 +2350,7 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(repo_checkout_ours, m)?)?;
     m.add_function(wrap_pyfunction!(repo_checkout_theirs, m)?)?;
     m.add_function(wrap_pyfunction!(repo_mark_resolved, m)?)?;
+    m.add_function(wrap_pyfunction!(repo_conflict_side_text, m)?)?;
     m.add_function(wrap_pyfunction!(repo_stash_save, m)?)?;
     m.add_function(wrap_pyfunction!(repo_stash_pop, m)?)?;
     m.add_function(wrap_pyfunction!(repo_rebase_upstream, m)?)?;

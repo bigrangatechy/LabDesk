@@ -145,7 +145,7 @@ matching local `origin` remotes.
 | Commit                 | No                | Full functionality                             |
 | View diff              | No                | Full functionality                             |
 | Create/switch branch   | No                | Full functionality                             |
-| Merge (local, clean)   | No                | Full functionality; conflicts → external       |
+| Merge (local)          | No                | Full functionality; conflicts → in-app resolve |
 | Push/Pull              | Yes               | Disable button, show warning                   |
 | Force push             | Yes               | Disabled offline; confirm dialog when used     |
 | List remote projects   | Yes               | Show cached list with staleness indicator      |
@@ -300,15 +300,18 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
   passwords are not stored in `config.toml` either.
 - **Force push** is available behind an explicit confirmation dialog;
   it is not the default recovery from a rejected push.
-- **No in-app code editing.** Diff and conflict previews use read-only
-  `QTextEdit` (plus structured ours/theirs actions). Open files with an
-  external editor via `xdg-open` / portal. A future full in-app editor,
-  if any, would be built from scratch (not QScintilla).
+- **No in-app code editing (through Slice H).** Diff and conflict
+  previews use read-only `QTextEdit` (plus structured ours/theirs
+  actions). Open files with an external editor via `xdg-open` / portal.
+  **Slice I** adds a full in-app editor built **from scratch** on
+  PySide6/Qt — not Riverbank QScintilla (ADR-002, ADR-003). See
+  [`v2-roadmap.md`](v2-roadmap.md).
 - **Conflict resolution (V2):** structured in-app resolve is supported;
   users may still resolve externally. See ADR-006 and `Docs/v2-roadmap.md`.
-- **No admin/runner management.** Developer workflow only.
-- **English-only UI.** Localization deferred.
+- **Admin/runners, fancy side-by-side diff, localization, MR reply
+  posting, submodule/LFS UIs:** planned as Slices J–N; not before then.
+- **No OAuth/SSO** for the API in this roadmap; PAT / forge tokens only.
+- **English-only UI** until Slice L.
 - **Linux only.** No Windows or macOS.
-- **V2 roadmap:** sync banner, large-repo virtualization, stash/rebase,
-  MR detail/merge/notes, SSH host-switch, notifications — see
+- **V2 roadmap:** slices A–N + post-feature UI/UX pass — see
   [`v2-roadmap.md`](v2-roadmap.md).

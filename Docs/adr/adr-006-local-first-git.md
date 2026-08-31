@@ -42,7 +42,8 @@ Clean local merges and rebases are in scope. On conflict, LabDesk
 provides a **structured conflict-resolution UI** (list conflicted paths;
 accept ours / theirs; open in external editor; mark resolved; continue
 or abort). This is **not** a general in-app code editor and must not
-introduce Riverbank QScintilla (ADR-002, ADR-003). Users may still
+introduce Riverbank QScintilla (ADR-002, ADR-003). A full editor is
+Slice I and is built from scratch on Qt. Users may still
 resolve entirely externally if they prefer.
 
 ### Pipeline status

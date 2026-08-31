@@ -20,6 +20,17 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:37:36  01/09/2026** — Locked Slice I editor approach: **from scratch**
+  on PySide6/Qt (`QPlainTextEdit` / `QTextEdit` + highlighters). ADR-002 /
+  ADR-003 updated; Riverbank QScintilla remains rejected (GPLv2+).
+- **00:35:18  01/09/2026** — V2 roadmap extended: Slices I–N (in-app
+  editor, admin/runners, fancy side-by-side diff, localization, MR review
+  replies, submodule/LFS UIs) plus a post-feature **UI/UX polish** pass.
+  OAuth/SSO and Windows/macOS remain deferred.
+- **00:32:10  01/09/2026** — Slice D conflict resolve: Working/Ours/Theirs
+  read-only tabs, Continue gated until clear, multi-step rebase conflicts
+  stay in the dialog (`LD-GIT-020`). `repo_conflict_side_text`; merge
+  ours/theirs → continue Rust fixtures; Python dialog smoke tests.
 - **00:26:40  01/09/2026** — Slice C stash/rebase/safer pull: **Pop stash…**,
   stash with or without untracked, stash-before-pull then optional pop,
   diverged pull → merge/rebase (`LD-GIT-024`/`LD-GIT-020`/`LD-GIT-021`–
