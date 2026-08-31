@@ -103,6 +103,14 @@ def _format_mr_row(mr: dict) -> str:
     return f"{prefix}{title}  [{state}]  {src} → {tgt}"
 
 
+def _ref_to_branch_name(ref: str) -> str:
+    """Strip a leading ``origin/`` remote prefix; keep nested branch names."""
+    ref = (ref or "").strip()
+    if ref.startswith("origin/"):
+        return ref[len("origin/") :]
+    return ref
+
+
 def _set_colored_diff(widget: QTextEdit, text: str) -> None:
     widget.clear()
     dark = widget.palette().color(QPalette.ColorRole.Window).lightness() < 128
@@ -344,12 +352,17 @@ class RepoWindow(QMainWindow):
         pick.addWidget(self.btn_compare)
         self.btn_compare_mr = QPushButton("Create MR/PR from compare…")
         self.btn_compare_mr.clicked.connect(self._create_mr_from_compare)
+        self.btn_compare_mr.setEnabled(False)
+        self.btn_compare_mr.setToolTip(
+            "Run Compare when the other ref is ahead of the base, then create."
+        )
         pick.addWidget(self.btn_compare_mr)
         layout.addLayout(pick)
 
         self.compare_summary = QLabel("Pick two refs and Compare.")
         self.compare_summary.setWordWrap(True)
         layout.addWidget(self.compare_summary)
+        self._compare_ahead = 0
 
         split = QSplitter()
         self.compare_commits = QListWidget()
@@ -388,6 +401,7 @@ class RepoWindow(QMainWindow):
         row.addStretch(1)
         layout.addLayout(row)
         self.mr_list.currentItemChanged.connect(self._on_mr_selected)
+        self.mr_list.itemDoubleClicked.connect(lambda _item: self._open_mr_detail())
         return page
 
     def _build_pipelines_tab(self) -> QWidget:
@@ -1039,20 +1053,40 @@ class RepoWindow(QMainWindow):
             web = (mr or {}).get("web_url") or ""
             iid = (mr or {}).get("iid")
             self.footer.setText(f"Created !{iid}")
-            reply = QMessageBox.information(
+            self._refresh_mrs()
+            reply = QMessageBox.question(
                 self,
                 f"{kind} created",
                 f"Created !{iid}: {(mr or {}).get('title') or title}\n\n"
-                f"{open_in_label(info)}?",
+                f"Open details in LabDesk?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes,
             )
-            if reply == QMessageBox.StandardButton.Yes and web:
-                try:
-                    open_url(web)
-                except Exception as exc:
-                    code, msg = format_error(exc)
-                    QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
+            if reply == QMessageBox.StandardButton.Yes and iid is not None:
+                dlg = MRDetailDialog(
+                    project_id=project_id,
+                    mr_iid=int(iid),
+                    parent=self,
+                    kind_label=kind,
+                )
+                dlg.exec()
+                self._refresh_mrs()
+            elif web:
+                open_reply = QMessageBox.question(
+                    self,
+                    open_in_label(info),
+                    f"{open_in_label(info)}?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if open_reply == QMessageBox.StandardButton.Yes:
+                    try:
+                        open_url(web)
+                    except Exception as exc:
+                        code, msg = format_error(exc)
+                        QMessageBox.warning(
+                            self, f"Error {code}", f"[{code}] {msg}"
+                        )
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
             self._busy = False
@@ -1500,7 +1534,7 @@ class RepoWindow(QMainWindow):
                     info = labdesk_core.resolve_repo_project(path)
                     pid = int(info["project_id"])
                     # Check the other tip's branch name on the forge.
-                    branch = other.split("/", 1)[-1] if other.startswith("origin/") else other
+                    branch = _ref_to_branch_name(other)
                     remote = labdesk_core.remote_branch_exists(pid, branch)
                 except Exception as exc:
                     remote = {"error": str(exc)}
@@ -1533,6 +1567,11 @@ class RepoWindow(QMainWindow):
             elif not online:
                 lines.append("Remote check skipped (offline).")
             self.compare_summary.setText("\n".join(lines))
+            self._compare_ahead = ahead
+            if hasattr(self, "btn_compare_mr"):
+                self.btn_compare_mr.setEnabled(
+                    ahead > 0 and bool(self._network_available)
+                )
             self.compare_commits.clear()
             for c in cmp.get("commits") or []:
                 summary = c.get("summary") or ""
@@ -1671,7 +1710,15 @@ class RepoWindow(QMainWindow):
         ok = isinstance(mr, dict)
         self.btn_mr_open.setEnabled(bool(ok and mr.get("web_url")))
         if hasattr(self, "btn_mr_detail"):
-            self.btn_mr_detail.setEnabled(bool(ok and mr.get("iid") is not None))
+            info = getattr(self, "_forge_info", None) or forge_info()
+            self.btn_mr_detail.setEnabled(
+                bool(
+                    ok
+                    and mr.get("iid") is not None
+                    and info.get("supports_mr_detail", True)
+                    and self._network_available
+                )
+            )
 
     def _open_selected_mr(self) -> None:
         item = self.mr_list.currentItem()
@@ -2135,8 +2182,23 @@ class RepoWindow(QMainWindow):
                 self, "Create from compare", "Pick base and other refs first."
             )
             return
-        source = other.split("/")[-1] if other.startswith("origin/") else other
-        target = base.split("/")[-1] if base.startswith("origin/") else base
+        if not self._network_available:
+            QMessageBox.information(
+                self,
+                "Create from compare",
+                "Working offline — cannot create on the forge.",
+            )
+            return
+        ahead = int(getattr(self, "_compare_ahead", 0) or 0)
+        if ahead <= 0:
+            QMessageBox.information(
+                self,
+                "Create from compare",
+                "Run Compare first when the other ref is ahead of the base.",
+            )
+            return
+        source = _ref_to_branch_name(other)
+        target = _ref_to_branch_name(base)
         try:
             import labdesk_core
 
@@ -2154,21 +2216,81 @@ class RepoWindow(QMainWindow):
             if dlg.exec() != MRDialog.DialogCode.Accepted:
                 return
             src, tgt, title, description, draft = dlg.values()
-            mr = labdesk_core.create_merge_request(
-                int(project["project_id"]),
-                src,
-                tgt,
-                title,
-                description or None,
-                draft,
-            )
-            self.footer.setText(f"Created !{(mr or {}).get('iid')}")
-            self._refresh_mrs()
+            if not title:
+                QMessageBox.warning(self, f"Create {kind.lower()}", "Title is required.")
+                return
         except Exception as exc:
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+            return
+
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        project_id = int(project["project_id"])
+        desc = description or None
+
+        def work():
+            import labdesk_core
+
+            return labdesk_core.create_merge_request(
+                project_id, src, tgt, title, desc, draft
+            )
+
+        def on_ok(mr) -> None:
+            self._busy = False
+            iid = (mr or {}).get("iid")
+            self.footer.setText(f"Created !{iid}")
+            self._refresh_mrs()
+            if iid is not None:
+                reply = QMessageBox.question(
+                    self,
+                    f"{kind} created",
+                    f"Created !{iid}. Open details in LabDesk?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    detail = MRDetailDialog(
+                        project_id=project_id,
+                        mr_iid=int(iid),
+                        parent=self,
+                        kind_label=kind,
+                    )
+                    detail.exec()
+                    self._refresh_mrs()
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self._busy = False
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        self._busy = True
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=self._network_busy_widgets(),
+            status=self.footer.setText,
+            working_message=f"Creating {kind.lower()}…",
+        )
 
     def _open_mr_detail(self) -> None:
+        info = getattr(self, "_forge_info", None) or forge_info()
+        if not info.get("supports_mr_detail", True):
+            QMessageBox.information(
+                self,
+                "Details",
+                f"{info.get('display_name') or 'This forge'} does not expose "
+                "MR/PR detail to LabDesk.",
+            )
+            return
+        if not self._network_available:
+            QMessageBox.information(
+                self,
+                "Details",
+                "Working offline — open the forge in a browser, or reconnect.",
+            )
+            return
         item = self.mr_list.currentItem()
         if item is None:
             return
@@ -2187,7 +2309,6 @@ class RepoWindow(QMainWindow):
                 code, msg = format_error(exc)
                 QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
                 return
-        info = getattr(self, "_forge_info", None) or forge_info()
         dlg = MRDetailDialog(
             project_id=int(project_id),
             mr_iid=int(mr["iid"]),

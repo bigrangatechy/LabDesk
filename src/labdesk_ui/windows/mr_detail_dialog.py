@@ -41,11 +41,14 @@ class MRDetailDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.title_edit = QLineEdit()
+        self.source_edit = QLineEdit()
+        self.source_edit.setReadOnly(True)
         self.target_edit = QLineEdit()
         self.meta = QLabel("")
         self.meta.setWordWrap(True)
         self.description = QTextEdit()
         form.addRow("Title", self.title_edit)
+        form.addRow("Source branch", self.source_edit)
         form.addRow("Target branch", self.target_edit)
         form.addRow("Meta", self.meta)
         form.addRow("Description", self.description)
@@ -120,13 +123,14 @@ class MRDetailDialog(QDialog):
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
             return
         self.title_edit.setText(d.get("title") or "")
+        self.source_edit.setText(d.get("source_branch") or "")
         self.target_edit.setText(d.get("target_branch") or "")
         self.description.setPlainText(d.get("description") or "")
         self._web_url = d.get("web_url") or None
         draft = "yes" if d.get("draft") else "no"
         self.meta.setText(
             f"State: {d.get('state') or '?'} · Author: {d.get('author') or '?'} · "
-            f"Draft: {draft} · {d.get('source_branch') or '?'} → {d.get('target_branch') or '?'}"
+            f"Draft: {draft}"
         )
         self._load_notes()
 

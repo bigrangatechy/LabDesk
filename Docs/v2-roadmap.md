@@ -30,8 +30,8 @@ admin, localization, review, and git-extension surfaces. Delivery is
 | B | Large-repo UX (dirty-only Changes, virtualized browse, paged history) | Done |
 | C | Stash + rebase + safer pull | Done |
 | D | In-app conflict resolution | Done |
-| E | MR detail / edit / create-from-Compare | Next |
-| F | MR merge via API + read-only notes | — |
+| E | MR detail / edit / create-from-Compare | Done |
+| F | MR merge via API + read-only notes | Next |
 | G | SSH host-switch + richer diffs | — |
 | H | Notifications + V1 completeness pack | — |
 | I | Full in-app code editor (from scratch on Qt; no QScintilla) | — |

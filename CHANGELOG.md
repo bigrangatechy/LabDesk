@@ -20,6 +20,11 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:41:31  01/09/2026** — Slice E MR/PR detail + create-from-Compare:
+  Details gated on forge capability + online; double-click opens detail;
+  create-from-Compare only when ahead of base (nested `origin/` branches
+  preserved); draft checkbox where supported; post-create opens Details.
+  User-guide / journey updated.
 - **00:37:36  01/09/2026** — Locked Slice I editor approach: **from scratch**
   on PySide6/Qt (`QPlainTextEdit` / `QTextEdit` + highlighters). ADR-002 /
   ADR-003 updated; Riverbank QScintilla remains rejected (GPLv2+).

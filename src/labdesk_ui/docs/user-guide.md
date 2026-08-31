@@ -152,9 +152,15 @@ In the repo window:
 - **Compare:** pick two branches (local or `origin/…`), see ahead/behind,
   recent commits, and a read-only tip diff (truncated if huge). When
   online, LabDesk can check whether the other branch exists on the forge.
+  If the other tip is **ahead** of the base, **Create MR/PR from
+  compare…** pre-fills source/target (and optional draft where the forge
+  supports it).
 - **Merge / pull requests:** opened items for this project (tab label
   follows the forge; refresh while online; last list kept for offline
-  viewing). **Open in …** opens the selected row in the browser.
+  viewing). **Details…** (or double-click) shows title, description,
+  source/target, author, state, and draft; you can edit metadata where
+  the forge allows and open the item in the browser. **Open in …** opens
+  the selected row in the browser.
 - **Fetch / Pull / Push** and ahead/behind vs upstream in the header.
 - **Force push…** only after an explicit confirmation.
 - After a successful (non-force) push, LabDesk may offer to **create a

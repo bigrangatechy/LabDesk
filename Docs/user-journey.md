@@ -110,8 +110,11 @@ edit a selected file outside LabDesk.
 4. **Create merge / pull request:** fill title, description,
    source/target branch → forge create API (GitLab uses
    **`PRIVATE-TOKEN`**; other forges use their token header). Dialog
-   and button labels follow the active forge.
-5. On success, offer **Open in …** (forge name) in the browser.
+   and button labels follow the active forge. Draft create is offered
+   where the forge supports it (hidden otherwise). You can also create
+   from the **Compare** tab when the other tip is ahead of the base.
+5. On success, offer **Details…** in LabDesk and/or **Open in …**
+   (forge name) in the browser.
 
 Requires network. If offline, disable push / force push / create
 actions with a clear reason.
