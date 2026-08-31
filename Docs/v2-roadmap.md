@@ -31,8 +31,8 @@ admin, localization, review, and git-extension surfaces. Delivery is
 | C | Stash + rebase + safer pull | Done |
 | D | In-app conflict resolution | Done |
 | E | MR detail / edit / create-from-Compare | Done |
-| F | MR merge via API + read-only notes | Next |
-| G | SSH host-switch + richer diffs | — |
+| F | MR merge via API + read-only notes | Done |
+| G | SSH host-switch + richer diffs | Next |
 | H | Notifications + V1 completeness pack | — |
 | I | Full in-app code editor (from scratch on Qt; no QScintilla) | — |
 | J | Admin / runner management | — |

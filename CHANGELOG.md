@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:44:52  01/09/2026** — Slice F MR/PR merge + read-only notes: Merge…
+  offers default or squash (`LD-API-MR-003`); notes reload + load-more
+  (page>1 empty on Gitea/Forgejo/OneDev to avoid duplicates); merge
+  disabled when not open. User-guide + tests.
 - **00:41:31  01/09/2026** — Slice E MR/PR detail + create-from-Compare:
   Details gated on forge capability + online; double-click opens detail;
   create-from-Compare only when ahead of base (nested `origin/` branches

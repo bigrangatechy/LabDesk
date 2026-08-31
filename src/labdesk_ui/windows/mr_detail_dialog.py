@@ -20,6 +20,22 @@ from labdesk_ui.utils.forge_labels import forge_info, open_in_label, pr_label
 from labdesk_ui.utils.helpers import format_error
 from labdesk_ui.utils.open_external import open_url
 
+_NOTES_PAGE_SIZE = 50
+
+
+def _format_notes(notes: list) -> str:
+    if not notes:
+        return "(no notes)"
+    lines: list[str] = []
+    for n in notes:
+        author = (n or {}).get("author") or "?"
+        when = (n or {}).get("created_at") or ""
+        body = ((n or {}).get("body") or "").strip()
+        lines.append(f"— {author}  {when}")
+        lines.append(body)
+        lines.append("")
+    return "\n".join(lines)
+
 
 class MRDetailDialog(QDialog):
     def __init__(
@@ -37,6 +53,9 @@ class MRDetailDialog(QDialog):
         self._kind = kind_label or pr_label(self._info)
         self.setWindowTitle(f"{self._kind} !{self.mr_iid}")
         self.resize(640, 720)
+        self._notes_page = 1
+        self._notes: list = []
+        self._notes_may_have_more = False
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -54,11 +73,22 @@ class MRDetailDialog(QDialog):
         form.addRow("Description", self.description)
         layout.addLayout(form)
 
-        layout.addWidget(QLabel("Notes (read-only)"))
+        layout.addWidget(QLabel("Notes (read-only — replies are not posted from LabDesk)"))
         self.notes = QTextEdit()
         self.notes.setReadOnly(True)
         self.notes.setFont(QFont("monospace"))
         layout.addWidget(self.notes, stretch=1)
+
+        notes_row = QHBoxLayout()
+        self.btn_notes = QPushButton("Reload notes")
+        self.btn_notes.clicked.connect(lambda: self._load_notes(reset=True))
+        notes_row.addWidget(self.btn_notes)
+        self.btn_notes_more = QPushButton("Load more notes")
+        self.btn_notes_more.clicked.connect(self._load_more_notes)
+        self.btn_notes_more.setEnabled(False)
+        notes_row.addWidget(self.btn_notes_more)
+        notes_row.addStretch(1)
+        layout.addLayout(notes_row)
 
         row = QHBoxLayout()
         self.btn_save = QPushButton("Save metadata")
@@ -70,9 +100,6 @@ class MRDetailDialog(QDialog):
         self.btn_open = QPushButton(open_in_label(self._info))
         self.btn_open.clicked.connect(self._open_web)
         row.addWidget(self.btn_open)
-        self.btn_notes = QPushButton("Reload notes")
-        self.btn_notes.clicked.connect(self._load_notes)
-        row.addWidget(self.btn_notes)
         row.addStretch(1)
         layout.addLayout(row)
 
@@ -88,7 +115,9 @@ class MRDetailDialog(QDialog):
         info = self._info
         self.btn_save.setEnabled(bool(info.get("supports_mr_update", True)))
         self.btn_merge.setEnabled(bool(info.get("supports_mr_merge", True)))
-        self.btn_notes.setEnabled(bool(info.get("supports_mr_notes", True)))
+        notes_ok = bool(info.get("supports_mr_notes", True))
+        self.btn_notes.setEnabled(notes_ok)
+        self.btn_notes_more.setEnabled(False)
         if not info.get("supports_mr_retarget", True):
             self.target_edit.setReadOnly(True)
             self.target_edit.setToolTip(
@@ -107,7 +136,7 @@ class MRDetailDialog(QDialog):
                 f"{info.get('display_name') or 'This forge'} cannot merge "
                 "via API from LabDesk."
             )
-        if not info.get("supports_mr_notes", True):
+        if not notes_ok:
             self.notes.setPlainText(
                 f"{info.get('display_name') or 'This forge'} does not expose "
                 "MR/PR notes to LabDesk."
@@ -128,36 +157,53 @@ class MRDetailDialog(QDialog):
         self.description.setPlainText(d.get("description") or "")
         self._web_url = d.get("web_url") or None
         draft = "yes" if d.get("draft") else "no"
+        state = (d.get("state") or "?").lower()
         self.meta.setText(
             f"State: {d.get('state') or '?'} · Author: {d.get('author') or '?'} · "
             f"Draft: {draft}"
         )
-        self._load_notes()
+        # Merged / closed items should not offer merge again.
+        can_merge = bool(self._info.get("supports_mr_merge", True)) and state in {
+            "opened",
+            "open",
+        }
+        self.btn_merge.setEnabled(can_merge)
+        if self._info.get("supports_mr_notes", True):
+            self._load_notes(reset=True)
 
-    def _load_notes(self) -> None:
+    def _load_notes(self, *, reset: bool = True) -> None:
+        if not self._info.get("supports_mr_notes", True):
+            return
+        if reset:
+            self._notes_page = 1
+            self._notes = []
         try:
             import labdesk_core
 
-            notes = list(
-                labdesk_core.list_merge_request_notes(self.project_id, self.mr_iid, 1)
+            batch = list(
+                labdesk_core.list_merge_request_notes(
+                    self.project_id, self.mr_iid, self._notes_page
+                )
                 or []
             )
         except Exception as exc:
             code, msg = format_error(exc)
             self.notes.setPlainText(f"[{code}] {msg}\n{exc}")
+            self.btn_notes_more.setEnabled(False)
             return
-        if not notes:
-            self.notes.setPlainText("(no notes)")
+        if reset:
+            self._notes = batch
+        else:
+            self._notes.extend(batch)
+        self._notes_may_have_more = len(batch) >= _NOTES_PAGE_SIZE
+        self.btn_notes_more.setEnabled(self._notes_may_have_more)
+        self.notes.setPlainText(_format_notes(self._notes))
+
+    def _load_more_notes(self) -> None:
+        if not self._notes_may_have_more:
             return
-        lines: list[str] = []
-        for n in notes:
-            author = n.get("author") or "?"
-            when = n.get("created_at") or ""
-            body = (n.get("body") or "").strip()
-            lines.append(f"— {author}  {when}")
-            lines.append(body)
-            lines.append("")
-        self.notes.setPlainText("\n".join(lines))
+        self._notes_page += 1
+        self._load_notes(reset=False)
 
     def _save(self) -> None:
         try:
@@ -176,21 +222,40 @@ class MRDetailDialog(QDialog):
             code, msg = format_error(exc)
             QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
 
-    def _merge(self) -> None:
-        reply = QMessageBox.question(
-            self,
-            f"Merge {self._kind.lower()}",
-            f"Merge !{self.mr_iid} via the forge API?\n\n"
-            "Uses the forge default merge style (squash available as optional).",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+    def _choose_merge_method(self) -> str | None:
+        """Return ``\"default\"``, ``\"squash\"``, or ``None`` if cancelled."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(f"Merge {self._kind.lower()}")
+        box.setText(f"Merge !{self.mr_iid} via the forge API?")
+        box.setInformativeText(
+            "Default uses the forge’s normal merge. Squash is the alternate "
+            "safe option where the forge supports it "
+            "(failures report as LD-API-MR-003)."
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        default_btn = box.addButton(
+            "Merge (default)", QMessageBox.ButtonRole.AcceptRole
+        )
+        squash_btn = box.addButton("Squash…", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(default_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is default_btn:
+            return "default"
+        if clicked is squash_btn:
+            return "squash"
+        return None
+
+    def _merge(self) -> None:
+        choice = self._choose_merge_method()
+        if choice is None:
             return
+        method = None if choice == "default" else "squash"
         try:
             import labdesk_core
 
-            labdesk_core.merge_merge_request(self.project_id, self.mr_iid, None)
+            labdesk_core.merge_merge_request(self.project_id, self.mr_iid, method)
             self._load()
             QMessageBox.information(self, "Merged", f"!{self.mr_iid} merged.")
         except Exception as exc:

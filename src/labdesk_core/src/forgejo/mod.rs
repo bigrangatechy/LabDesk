@@ -788,9 +788,13 @@ pub fn list_merge_request_notes(
     ssl_mode: &str,
     project_id: i64,
     mr_iid: i64,
-    _page: u32,
+    page: u32,
     path_hint: Option<&str>,
 ) -> Result<Vec<crate::forge_types::ForgeNote>> {
+    // Forgejo returns the full comment list in one shot; page>1 would duplicate.
+    if page > 1 {
+        return Ok(vec![]);
+    }
     let (owner, repo) = resolve_owner_repo(base_url, pat, ssl_mode, project_id, path_hint)?;
     let client = client_for(ssl_mode)?;
     // Gitea PR comments share the issue comments endpoint.
