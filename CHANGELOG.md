@@ -20,6 +20,11 @@ bullets without a stamp predate this convention.
 
  ### Added
 
+- **02:48:23  01/09/2026** — Slice M MR/PR note posting: forge-aware
+  `create_merge_request_note` on GitLab / Gitea / Forgejo / OneDev;
+  capability `supports_mr_note_create`; MR detail composer with
+  **Post note** and **Quote selection**; `LD-API-MR-005` on failure.
+  Threaded resolve / approve / inline comments deferred (M.2).
 - **02:17:52  01/09/2026** — Slice L localization (Qt Linguist):
   `general.locale` + Settings **Language** (system / en / es / de / fr /
   pt_BR); `tr()` across UI chrome; `.ts`/`.qm` catalogs (280 strings);

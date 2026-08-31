@@ -186,8 +186,10 @@ In the repo window:
   viewing). **Details…** (or double-click) shows title, description,
   source/target, author, state, and draft; you can edit metadata where
   the forge allows, **Merge…** with default or squash (confirm;
-  `LD-API-MR-003` on failure), and read-only notes with reload / load
-  more. **Open in …** opens the selected row in the browser.
+  `LD-API-MR-003` on failure), and notes with reload / load more,
+  **Post note**, and **Quote selection** (markdown quote of selected
+  text into a new top-level note; `LD-API-MR-005` on post failure).
+  **Open in …** opens the selected row in the browser.
 - **Fetch / Pull / Push** and ahead/behind vs upstream in the header.
 - **Force push…** only after an explicit confirmation.
 - After a successful (non-force) push, LabDesk may offer to **create a

@@ -22,6 +22,7 @@ def test_onedev_matrix_no_draft_retarget_or_play_job():
     assert od["supports_mr_retarget"] is False
     assert od["supports_mr_merge"] is True
     assert od["supports_mr_notes"] is True
+    assert od["supports_mr_note_create"] is True
     assert od["supports_draft_mr"] is False
     assert od["supports_runners"] is True
     assert od["supports_runner_pause"] is False

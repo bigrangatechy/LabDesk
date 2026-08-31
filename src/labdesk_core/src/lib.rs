@@ -2014,6 +2014,7 @@ fn active_forge_info(py: Python<'_>) -> PyResult<PyObject> {
     d.set_item("supports_mr_retarget", forge.supports_mr_retarget())?;
     d.set_item("supports_mr_merge", forge.supports_mr_merge())?;
     d.set_item("supports_mr_notes", forge.supports_mr_notes())?;
+    d.set_item("supports_mr_note_create", forge.supports_mr_note_create())?;
     d.set_item("supports_draft_mr", forge.supports_draft_mr())?;
     d.set_item("supports_runners", forge.supports_runners())?;
     d.set_item("supports_runner_pause", forge.supports_runner_pause())?;
@@ -2045,6 +2046,7 @@ fn forge_feature_matrix(py: Python<'_>) -> PyResult<PyObject> {
         d.set_item("supports_mr_retarget", forge.supports_mr_retarget())?;
         d.set_item("supports_mr_merge", forge.supports_mr_merge())?;
         d.set_item("supports_mr_notes", forge.supports_mr_notes())?;
+        d.set_item("supports_mr_note_create", forge.supports_mr_note_create())?;
         d.set_item("supports_draft_mr", forge.supports_draft_mr())?;
         d.set_item("supports_runners", forge.supports_runners())?;
         d.set_item("supports_runner_pause", forge.supports_runner_pause())?;
@@ -2464,6 +2466,43 @@ fn list_merge_request_notes(
 }
 
 #[pyfunction]
+fn create_merge_request_note(
+    py: Python<'_>,
+    project_id: i64,
+    mr_iid: i64,
+    body: &str,
+) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let pat = secrets::load_pat(&acc.keyring_account)?;
+    let forge = forge_kind_of(inst);
+    let hint = path_hint_for_project(&paths, &acc.id, project_id);
+    let n = forge::create_merge_request_note(
+        forge,
+        &inst.base_url,
+        &pat,
+        &inst.ssl_mode,
+        project_id,
+        mr_iid,
+        body,
+        hint.as_deref(),
+    )?;
+    let d = PyDict::new(py);
+    d.set_item("id", n.id)?;
+    d.set_item("body", n.body.as_deref())?;
+    d.set_item("author", n.author.as_deref())?;
+    d.set_item("created_at", n.created_at.as_deref())?;
+    Ok(d.into())
+}
+
+#[pyfunction]
 #[pyo3(signature = (limit=None))]
 fn list_recent_repos(py: Python<'_>, limit: Option<u32>) -> PyResult<PyObject> {
     let paths = paths::AppPaths::detect();
@@ -2644,6 +2683,7 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(update_merge_request, m)?)?;
     m.add_function(wrap_pyfunction!(merge_merge_request, m)?)?;
     m.add_function(wrap_pyfunction!(list_merge_request_notes, m)?)?;
+    m.add_function(wrap_pyfunction!(create_merge_request_note, m)?)?;
     m.add_function(wrap_pyfunction!(list_recent_repos, m)?)?;
     m.add_function(wrap_pyfunction!(touch_local_repo_opened, m)?)?;
     m.add_function(wrap_pyfunction!(set_fetch_on_focus, m)?)?;

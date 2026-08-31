@@ -17,6 +17,7 @@ def forge_info() -> dict:
         "supports_mr_retarget": True,
         "supports_mr_merge": True,
         "supports_mr_notes": True,
+        "supports_mr_note_create": True,
         "supports_draft_mr": True,
         "supports_runners": True,
         "supports_runner_pause": True,

@@ -283,6 +283,7 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
 | Merge conflict       | `LD-GIT-020`   | "Conflicts detected. Resolve in LabDesk or externally." | Offer conflict UI; Abort available |
 
 | MR creation fails    | `LD-API-MR-001`| "Failed to create MR: {error}"               | Preserve form data; allow retry    |
+| Post MR note fails   | `LD-API-MR-005`| "Failed to post MR note."                    | Preserve composer; allow retry     |
 | SQLite corruption    | `LD-CACHE-001` | "Cache corrupted. Rebuilding."               | Delete + recreate cache.db         |
 | Keyring unavailable  | `LD-AUTH-002`  | "Cannot access system keyring."              | Block PAT save; explain            |
 | Startup hang         | `LD-CFG-010`   | "Startup hung; config reset to last known good. {detail}" | Revert config snapshot; relaunch |

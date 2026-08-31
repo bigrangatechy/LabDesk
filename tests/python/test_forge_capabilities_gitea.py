@@ -19,6 +19,7 @@ def test_gitea_matrix_mr_yes_play_job_no():
     assert gt["supports_mr_retarget"] is True
     assert gt["supports_mr_merge"] is True
     assert gt["supports_mr_notes"] is True
+    assert gt["supports_mr_note_create"] is True
     assert gt["supports_draft_mr"] is True
     assert gt["supports_runners"] is True
     assert gt["supports_runner_pause"] is True

@@ -282,6 +282,28 @@ PRIVATE-TOKEN: <pat>
 Replace SQLite rows for `(account_id, project_id)` on successful refresh.
 Offline UI reads the last cache.
 
+### 5.6 MR notes — list + create
+
+**When:** MR/PR detail dialog notes pane (Slice F list; Slice M create).
+
+```http
+GET {api_root}/projects/{id}/merge_requests/{iid}/notes?per_page=50&page={n}&sort=asc&order_by=created_at
+PRIVATE-TOKEN: <pat>
+```
+
+```http
+POST {api_root}/projects/{id}/merge_requests/{iid}/notes
+PRIVATE-TOKEN: <pat>
+Content-Type: application/json
+
+{ "body": "<markdown>" }
+```
+
+Empty body → `LD-API-MR-005`. Capability `supports_mr_note_create`; if
+unsupported → `LD-API-MR-004`. LabDesk posts **top-level** notes only
+(quote-selection replies are still top-level creates with markdown
+quotes). Threaded discussion resolve / inline diff comments deferred.
+
 ---
 
 ## 6. Pipelines (post-V1)

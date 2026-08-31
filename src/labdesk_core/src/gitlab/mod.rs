@@ -643,6 +643,65 @@ pub fn list_merge_request_notes(
         .collect())
 }
 
+/// Post a top-level note on a merge request (`POST …/notes`).
+pub fn create_merge_request_note(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    body: &str,
+) -> Result<crate::forge_types::ForgeNote> {
+    let body = body.trim();
+    if body.is_empty() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-005", "Failed to post MR note.")
+                .with_detail("Note body is required."),
+        ));
+    }
+    let client = client_for(ssl_mode)?;
+    let url = format!(
+        "{}/projects/{}/merge_requests/{}/notes",
+        api_root(base_url),
+        project_id,
+        mr_iid
+    );
+    let payload = serde_json::json!({ "body": body });
+    let resp = client
+        .post(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-005", "Failed to post MR note.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    let n: RawNote = serde_json::from_str(&text).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode note: {e}")),
+        )
+    })?;
+    Ok(crate::forge_types::ForgeNote {
+        id: n.id,
+        body: n.body,
+        author: n.author.and_then(|a| a.username.or(a.name)),
+        created_at: n.created_at,
+    })
+}
+
 // --- Slice J: runners + admin users ---
 
 #[derive(Debug, Deserialize)]

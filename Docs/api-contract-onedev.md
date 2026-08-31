@@ -18,6 +18,7 @@ Self-hosted OneDev via REST under **`/~api`**. Auth: HTTP Basic with the
 | Set description | `POST /~api/pulls/{requestId}/description` |
 | Merge PR | `POST /~api/pulls/{requestId}/merge` |
 | PR comments | `GET /~api/pulls/{requestId}/comments` |
+| Post PR comment | `POST /~api/pull-request-comments` (`content`, `request.id`, `user.id`) |
 | Branch exists | `GET /~api/projects/{id}/branches/{branch}` |
 | Latest build | `GET /~api/builds?query=…` |
 | Build detail | `GET /~api/builds/{id}` |

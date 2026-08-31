@@ -38,8 +38,8 @@ admin, localization, review, and git-extension surfaces. Delivery is
 | J | Admin / runner management | Done |
 | K | Side-by-side fancy diff editor | Done |
 | L | Localization | Done |
-| M | MR comment replies / full review workflows | Next |
-| N | Submodule / LFS management UIs | — |
+| M | MR comment replies / full review workflows | Done |
+| N | Submodule / LFS management UIs | Next |
 | UX | UI/UX polish pass (after I–N) | — |
 
 ### Slice notes (I–N + UX)
@@ -63,8 +63,12 @@ admin, localization, review, and git-extension surfaces. Delivery is
   **de**, **fr**, **pt_BR**. Settings **Language**; restart to refresh
   all open windows. Catalogs under `labdesk_ui/i18n/`; rebuild with
   `scripts/build_translations.py`.
-- **M — Review workflows:** Post MR/PR comment replies and fuller review
-  flows (beyond read-only notes in F).
+- **M — Review workflows:** Post top-level MR/PR notes on all four
+  forges (`supports_mr_note_create`); MR detail **Post note** +
+  **Quote selection** (markdown quote → same create). Failures
+  `LD-API-MR-005` (or `LD-API-MR-004` if gated). Deferred (M.2):
+  threaded discussions/resolve, approve/unapprove, inline diff
+  comments, edit/delete.
 - **N — Submodule/LFS:** Management UIs for submodules and Git LFS
   (status, sync, common operations — not a full LFS server).
 - **UX — Polish pass:** After feature slices A–N, one pass for layout,

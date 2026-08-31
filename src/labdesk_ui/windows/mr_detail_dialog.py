@@ -1,4 +1,4 @@
-"""MR/PR detail, edit, merge, and read-only notes (V2)."""
+"""MR/PR detail, edit, merge, and notes (V2 Slice M: post + quote reply)."""
 
 from __future__ import annotations
 
@@ -39,6 +39,16 @@ def _format_notes(notes: list) -> str:
     return "\n".join(lines)
 
 
+def _quote_selected_note(notes_widget: QTextEdit) -> str | None:
+    """Build a markdown quote from the current notes selection, if any."""
+    cursor = notes_widget.textCursor()
+    selected = cursor.selectedText().replace("\u2029", "\n").strip()
+    if not selected:
+        return None
+    quoted = "\n".join(f"> {line}" if line else ">" for line in selected.splitlines())
+    return f"{quoted}\n\n"
+
+
 class MRDetailDialog(QDialog):
     def __init__(
         self,
@@ -54,7 +64,7 @@ class MRDetailDialog(QDialog):
         self._info = forge_info()
         self._kind = kind_label or pr_label(self._info)
         self.setWindowTitle(f"{self._kind} !{self.mr_iid}")
-        self.resize(640, 720)
+        self.resize(640, 780)
         self._notes_page = 1
         self._notes: list = []
         self._notes_may_have_more = False
@@ -75,7 +85,7 @@ class MRDetailDialog(QDialog):
         form.addRow(tr("Description"), self.description)
         layout.addLayout(form)
 
-        layout.addWidget(QLabel(tr("Notes (read-only — replies are not posted from LabDesk)")))
+        layout.addWidget(QLabel(tr("Notes")))
         self.notes = QTextEdit()
         self.notes.setReadOnly(True)
         self.notes.setFont(QFont("monospace"))
@@ -89,8 +99,29 @@ class MRDetailDialog(QDialog):
         self.btn_notes_more.clicked.connect(self._load_more_notes)
         self.btn_notes_more.setEnabled(False)
         notes_row.addWidget(self.btn_notes_more)
+        self.btn_quote = QPushButton(tr("Quote selection"))
+        self.btn_quote.setToolTip(
+            tr("Insert a markdown quote of the selected note text into the composer.")
+        )
+        self.btn_quote.clicked.connect(self._quote_into_composer)
+        notes_row.addWidget(self.btn_quote)
         notes_row.addStretch(1)
         layout.addLayout(notes_row)
+
+        layout.addWidget(QLabel(tr("New note")))
+        self.note_composer = QTextEdit()
+        self.note_composer.setAcceptRichText(False)
+        self.note_composer.setPlaceholderText(
+            tr("Write a top-level note. Use Quote selection to reply with context.")
+        )
+        self.note_composer.setMaximumHeight(120)
+        layout.addWidget(self.note_composer)
+        post_row = QHBoxLayout()
+        self.btn_post_note = QPushButton(tr("Post note"))
+        self.btn_post_note.clicked.connect(self._post_note)
+        post_row.addWidget(self.btn_post_note)
+        post_row.addStretch(1)
+        layout.addLayout(post_row)
 
         row = QHBoxLayout()
         self.btn_save = QPushButton(tr("Save metadata"))
@@ -118,8 +149,19 @@ class MRDetailDialog(QDialog):
         self.btn_save.setEnabled(bool(info.get("supports_mr_update", True)))
         self.btn_merge.setEnabled(bool(info.get("supports_mr_merge", True)))
         notes_ok = bool(info.get("supports_mr_notes", True))
+        create_ok = bool(info.get("supports_mr_note_create", True))
         self.btn_notes.setEnabled(notes_ok)
         self.btn_notes_more.setEnabled(False)
+        self.btn_quote.setEnabled(notes_ok and create_ok)
+        self.note_composer.setEnabled(create_ok)
+        self.btn_post_note.setEnabled(create_ok)
+        if not create_ok:
+            tip = (
+                f"{info.get('display_name') or 'This forge'} cannot post "
+                "MR/PR notes from LabDesk."
+            )
+            self.btn_post_note.setToolTip(tip)
+            self.note_composer.setPlaceholderText(tip)
         if not info.get("supports_mr_retarget", True):
             self.target_edit.setReadOnly(True)
             self.target_edit.setToolTip(
@@ -206,6 +248,47 @@ class MRDetailDialog(QDialog):
             return
         self._notes_page += 1
         self._load_notes(reset=False)
+
+    def _quote_into_composer(self) -> None:
+        quoted = _quote_selected_note(self.notes)
+        if not quoted:
+            QMessageBox.information(
+                self,
+                tr("Quote selection"),
+                tr("Select note text in the notes pane first."),
+            )
+            return
+        existing = self.note_composer.toPlainText()
+        if existing and not existing.endswith("\n"):
+            existing += "\n"
+        self.note_composer.setPlainText(existing + quoted)
+        self.note_composer.setFocus()
+
+    def _post_note(self) -> None:
+        if not self._info.get("supports_mr_note_create", True):
+            QMessageBox.information(
+                self,
+                tr("Post note"),
+                f"{self._info.get('display_name') or 'This forge'} cannot post "
+                "MR/PR notes from LabDesk.",
+            )
+            return
+        body = self.note_composer.toPlainText().strip()
+        if not body:
+            QMessageBox.information(
+                self, tr("Post note"), tr("Write a note before posting.")
+            )
+            return
+        try:
+            import labdesk_core
+
+            labdesk_core.create_merge_request_note(self.project_id, self.mr_iid, body)
+            self.note_composer.clear()
+            self._load_notes(reset=True)
+            QMessageBox.information(self, tr("Posted"), tr("Note posted."))
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.critical(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
 
     def _save(self) -> None:
         try:

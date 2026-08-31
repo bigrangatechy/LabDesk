@@ -92,6 +92,11 @@ impl ForgeKind {
         true
     }
 
+    /// Post a top-level MR/PR note/comment from LabDesk (Slice M).
+    pub fn supports_mr_note_create(self) -> bool {
+        true
+    }
+
     /// Draft / WIP flag on create.
     pub fn supports_draft_mr(self) -> bool {
         matches!(self, Self::Gitlab | Self::Gitea | Self::Forgejo)
@@ -147,6 +152,7 @@ mod capability_tests {
         assert!(f.supports_mr_merge());
         assert!(f.supports_mr_notes());
         assert!(f.supports_draft_mr());
+        assert!(f.supports_mr_note_create());
         assert!(f.supports_runners());
         assert!(f.supports_runner_pause());
         assert!(f.supports_runner_delete());
@@ -163,6 +169,7 @@ mod capability_tests {
         assert!(f.supports_mr_merge());
         assert!(f.supports_mr_notes());
         assert!(f.supports_draft_mr());
+        assert!(f.supports_mr_note_create());
         assert!(f.supports_runners());
         assert!(f.supports_runner_pause());
         assert!(f.supports_runner_delete());
@@ -179,6 +186,7 @@ mod capability_tests {
         assert!(f.supports_mr_merge());
         assert!(f.supports_mr_notes());
         assert!(f.supports_draft_mr());
+        assert!(f.supports_mr_note_create());
         assert!(f.supports_runners());
         assert!(f.supports_runner_pause());
         assert!(f.supports_runner_delete());
@@ -194,6 +202,7 @@ mod capability_tests {
         assert!(f.supports_mr_merge());
         assert!(f.supports_mr_notes());
         assert!(!f.supports_draft_mr());
+        assert!(f.supports_mr_note_create());
         assert!(f.supports_runners());
         assert!(!f.supports_runner_pause());
         assert!(!f.supports_runner_delete());

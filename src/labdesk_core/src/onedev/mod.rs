@@ -855,6 +855,97 @@ pub fn list_merge_request_notes(
         .collect())
 }
 
+/// Post a PR comment (`POST /~api/pull-request-comments`).
+pub fn create_merge_request_note(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    body: &str,
+    path_hint: Option<&str>,
+) -> Result<crate::forge_types::ForgeNote> {
+    let body = body.trim();
+    if body.is_empty() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-005", "Failed to post MR note.")
+                .with_detail("Note body is required."),
+        ));
+    }
+    let request_id = resolve_pull_request_id(base_url, pat, ssl_mode, project_id, mr_iid, path_hint)?;
+    let user = get_user(base_url, pat, ssl_mode)?;
+    if user.id == 0 {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-005", "Failed to post MR note.")
+                .with_detail("Could not resolve current OneDev user id for the comment."),
+        ));
+    }
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/pull-request-comments", api_root(base_url));
+    let payload = serde_json::json!({
+        "content": body,
+        "request": { "id": request_id },
+        "user": { "id": user.id },
+    });
+    let resp = apply_auth(client.post(&url), pat)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-MR-005", "Failed to post MR note.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    #[derive(Deserialize)]
+    struct RawComment {
+        #[serde(default)]
+        id: Option<i64>,
+        #[serde(default)]
+        content: Option<String>,
+        #[serde(default)]
+        user_id: Option<i64>,
+        #[serde(default, alias = "userId")]
+        user_id_alt: Option<i64>,
+        #[serde(default, alias = "date")]
+        created_at: Option<String>,
+    }
+    // OneDev may return the entity or an empty/created body; fall back to echo.
+    if text.trim().is_empty() {
+        return Ok(crate::forge_types::ForgeNote {
+            id: 0,
+            body: Some(body.to_string()),
+            author: Some(user.username),
+            created_at: None,
+        });
+    }
+    let c: RawComment = serde_json::from_str(&text).unwrap_or(RawComment {
+        id: None,
+        content: Some(body.to_string()),
+        user_id: Some(user.id as i64),
+        user_id_alt: None,
+        created_at: None,
+    });
+    let uid = c.user_id.or(c.user_id_alt);
+    Ok(crate::forge_types::ForgeNote {
+        id: c.id.unwrap_or(0),
+        body: c.content.or_else(|| Some(body.to_string())),
+        author: uid
+            .map(|id| format!("user-{id}"))
+            .or(Some(user.username)),
+        created_at: c.created_at,
+    })
+}
+
 // --- Slice J: runners (agents) + admin users ---
 
 #[derive(Debug, Deserialize)]

@@ -480,6 +480,58 @@ pub fn list_merge_request_notes(
     }
 }
 
+pub fn create_merge_request_note(
+    forge: ForgeKind,
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    mr_iid: i64,
+    body: &str,
+    path_hint: Option<&str>,
+) -> Result<ForgeNote> {
+    if !forge.supports_mr_note_create() {
+        return Err(unsupported_mr(
+            forge,
+            "LD-API-MR-004",
+            "Posting MR notes is not supported on this forge.",
+            "MR/PR note create",
+        ));
+    }
+    match forge {
+        ForgeKind::Gitlab => {
+            gitlab::create_merge_request_note(base_url, pat, ssl_mode, project_id, mr_iid, body)
+        }
+        ForgeKind::Gitea => gitea::create_merge_request_note(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            body,
+            path_hint,
+        ),
+        ForgeKind::Forgejo => forgejo::create_merge_request_note(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            body,
+            path_hint,
+        ),
+        ForgeKind::Onedev => onedev::create_merge_request_note(
+            base_url,
+            pat,
+            ssl_mode,
+            project_id,
+            mr_iid,
+            body,
+            path_hint,
+        ),
+    }
+}
+
 fn unsupported_runner(
     forge: ForgeKind,
     code: &'static str,

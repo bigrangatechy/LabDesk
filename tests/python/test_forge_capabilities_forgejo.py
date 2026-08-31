@@ -19,6 +19,7 @@ def test_forgejo_matrix_matches_gitea_shape():
     assert fj["supports_mr_retarget"] is True
     assert fj["supports_mr_merge"] is True
     assert fj["supports_mr_notes"] is True
+    assert fj["supports_mr_note_create"] is True
     assert fj["supports_draft_mr"] is True
 
 
@@ -31,6 +32,7 @@ def test_forgejo_and_gitea_capability_parity():
         "supports_mr_retarget",
         "supports_mr_merge",
         "supports_mr_notes",
+        "supports_mr_note_create",
         "supports_draft_mr",
         "supports_runners",
         "supports_runner_pause",
