@@ -2,11 +2,25 @@
 
 from __future__ import annotations
 
+import sys
+import types
+
 from labdesk_ui.windows.mr_detail_dialog import (
     MRDetailDialog,
     _format_notes,
     _quote_selected_note,
 )
+
+
+def _core_for_patch(monkeypatch):
+    try:
+        import labdesk_core
+
+        return labdesk_core
+    except ImportError:
+        mod = types.ModuleType("labdesk_core")
+        monkeypatch.setitem(sys.modules, "labdesk_core", mod)
+        return mod
 
 
 def test_format_notes_empty_and_rows():
@@ -34,7 +48,7 @@ def test_quote_selected_note_markdown(qapp):
 
 
 def test_mr_detail_notes_pagination_and_merge_gate(monkeypatch, qapp):
-    import labdesk_core
+    labdesk_core = _core_for_patch(monkeypatch)
 
     pages = {
         1: [{"author": f"u{i}", "body": f"n{i}"} for i in range(50)],
@@ -67,11 +81,13 @@ def test_mr_detail_notes_pagination_and_merge_gate(monkeypatch, qapp):
             "draft": False,
             "web_url": "https://example/mr/1",
         },
+        raising=False,
     )
     monkeypatch.setattr(
         labdesk_core,
         "list_merge_request_notes",
         lambda _pid, _iid, page=1: pages.get(int(page), []),
+        raising=False,
     )
 
     dlg = MRDetailDialog(project_id=1, mr_iid=7, kind_label="Merge request")
@@ -86,7 +102,7 @@ def test_mr_detail_notes_pagination_and_merge_gate(monkeypatch, qapp):
 
 
 def test_mr_detail_post_note_clears_composer(monkeypatch, qapp):
-    import labdesk_core
+    labdesk_core = _core_for_patch(monkeypatch)
 
     posted: list[str] = []
 
@@ -112,14 +128,17 @@ def test_mr_detail_post_note_clears_composer(monkeypatch, qapp):
             "author": "me",
             "draft": False,
         },
+        raising=False,
     )
-    monkeypatch.setattr(labdesk_core, "list_merge_request_notes", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        labdesk_core, "list_merge_request_notes", lambda *_a, **_k: [], raising=False
+    )
 
     def _create(_pid, _iid, body):
         posted.append(body)
         return {"id": 1, "body": body, "author": "me"}
 
-    monkeypatch.setattr(labdesk_core, "create_merge_request_note", _create)
+    monkeypatch.setattr(labdesk_core, "create_merge_request_note", _create, raising=False)
     monkeypatch.setattr(
         "labdesk_ui.windows.mr_detail_dialog.QMessageBox.information",
         lambda *_a, **_k: None,
@@ -134,7 +153,7 @@ def test_mr_detail_post_note_clears_composer(monkeypatch, qapp):
 
 
 def test_mr_detail_disables_post_when_create_unsupported(monkeypatch, qapp):
-    import labdesk_core
+    labdesk_core = _core_for_patch(monkeypatch)
 
     monkeypatch.setattr(
         "labdesk_ui.windows.mr_detail_dialog.forge_info",
@@ -158,8 +177,11 @@ def test_mr_detail_disables_post_when_create_unsupported(monkeypatch, qapp):
             "author": "me",
             "draft": False,
         },
+        raising=False,
     )
-    monkeypatch.setattr(labdesk_core, "list_merge_request_notes", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        labdesk_core, "list_merge_request_notes", lambda *_a, **_k: [], raising=False
+    )
 
     dlg = MRDetailDialog(project_id=1, mr_iid=3, kind_label="Merge request")
     assert dlg.btn_post_note.isEnabled() is False
@@ -168,7 +190,7 @@ def test_mr_detail_disables_post_when_create_unsupported(monkeypatch, qapp):
 
 
 def test_mr_detail_disables_merge_when_already_merged(monkeypatch, qapp):
-    import labdesk_core
+    labdesk_core = _core_for_patch(monkeypatch)
 
     monkeypatch.setattr(
         "labdesk_ui.windows.mr_detail_dialog.forge_info",
@@ -192,8 +214,11 @@ def test_mr_detail_disables_merge_when_already_merged(monkeypatch, qapp):
             "author": "me",
             "draft": False,
         },
+        raising=False,
     )
-    monkeypatch.setattr(labdesk_core, "list_merge_request_notes", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        labdesk_core, "list_merge_request_notes", lambda *_a, **_k: [], raising=False
+    )
 
     dlg = MRDetailDialog(project_id=1, mr_iid=3, kind_label="Merge request")
     assert dlg.btn_merge.isEnabled() is False

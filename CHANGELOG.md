@@ -18,6 +18,12 @@ bullets without a stamp predate this convention.
 
 ## [Unreleased]
 
+ ### Fixed
+
+- **03:21:47  01/09/2026** — CI pytest: stop `PYTHONPATH=src` from
+  treating the Rust crate as a namespace `labdesk_core`; UI tests stub
+  the extension when maturin is absent; core-only tests skip cleanly.
+
  ### Added
 
 - **03:09:06  01/09/2026** — Flatpak smoke-test deps: bundle `git`

@@ -2,25 +2,42 @@
 
 from __future__ import annotations
 
+import sys
+import types
+
+import pytest
 from PySide6.QtWidgets import QTabWidget, QTextEdit
 
 from labdesk_ui.windows.conflict_dialog import ConflictDialog
 
 
+def _core_for_patch(monkeypatch):
+    """Real extension if built; otherwise a stub module for UI monkeypatches."""
+    try:
+        import labdesk_core
+
+        return labdesk_core
+    except ImportError:
+        mod = types.ModuleType("labdesk_core")
+        monkeypatch.setitem(sys.modules, "labdesk_core", mod)
+        return mod
+
+
 def test_conflict_dialog_has_structured_actions(monkeypatch, qapp, tmp_path):
     """Slice D: ours/theirs/open/mark + Continue/Abort; not a freeform editor."""
-    import labdesk_core
+    labdesk_core = _core_for_patch(monkeypatch)
 
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "a.txt").write_text("conflicted\n", encoding="utf-8")
 
-    monkeypatch.setattr(labdesk_core, "repo_list_conflicts", lambda _p: ["a.txt"])
-    monkeypatch.setattr(labdesk_core, "repo_git_state", lambda _p: "Merge")
+    monkeypatch.setattr(labdesk_core, "repo_list_conflicts", lambda _p: ["a.txt"], raising=False)
+    monkeypatch.setattr(labdesk_core, "repo_git_state", lambda _p: "Merge", raising=False)
     monkeypatch.setattr(
         labdesk_core,
         "repo_conflict_side_text",
         lambda _p, _path, side: f"{side}-content\n",
+        raising=False,
     )
 
     dlg = ConflictDialog(str(repo), mode="merge")
@@ -43,12 +60,12 @@ def test_conflict_dialog_has_structured_actions(monkeypatch, qapp, tmp_path):
 
 
 def test_conflict_dialog_enables_continue_when_clean(monkeypatch, qapp, tmp_path):
-    import labdesk_core
+    labdesk_core = _core_for_patch(monkeypatch)
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    monkeypatch.setattr(labdesk_core, "repo_list_conflicts", lambda _p: [])
-    monkeypatch.setattr(labdesk_core, "repo_git_state", lambda _p: "Clean")
+    monkeypatch.setattr(labdesk_core, "repo_list_conflicts", lambda _p: [], raising=False)
+    monkeypatch.setattr(labdesk_core, "repo_git_state", lambda _p: "Clean", raising=False)
 
     dlg = ConflictDialog(str(repo), mode="rebase")
     assert "rebase" in dlg.windowTitle().lower()

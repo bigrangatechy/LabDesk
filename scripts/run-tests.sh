@@ -27,12 +27,14 @@ if ! python -c "import pytest" 2>/dev/null; then
 fi
 
 # Prefer a built labdesk_core when present (URL / error parsing tests).
-if ! python -c "import labdesk_core" 2>/dev/null; then
+# PYTHONPATH=src alone can make the Rust crate look like a namespace package —
+# require a real extension attribute before skipping the maturin build.
+if ! python -c "import labdesk_core; assert hasattr(labdesk_core, 'forge_feature_matrix') or hasattr(labdesk_core, 'repo_status')" 2>/dev/null; then
   if command -v maturin >/dev/null 2>&1; then
     echo "Building labdesk_core for tests…"
     (cd "$ROOT/src/labdesk_core" && maturin develop --uv)
   else
-    echo "WARNING: labdesk_core not importable; core-dependent tests will skip."
+    echo "WARNING: labdesk_core extension not importable; core-dependent tests will skip."
   fi
 fi
 

@@ -69,18 +69,29 @@ def test_open_code_editor_reuses_window(qapp, tmp_path: Path):
 
 
 def test_conflict_dialog_has_edit_in_labdesk(monkeypatch, qapp, tmp_path):
-    import labdesk_core
+    import sys
+    import types
+
+    try:
+        import labdesk_core
+    except ImportError:
+        labdesk_core = types.ModuleType("labdesk_core")
+        monkeypatch.setitem(sys.modules, "labdesk_core", labdesk_core)
     from labdesk_ui.windows.conflict_dialog import ConflictDialog
 
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "a.txt").write_text("conflicted\n", encoding="utf-8")
-    monkeypatch.setattr(labdesk_core, "repo_list_conflicts", lambda _p: ["a.txt"])
-    monkeypatch.setattr(labdesk_core, "repo_git_state", lambda _p: "Merge")
+    monkeypatch.setattr(
+        labdesk_core, "repo_list_conflicts", lambda _p: ["a.txt"], raising=False
+    )
+
+    monkeypatch.setattr(labdesk_core, "repo_git_state", lambda _p: "Merge", raising=False)
     monkeypatch.setattr(
         labdesk_core,
         "repo_conflict_side_text",
         lambda _p, _path, side: f"{side}\n",
+        raising=False,
     )
     dlg = ConflictDialog(str(repo), mode="merge")
     assert hasattr(dlg, "btn_edit")

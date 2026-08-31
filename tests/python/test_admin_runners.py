@@ -2,15 +2,30 @@
 
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 from labdesk_ui.plugins.admin_view import AdminView, _runner_row_text, _user_row_text
 from labdesk_ui.plugins import ensure_builtin_views, get_view
 
-labdesk_core = pytest.importorskip("labdesk_core")
+
+def _core_for_patch(monkeypatch):
+    try:
+        import labdesk_core
+
+        return labdesk_core
+    except ImportError:
+        mod = types.ModuleType("labdesk_core")
+        monkeypatch.setitem(sys.modules, "labdesk_core", mod)
+        return mod
 
 
 def test_forge_matrix_includes_runner_caps():
+    labdesk_core = pytest.importorskip("labdesk_core")
+    if not hasattr(labdesk_core, "forge_feature_matrix"):
+        pytest.skip("labdesk_core extension not built")
     matrix = labdesk_core.forge_feature_matrix()
     assert matrix["gitlab"]["supports_runners"] is True
     assert matrix["gitlab"]["supports_runner_pause"] is True
@@ -32,6 +47,7 @@ def test_admin_view_registered():
 
 def test_admin_view_smoke(qapp, monkeypatch):
     ensure_builtin_views()
+    labdesk_core = _core_for_patch(monkeypatch)
 
     class Ctx:
         def switch_view(self, _vid, persist=True):
@@ -69,8 +85,9 @@ def test_admin_view_smoke(qapp, monkeypatch):
                 "scope": "instance",
             }
         ],
+        raising=False,
     )
-    monkeypatch.setattr(labdesk_core, "list_admin_users", lambda: [])
+    monkeypatch.setattr(labdesk_core, "list_admin_users", lambda: [], raising=False)
     monkeypatch.setattr(
         labdesk_core,
         "active_forge_info",
@@ -81,6 +98,7 @@ def test_admin_view_smoke(qapp, monkeypatch):
             "supports_runner_delete": True,
             "open_in_label": "Open in GitLab",
         },
+        raising=False,
     )
     w = AdminView(None, Ctx())
     w.on_activated()
