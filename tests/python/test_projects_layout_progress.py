@@ -45,6 +45,9 @@ def test_progress_fraction_clamps_active_values():
 
 def test_layout_mode_toggle_shows_cards_or_table(qapp, monkeypatch, process_events):
     """Switching projects_layout must flip visibility (would catch a no-op toggle)."""
+    import sys
+    import types
+
     from labdesk_ui.plugins.projects_view import ProjectsView
 
     class Ctx:
@@ -69,22 +72,11 @@ def test_layout_mode_toggle_shows_cards_or_table(qapp, monkeypatch, process_even
         def is_network_available(self) -> bool:
             return True
 
-    monkeypatch.setattr(
-        "labdesk_core.load_config",
-        lambda: {
-            "general": {
-                "projects_layout": "table",
-                "progress_overlay_color": "#2ecc71",
-                "progress_overlay_alpha": 70,
-            }
-        },
-        raising=False,
-    )
-
-    # Import may fail if labdesk_core missing; patch at module use sites.
     import labdesk_ui.plugins.projects_view as pv
 
     class FakeCore:
+        layout = "table"
+
         @staticmethod
         def load_config():
             return {
@@ -95,17 +87,10 @@ def test_layout_mode_toggle_shows_cards_or_table(qapp, monkeypatch, process_even
                 }
             }
 
-    FakeCore.layout = "table"
-
-    monkeypatch.setattr(pv, "labdesk_core", FakeCore, raising=False)
-
-    # apply_prefs imports labdesk_core inside the method — patch sys.modules style
-    import sys
-    import types
-
     fake = types.ModuleType("labdesk_core")
     fake.load_config = FakeCore.load_config
     monkeypatch.setitem(sys.modules, "labdesk_core", fake)
+    monkeypatch.setattr(pv, "labdesk_core", FakeCore, raising=False)
 
     parent = QWidget()
     view = ProjectsView(parent, Ctx())

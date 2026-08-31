@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
  ### Fixed
 
+- **03:56:40  01/09/2026** — CI pytest: projects layout toggle test
+  stubs ``labdesk_core`` in ``sys.modules`` before patching (string
+  ``monkeypatch.setattr("labdesk_core.…")`` still imported the missing
+  extension).
 - **03:36:47  01/09/2026** — CI pytest: all ``importorskip("labdesk_core")``
   calls use ``exc_type=ImportError`` so missing PyO3 skips under pytest 8+
   (ModuleNotFoundError alone was not enough when collection wrapped the
