@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QAbstractListModel, QModelIndex, QStringListModel
-from PySide6.QtGui import QColor, QFont, QKeySequence, QPalette, QShortcut, QTextCharFormat, QTextCursor
+from PySide6.QtGui import QKeySequence, QShortcut, QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -36,6 +36,7 @@ from labdesk_ui.utils.forge_labels import (
 )
 from labdesk_ui.utils.helpers import format_error
 from labdesk_ui.utils.open_external import open_path, open_url
+from labdesk_ui.widgets.diff_view import DiffView, colorize_unified
 from labdesk_ui.windows.browse_files_dialog import BrowseFilesDialog
 from labdesk_ui.windows.conflict_dialog import ConflictDialog
 from labdesk_ui.windows.mr_detail_dialog import MRDetailDialog
@@ -111,24 +112,11 @@ def _ref_to_branch_name(ref: str) -> str:
     return ref
 
 
-def _set_colored_diff(widget: QTextEdit, text: str) -> None:
-    widget.clear()
-    dark = widget.palette().color(QPalette.ColorRole.Window).lightness() < 128
-    plus = QColor("#6bcf6b" if dark else "#0a7a0a")
-    minus = QColor("#f08080" if dark else "#a10a0a")
-    hunk = QColor("#7ec8e3" if dark else "#0a4a8a")
-    cursor = widget.textCursor()
-    for line in text.splitlines(keepends=True):
-        fmt = QTextCharFormat()
-        if line.startswith("+") and not line.startswith("+++"):
-            fmt.setForeground(plus)
-        elif line.startswith("-") and not line.startswith("---"):
-            fmt.setForeground(minus)
-        elif line.startswith("@@"):
-            fmt.setForeground(hunk)
-        cursor.setCharFormat(fmt)
-        cursor.insertText(line)
-    widget.moveCursor(QTextCursor.MoveOperation.Start)
+def _set_colored_diff(widget, text: str) -> None:
+    if hasattr(widget, "set_diff"):
+        widget.set_diff(text)
+        return
+    colorize_unified(widget, text)
 
 
 def _diff_looks_truncated(text: str) -> bool:
@@ -419,10 +407,7 @@ class RepoWindow(QMainWindow):
         self.compare_files.currentItemChanged.connect(self._on_compare_file_selected)
         right_layout.addWidget(QLabel("Changed files"))
         right_layout.addWidget(self.compare_files)
-        self.compare_diff = QTextEdit()
-        self.compare_diff.setReadOnly(True)
-        self.compare_diff.setFont(QFont("monospace"))
-        self.compare_diff.setPlaceholderText("Tip-to-tip unified diff.")
+        self.compare_diff = DiffView(placeholder="Tip-to-tip unified or side-by-side diff.")
         right_layout.addWidget(self.compare_diff, stretch=1)
         diff_row = QHBoxLayout()
         self.compare_trunc_hint = QLabel("")
@@ -854,11 +839,8 @@ class RepoWindow(QMainWindow):
 
         split.addWidget(left)
 
-        self.diff = QTextEdit()
-        self.diff.setReadOnly(True)
-        self.diff.setFont(QFont("monospace"))
-        self.diff.setPlaceholderText(
-            "Select a changed file for a diff, or a tracked file to view."
+        self.diff = DiffView(
+            placeholder="Select a changed file for a diff, or a tracked file to view."
         )
         split.addWidget(self.diff)
         split.setStretchFactor(0, 1)
@@ -886,10 +868,7 @@ class RepoWindow(QMainWindow):
         self.commit_meta.setTextInteractionFlags(Qt.TextSelectableByMouse)
         right_layout.addWidget(self.commit_meta)
 
-        self.commit_diff = QTextEdit()
-        self.commit_diff.setReadOnly(True)
-        self.commit_diff.setFont(QFont("monospace"))
-        self.commit_diff.setPlaceholderText("Select a commit to view its patch.")
+        self.commit_diff = DiffView(placeholder="Select a commit to view its patch.")
         right_layout.addWidget(self.commit_diff, stretch=1)
 
         self.commit_files = QListWidget()

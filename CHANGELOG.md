@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
  ### Added
 
+- **01:54:39  01/09/2026** — Slice K side-by-side diff: DiffView with
+  Unified / Side by side toggle on Changes, History, and Compare;
+  aligned panes from unified patches; synced scroll; no QScintilla.
 - **01:49:37  01/09/2026** — Slice J admin + runners/agents: Admin view
   (instance runners + users), repo Runners tab; GitLab / Gitea / Forgejo
   pause·enable·delete; OneDev agents list + open (`LD-API-RUN-004` for

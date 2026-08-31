@@ -36,8 +36,8 @@ admin, localization, review, and git-extension surfaces. Delivery is
 | H | Notifications + V1 completeness pack | Done |
 | I | Full in-app code editor (from scratch on Qt; no QScintilla) | Done |
 | J | Admin / runner management | Done |
-| K | Side-by-side fancy diff editor | Next |
-| L | Localization | — |
+| K | Side-by-side fancy diff editor | Done |
+| L | Localization | Next |
 | M | MR comment replies / full review workflows | — |
 | N | Submodule / LFS management UIs | — |
 | UX | UI/UX polish pass (after I–N) | — |
@@ -55,8 +55,9 @@ admin, localization, review, and git-extension surfaces. Delivery is
   Actions runners, OneDev agents (list + open; pause/delete via API on
   GitLab/Gitea/Forgejo). Capability-gated like play-job.
 - **K — Fancy diff:** Side-by-side (and related) diff product beyond
-  read-only unified `QTextEdit` views; may reuse highlighter /
-  chrome patterns from Slice I; still no QScintilla.
+  read-only unified `QTextEdit` views; reuses Slice I Qt patterns (no
+  QScintilla). Changes / History / Compare: **Unified** ↔ **Side by side**
+  toggle with synced scroll and colored panes.
 - **L — Localization:** Non-English UI strings / packaging; English
   remains default until this slice.
 - **M — Review workflows:** Post MR/PR comment replies and fuller review

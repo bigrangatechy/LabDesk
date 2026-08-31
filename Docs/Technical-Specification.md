@@ -312,8 +312,10 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
 - **Conflict resolution (V2):** structured in-app resolve is supported;
   users may still resolve externally or in the LabDesk editor. See ADR-006
   and `Docs/v2-roadmap.md`.
-- **Fancy side-by-side diff, localization, MR reply posting,
-  submodule/LFS UIs:** planned as Slices K–N; not before then.
+- **Fancy side-by-side diff (Slice K):** DiffView toggle on Changes /
+  History / Compare (unified or side-by-side from existing patches).
+- **Localization, MR reply posting, submodule/LFS UIs:** planned as
+  Slices L–N; not before then.
 - **No OAuth/SSO** for the API in this roadmap; PAT / forge tokens only.
 - **English-only UI** until Slice L.
 - **Linux only.** No Windows or macOS.

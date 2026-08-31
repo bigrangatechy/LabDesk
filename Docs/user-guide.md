@@ -141,9 +141,10 @@ In the repo window:
 - Status chip under the header can show a failed/canceled pipeline on the
   current branch and when the MR/PR list changed since last view
   (updates on refresh/focus — no background daemon).
-- **Changes:** stage / unstage / commit / **Discard…**; read-only diffs.
-  Shortcuts: **Ctrl+S** stage, **Ctrl+Return** commit, **Ctrl+Shift+F**
-  fetch, **Ctrl+Shift+L** pull, **Ctrl+Shift+P** push. The list shows
+- **Changes:** stage / unstage / commit / **Discard…**; diffs with
+  **Unified** or **Side by side** view. Shortcuts: **Ctrl+S** stage,
+  **Ctrl+Return** commit, **Ctrl+Shift+F** fetch, **Ctrl+Shift+L**
+  pull, **Ctrl+Shift+P** push. The list shows
   **dirty paths only**. Use **Browse files…** for a filtered, scrollable
   tracked-file listing (capped / load-more on large repos). Untracked
   directories (for example `build/` or `node_modules/`) appear as **one**
@@ -168,15 +169,16 @@ In the repo window:
   dirty tree, LabDesk offers to stash (with or without untracked) and,
   after a successful pull, to pop that stash.
 - **Compare:** pick two branches (local or `origin/…`), see ahead/behind,
-  recent commits, a per-file list (binary badge), and a read-only tip
-  diff (truncated if huge — **Open external…** for the full file). When
+  recent commits, a per-file list (binary badge), and a tip diff
+  (**Unified** / **Side by side**; truncated if huge — **Open
+  external…** for the full file). When
   online, LabDesk can check whether the other branch exists on the forge.
   If the other tip is **ahead** of the base, **Create MR/PR from
   compare…** pre-fills source/target (and optional draft where the forge
   supports it).
 - **History:** commit list with changed-file list (binary badge); select
-  a file for a path-scoped patch; truncated diffs offer **Open
-  external…**.
+  a file for a path-scoped patch (**Unified** / **Side by side**);
+  truncated diffs offer **Open external…**.
 - **Merge / pull requests:** opened items for this project (tab label
   follows the forge; refresh while online; last list kept for offline
   viewing). **Details…** (or double-click) shows title, description,
