@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
  ### Fixed
 
+- **03:36:47  01/09/2026** — CI pytest: all ``importorskip("labdesk_core")``
+  calls use ``exc_type=ImportError`` so missing PyO3 skips under pytest 8+
+  (ModuleNotFoundError alone was not enough when collection wrapped the
+  failure); multi-forge UI tests no longer share a module-level skip.
 - **03:29:33  01/09/2026** — CI pytest: raise ``ModuleNotFoundError``
   when the PyO3 extension is absent so pytest 8+ ``importorskip`` skips
   instead of ERROR during collection.
