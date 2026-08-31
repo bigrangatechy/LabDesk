@@ -24,7 +24,9 @@ class _MissingCoreLoader(importlib.abc.Loader):
         return None
 
     def exec_module(self, module):  # noqa: ANN001
-        raise ImportError(
+        # ModuleNotFoundError: pytest 8+ importorskip skips only this by default
+        # (plain ImportError becomes a collection ERROR).
+        raise ModuleNotFoundError(
             "labdesk_core PyO3 extension is not built "
             "(src/labdesk_core on PYTHONPATH is the Rust crate, not the module)"
         )
