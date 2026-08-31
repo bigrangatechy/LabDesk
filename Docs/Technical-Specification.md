@@ -121,10 +121,14 @@ API auth uses the forge’s token header (GitLab **`PRIVATE-TOKEN`**; see
 per-forge `api-contract-*.md`). Git HTTPS uses the **credential helper**;
 SSH uses agent/keys.
 
-Large local repos: tracked-file and status lists are **capped**; status
-does **not** recurse into untracked directories (Stage / Stage all still
-expand a selected directory like `git add <dir>/`); file/diff text shown
-in Qt is **truncated** (see changelog / `git_ops` constants).
+Large local repos: the **Changes** tab is **dirty-only** by default.
+Tracked-file browsing is opt-in via **Browse files…** (virtualized
+`QListView` + filter + load-more; page size from
+`general.browse_files_page_size`). Status does **not** recurse into
+untracked directories (Stage / Stage all still expand a selected dir like
+`git add <dir>/`). History uses paged load-more
+(`general.history_page_size`). Diff / file previews stay size-capped and
+load asynchronously (see changelog / `git_ops` constants).
 
 **Active host URLs:** HTTPS clone, Open-in, and MR/pipeline browser links
 are built or rebased onto the **active instance `base_url`**. Forge APIs

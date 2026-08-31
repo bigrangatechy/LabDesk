@@ -36,15 +36,17 @@ from labdesk_ui.utils.forge_labels import (
 )
 from labdesk_ui.utils.helpers import format_error
 from labdesk_ui.utils.open_external import open_path, open_url
+from labdesk_ui.windows.browse_files_dialog import BrowseFilesDialog
 from labdesk_ui.windows.conflict_dialog import ConflictDialog
 from labdesk_ui.windows.mr_detail_dialog import MRDetailDialog
 from labdesk_ui.windows.mr_dialog import MRDialog
 
-# Hard cap for Changes-tab tracked-file rows. Listing every blob in a large
-# monorepo has aborted Qt (QArrayData::allocate) after long-running sessions.
+# Hard cap for Changes-tab dirty rows (core also stops recursing untracked dirs).
+# Tracked browse uses config `browse_files_page_size` (default 200) in a dialog.
 _TRACKED_LIST_CAP = 200
 # Cap for dirty/untracked status rows (core also stops recursing untracked dirs).
 _CHANGES_LIST_CAP = 500
+_DEFAULT_HISTORY_PAGE = 200
 
 
 def _format_commit_time(epoch: int | float | None) -> str:
@@ -236,11 +238,27 @@ class RepoWindow(QMainWindow):
         self.footer.setText("Loading repository…")
         QTimer.singleShot(0, self.refresh)
         self.set_network_available(True)
-        self._browse_tracked = False
         self._history_offset = 0
-        self._history_page = 200
+        self._history_page = _DEFAULT_HISTORY_PAGE
+        self._browse_page = _TRACKED_LIST_CAP
+        self._load_list_page_sizes()
         self._last_mr_updated: str | None = None
         self._setup_shortcuts()
+
+    def _load_list_page_sizes(self) -> None:
+        """Config-first knobs for history / browse page sizes (Slice B)."""
+        try:
+            import labdesk_core
+
+            general = (labdesk_core.load_config() or {}).get("general") or {}
+            hist = int(general.get("history_page_size") or _DEFAULT_HISTORY_PAGE)
+            browse = int(general.get("browse_files_page_size") or _TRACKED_LIST_CAP)
+            if hist > 0:
+                self._history_page = hist
+            if browse > 0:
+                self._browse_page = browse
+        except Exception:
+            pass
 
     def _apply_forge_labels(self) -> None:
         """Rename MR/CI tabs and buttons for the active forge."""
@@ -404,9 +422,7 @@ class RepoWindow(QMainWindow):
         from labdesk_ui.utils.async_jobs import run_in_background
 
         path = self.repo_path
-        cap = _TRACKED_LIST_CAP
-        browse = bool(getattr(self, "_browse_tracked", False))
-        hist_limit = int(getattr(self, "_history_page", 200)) + int(
+        hist_limit = int(getattr(self, "_history_page", _DEFAULT_HISTORY_PAGE)) + int(
             getattr(self, "_history_offset", 0)
         )
 
@@ -440,12 +456,7 @@ class RepoWindow(QMainWindow):
             ]
             changes_truncated = len(changes_raw) > _CHANGES_LIST_CAP
             changes = changes_raw[:_CHANGES_LIST_CAP]
-            tracked = []
-            tracked_truncated = False
-            if browse:
-                tracked_raw = list(labdesk_core.repo_list_files(path, cap + 1) or [])
-                tracked_truncated = len(tracked_raw) > cap
-                tracked = tracked_raw[:cap]
+            # Slice B: Changes is dirty-only; tracked browse is a separate dialog.
             commits = [
                 dict(c) if hasattr(c, "items") else c
                 for c in (labdesk_core.repo_log(path, hist_limit) or [])
@@ -459,9 +470,6 @@ class RepoWindow(QMainWindow):
                 "conflicts": conflicts,
                 "changes": changes,
                 "changes_truncated": changes_truncated,
-                "tracked": tracked,
-                "tracked_truncated": tracked_truncated,
-                "browse": browse,
                 "commits": commits,
                 "branches": branches,
             }
@@ -527,9 +535,6 @@ class RepoWindow(QMainWindow):
             summary=summary,
             changes=data.get("changes") or [],
             changes_truncated=bool(data.get("changes_truncated")),
-            tracked=data.get("tracked") or [],
-            tracked_truncated=bool(data.get("tracked_truncated")),
-            browse=bool(data.get("browse")),
         )
         self._populate_history(data.get("commits") or [])
         self._populate_branches(data.get("branches") or {})
@@ -576,11 +581,13 @@ class RepoWindow(QMainWindow):
         branch: str,
         summary: str,
         changes: list,
-        tracked: list,
-        tracked_truncated: bool,
         changes_truncated: bool = False,
+        tracked: list | None = None,
+        tracked_truncated: bool = False,
         browse: bool = False,
     ) -> None:
+        # tracked/browse kept for test back-compat; Slice B ignores them (dirty-only).
+        _ = (tracked, tracked_truncated, browse)
         self.files.clear()
         self.diff.clear()
         self.btn_editor.setEnabled(False)
@@ -610,59 +617,27 @@ class RepoWindow(QMainWindow):
                 )
                 more.setFlags(Qt.ItemFlag.NoItemFlags)
                 self.files.addItem(more)
-
-        if browse:
-            sep = QListWidgetItem(
-                "— Working tree clean —" if not changes else "— Tracked files —"
-            )
-            sep.setFlags(Qt.ItemFlag.NoItemFlags)
-            self.files.addItem(sep)
-            change_paths = {e.get("path") for e in changes}
-            for path in tracked:
-                if path in change_paths:
-                    continue
-                item = QListWidgetItem(f"{'file':10}  {path}")
-                item.setData(
-                    Qt.ItemDataRole.UserRole,
-                    {"kind": "file", "path": path},
-                )
-                self.files.addItem(item)
-            if tracked_truncated:
-                more = QListWidgetItem(
-                    f"— …and more tracked files (showing first {_TRACKED_LIST_CAP}) —"
-                )
-                more.setFlags(Qt.ItemFlag.NoItemFlags)
-                self.files.addItem(more)
-        elif not changes:
+        else:
             tip = QListWidgetItem(
-                "— Working tree clean (Browse files… to list tracked paths) —"
+                "— Working tree clean (Browse files… for tracked paths) —"
             )
             tip.setFlags(Qt.ItemFlag.NoItemFlags)
             self.files.addItem(tip)
 
         n_changes = len(changes)
         if n_changes == 0:
-            note = "Working tree clean"
-            if browse:
-                note += (
-                    f" · listing up to {_TRACKED_LIST_CAP} tracked files"
-                    + (" (truncated)" if tracked_truncated else "")
-                )
-            else:
-                note += " · dirty-only Changes (use Browse files… for tracked list)"
-            self.footer.setText(note + ". Use History for commits.")
+            self.footer.setText(
+                "Working tree clean · dirty-only Changes "
+                "(Browse files… for a virtualized tracked list). Use History for commits."
+            )
             self.diff.setPlainText(
                 "Working tree clean — no local changes.\n\n"
-                + (
-                    "Tracked files are listed on the left (capped for large repos).\n"
-                    if browse
-                    else "Changes shows dirty paths only. Use Browse files… for a tracked listing.\n"
-                )
-                + "Open the History tab for commit history.\n"
+                "Changes shows dirty paths only.\n"
+                "Use Browse files… for a filtered, virtualized tracked listing.\n"
+                "Open the History tab for commit history.\n"
                 f"Branch: {branch}"
                 + (f"\nHEAD: {summary}" if summary else "")
             )
-            # Do not auto-open README (large-repo UX).
         else:
             n_staged = sum(1 for e in changes if e.get("staged"))
             self.footer.setText(
@@ -1552,6 +1527,9 @@ class RepoWindow(QMainWindow):
         meta += ")"
         self.mr_summary.setText(meta)
         self.btn_mr_open.setEnabled(False)
+        if hasattr(self, "btn_mr_detail"):
+            self.btn_mr_detail.setEnabled(False)
+        self._update_notify_chip(mrs, None)
 
     def _load_cached_mrs(self) -> None:
         from labdesk_ui.utils.async_jobs import run_in_background
@@ -1638,9 +1616,7 @@ class RepoWindow(QMainWindow):
             ),
         )
 
-            self._update_notify_chip(mrs, None)
-
-def _on_mr_selected(self, current, _previous) -> None:
+    def _on_mr_selected(self, current, _previous) -> None:
         mr = current.data(Qt.ItemDataRole.UserRole) if current else None
         ok = isinstance(mr, dict)
         self.btn_mr_open.setEnabled(bool(ok and mr.get("web_url")))
@@ -1943,12 +1919,10 @@ def _on_mr_selected(self, current, _previous) -> None:
         )
 
     def _toggle_browse_files(self) -> None:
-        self._browse_tracked = not bool(getattr(self, "_browse_tracked", False))
-        if hasattr(self, "btn_browse_files"):
-            self.btn_browse_files.setText(
-                "Hide tracked list" if self._browse_tracked else "Browse files…"
-            )
-        self._refresh_local_async()
+        """Open virtualized tracked-file browser (does not fill Changes list)."""
+        page = int(getattr(self, "_browse_page", _TRACKED_LIST_CAP) or _TRACKED_LIST_CAP)
+        dlg = BrowseFilesDialog(self.repo_path, parent=self, page_size=page)
+        dlg.exec()
 
     def _load_more_history(self) -> None:
         page = int(getattr(self, "_history_page", 200))

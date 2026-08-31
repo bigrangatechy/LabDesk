@@ -20,6 +20,10 @@ bullets without a stamp predate this convention.
 
 ### Added
 
+- **00:21:32  01/09/2026** — Slice B large-repo UX: Changes is dirty-only by
+  default; tracked files open in a virtualized Browse dialog (`QListView` +
+  filter + load-more) using `browse_files_page_size` / `history_page_size`
+  from `config.toml`. Regression tests updated.
 - **00:13:27  01/09/2026** — Forge capability matrix (`forge_feature_matrix` /
   `active_forge_info` flags): play-job, MR detail/update/retarget/merge/notes,
   draft create. Unsupported actions return `LD-API-MR-004` or `LD-API-JOB-001`

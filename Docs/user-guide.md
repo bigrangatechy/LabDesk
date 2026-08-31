@@ -132,13 +132,13 @@ LabDesk prefers the selected host’s Base URL instead.
 
 In the repo window:
 
-- **Changes:** stage / unstage / commit; read-only diffs. On large
-  repos LabDesk caps how many rows it lists (tracked files and dirty
-  paths) and treats an untracked directory (for example `build/` or
-  `node_modules/`) as **one** entry instead of every file inside —
-  **Stage** / **Stage all** still add all files under that directory
-  (like `git add <dir>/`). Very large file or diff previews are
-  truncated — use **Open in editor** for the full content.
+- **Changes:** stage / unstage / commit; read-only diffs. The list shows
+  **dirty paths only**. Use **Browse files…** for a filtered, scrollable
+  tracked-file listing (capped / load-more on large repos). Untracked
+  directories (for example `build/` or `node_modules/`) appear as **one**
+  entry — **Stage** / **Stage all** still add all files under that
+  directory (like `git add <dir>/`). Very large file or diff previews
+  are truncated — use **Open in editor** for the full content.
 - **Open in editor:** opens the selected file with the desktop default.
 - **Branches:** list, switch, create, merge into current. On conflict,
   use the conflict resolve panel (or open files externally).
