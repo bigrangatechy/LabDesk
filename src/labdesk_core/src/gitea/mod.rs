@@ -840,6 +840,322 @@ pub fn list_merge_request_notes(
         .collect())
 }
 
+// --- Slice J: runners + admin users ---
+
+#[derive(Debug, Deserialize)]
+struct RawRunnerLabel {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawActionRunner {
+    id: i64,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    busy: Option<bool>,
+    #[serde(default)]
+    disabled: Option<bool>,
+    #[serde(default)]
+    labels: Vec<RawRunnerLabel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawRunnersResponse {
+    /// Prefer `runners`; some builds expose the list as `entries`.
+    #[serde(default, alias = "entries")]
+    runners: Vec<RawActionRunner>,
+}
+
+fn map_action_runner(
+    r: RawActionRunner,
+    base_url: &str,
+    scope: &str,
+) -> crate::forge_types::ForgeRunner {
+    let disabled = r.disabled.unwrap_or(false);
+    let online = r
+        .status
+        .as_deref()
+        .map(|s| s.to_ascii_lowercase().contains("online"));
+    let tag_list: Vec<String> = r
+        .labels
+        .into_iter()
+        .filter_map(|l| l.name.filter(|n| !n.is_empty()))
+        .collect();
+    let _ = r.busy;
+    crate::forge_types::ForgeRunner {
+        id: r.id.to_string(),
+        description: r.name,
+        active: !disabled,
+        online,
+        paused: Some(disabled),
+        is_shared: None,
+        tag_list,
+        runner_type: None,
+        web_url: Some(format!(
+            "{}/admin/actions/runners",
+            base_url.trim_end_matches('/')
+        )),
+        scope: Some(scope.into()),
+    }
+}
+
+fn decode_action_runners(body: &str) -> Result<Vec<RawActionRunner>> {
+    if let Ok(wrap) = serde_json::from_str::<RawRunnersResponse>(body) {
+        return Ok(wrap.runners);
+    }
+    serde_json::from_str(body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "Gitea API error.")
+                .with_detail(format!("decode runners: {e}")),
+        )
+    })
+}
+
+fn fetch_action_runners(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    path_and_query: &str,
+) -> Result<Vec<RawActionRunner>> {
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}{}", api_root(base_url), path_and_query);
+    let resp = client
+        .get(&url)
+        .header("Authorization", auth_header(pat))
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    decode_action_runners(&body)
+}
+
+fn runner_url(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    runner_id: &str,
+    project_id: Option<i64>,
+    path_hint: Option<&str>,
+) -> Result<String> {
+    if let Some(pid) = project_id {
+        let (owner, repo) = resolve_owner_repo(base_url, pat, ssl_mode, pid, path_hint)?;
+        Ok(format!(
+            "{}/repos/{}/{}/actions/runners/{}",
+            api_root(base_url),
+            owner,
+            repo,
+            urlencoding_ref(runner_id)
+        ))
+    } else {
+        Ok(format!(
+            "{}/admin/actions/runners/{}",
+            api_root(base_url),
+            urlencoding_ref(runner_id)
+        ))
+    }
+}
+
+pub fn list_instance_runners(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+) -> Result<Vec<crate::forge_types::ForgeRunner>> {
+    let raw = fetch_action_runners(base_url, pat, ssl_mode, "/admin/actions/runners")?;
+    Ok(raw
+        .into_iter()
+        .map(|r| map_action_runner(r, base_url, "instance"))
+        .collect())
+}
+
+pub fn list_project_runners(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    path_hint: Option<&str>,
+) -> Result<Vec<crate::forge_types::ForgeRunner>> {
+    let (owner, repo) = resolve_owner_repo(base_url, pat, ssl_mode, project_id, path_hint)?;
+    let path = format!("/repos/{owner}/{repo}/actions/runners");
+    let raw = fetch_action_runners(base_url, pat, ssl_mode, &path)?;
+    Ok(raw
+        .into_iter()
+        .map(|r| map_action_runner(r, base_url, "project"))
+        .collect())
+}
+
+pub fn set_runner_paused(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    runner_id: &str,
+    paused: bool,
+    project_id: Option<i64>,
+    path_hint: Option<&str>,
+) -> Result<crate::forge_types::ForgeRunner> {
+    let client = client_for(ssl_mode)?;
+    let url = runner_url(base_url, pat, ssl_mode, runner_id, project_id, path_hint)?;
+    let body = serde_json::json!({ "disabled": paused });
+    let scope = if project_id.is_some() {
+        "project"
+    } else {
+        "instance"
+    };
+    let resp = client
+        .patch(&url)
+        .header("Authorization", auth_header(pat))
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-RUN-001", "Failed to update runner.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    let raw: RawActionRunner = serde_json::from_str(&text).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "Gitea API error.")
+                .with_detail(format!("decode runner: {e}")),
+        )
+    })?;
+    Ok(map_action_runner(raw, base_url, scope))
+}
+
+pub fn delete_runner(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    runner_id: &str,
+    project_id: Option<i64>,
+    path_hint: Option<&str>,
+) -> Result<()> {
+    let client = client_for(ssl_mode)?;
+    let url = runner_url(base_url, pat, ssl_mode, runner_id, project_id, path_hint)?;
+    let resp = client
+        .delete(&url)
+        .header("Authorization", auth_header(pat))
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() && status.as_u16() != 204 {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-RUN-001", "Failed to delete runner.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct RawAdminUser {
+    id: u64,
+    #[serde(default)]
+    login: Option<String>,
+    #[serde(default)]
+    username: Option<String>,
+    #[serde(default)]
+    full_name: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    is_admin: Option<bool>,
+    #[serde(default)]
+    active: Option<bool>,
+    #[serde(default)]
+    html_url: Option<String>,
+}
+
+pub fn list_admin_users(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+) -> Result<Vec<crate::forge_types::ForgeAdminUser>> {
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/admin/users?limit=100", api_root(base_url));
+    let resp = client
+        .get(&url)
+        .header("Authorization", auth_header(pat))
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    let raw: Vec<RawAdminUser> = serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "Gitea API error.")
+                .with_detail(format!("decode users: {e}")),
+        )
+    })?;
+    Ok(raw
+        .into_iter()
+        .map(|u| {
+            let username = u
+                .login
+                .or(u.username)
+                .unwrap_or_else(|| format!("user-{}", u.id));
+            let name = u
+                .full_name
+                .filter(|s| !s.trim().is_empty())
+                .or(u.name.filter(|s| !s.trim().is_empty()));
+            let state = u.active.map(|a| {
+                if a {
+                    "active".into()
+                } else {
+                    "inactive".into()
+                }
+            });
+            crate::forge_types::ForgeAdminUser {
+                id: u.id,
+                username,
+                name,
+                email: u.email,
+                is_admin: u.is_admin,
+                state,
+                web_url: u.html_url,
+            }
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

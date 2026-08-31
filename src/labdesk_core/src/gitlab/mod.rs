@@ -643,6 +643,259 @@ pub fn list_merge_request_notes(
         .collect())
 }
 
+// --- Slice J: runners + admin users ---
+
+#[derive(Debug, Deserialize)]
+struct RawRunner {
+    id: i64,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    active: Option<bool>,
+    #[serde(default)]
+    paused: Option<bool>,
+    #[serde(default)]
+    online: Option<bool>,
+    #[serde(default)]
+    is_shared: Option<bool>,
+    #[serde(default)]
+    runner_type: Option<String>,
+    #[serde(default)]
+    tag_list: Vec<String>,
+}
+
+fn map_runner(r: RawRunner, base_url: &str, scope: &str) -> crate::forge_types::ForgeRunner {
+    let paused = r.paused.or_else(|| r.active.map(|a| !a));
+    let active = match (r.active, r.paused) {
+        (Some(a), _) => a,
+        (None, Some(p)) => !p,
+        _ => true,
+    };
+    let id = r.id.to_string();
+    let web = format!(
+        "{}/admin/runners/{}",
+        base_url.trim_end_matches('/'),
+        id
+    );
+    crate::forge_types::ForgeRunner {
+        id,
+        description: r.description,
+        active,
+        online: r.online,
+        paused,
+        is_shared: r.is_shared,
+        tag_list: r.tag_list,
+        runner_type: r.runner_type,
+        web_url: Some(web),
+        scope: Some(scope.into()),
+    }
+}
+
+fn fetch_runners_json(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    path_and_query: &str,
+) -> Result<Vec<RawRunner>> {
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}{}", api_root(base_url), path_and_query);
+    let resp = client
+        .get(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode runners: {e}")),
+        )
+    })
+}
+
+/// Instance runners (`/runners/all`, fallback `/runners` on 403).
+pub fn list_instance_runners(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+) -> Result<Vec<crate::forge_types::ForgeRunner>> {
+    match fetch_runners_json(base_url, pat, ssl_mode, "/runners/all?per_page=100") {
+        Ok(raw) => Ok(raw
+            .into_iter()
+            .map(|r| map_runner(r, base_url, "instance"))
+            .collect()),
+        Err(LabDeskError::App(info)) if info.code == "LD-API-403" => {
+            let raw = fetch_runners_json(base_url, pat, ssl_mode, "/runners?per_page=100")?;
+            Ok(raw
+                .into_iter()
+                .map(|r| map_runner(r, base_url, "owned"))
+                .collect())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub fn list_project_runners(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    path_hint: Option<&str>,
+) -> Result<Vec<crate::forge_types::ForgeRunner>> {
+    let _ = path_hint;
+    let path = format!("/projects/{project_id}/runners?per_page=100");
+    let raw = fetch_runners_json(base_url, pat, ssl_mode, &path)?;
+    Ok(raw
+        .into_iter()
+        .map(|r| map_runner(r, base_url, "project"))
+        .collect())
+}
+
+pub fn set_runner_paused(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    runner_id: &str,
+    paused: bool,
+    project_id: Option<i64>,
+    path_hint: Option<&str>,
+) -> Result<crate::forge_types::ForgeRunner> {
+    let _ = (project_id, path_hint);
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/runners/{}", api_root(base_url), urlencoding_ref(runner_id));
+    let body = serde_json::json!({ "paused": paused });
+    let resp = client
+        .put(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-RUN-001", "Failed to update runner.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    let raw: RawRunner = serde_json::from_str(&text).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode runner: {e}")),
+        )
+    })?;
+    Ok(map_runner(raw, base_url, "instance"))
+}
+
+pub fn delete_runner(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    runner_id: &str,
+    project_id: Option<i64>,
+    path_hint: Option<&str>,
+) -> Result<()> {
+    let _ = (project_id, path_hint);
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/runners/{}", api_root(base_url), urlencoding_ref(runner_id));
+    let resp = client
+        .delete(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let text = resp.text().unwrap_or_default();
+    if !status.is_success() && status.as_u16() != 204 {
+        return Err(LabDeskError::App(
+            ErrorInfo::new("LD-API-RUN-001", "Failed to delete runner.")
+                .with_detail(truncate(&text, 200)),
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct RawAdminUser {
+    id: u64,
+    username: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    is_admin: Option<bool>,
+    #[serde(default)]
+    web_url: Option<String>,
+}
+
+pub fn list_admin_users(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+) -> Result<Vec<crate::forge_types::ForgeAdminUser>> {
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/users?per_page=100&order_by=id", api_root(base_url));
+    let resp = client
+        .get(&url)
+        .header("PRIVATE-TOKEN", pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    let raw: Vec<RawAdminUser> = serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "GitLab API error.")
+                .with_detail(format!("decode users: {e}")),
+        )
+    })?;
+    Ok(raw
+        .into_iter()
+        .map(|u| crate::forge_types::ForgeAdminUser {
+            id: u.id,
+            username: u.username,
+            name: u.name,
+            email: u.email,
+            is_admin: u.is_admin,
+            state: u.state,
+            web_url: u.web_url,
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

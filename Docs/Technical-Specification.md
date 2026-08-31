@@ -307,11 +307,13 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
   conflict previews stay read-only `QTextEdit`. External editor via
   `xdg-open` / portal remains available. **Not** Riverbank QScintilla
   (ADR-002, ADR-003). See [`v2-roadmap.md`](v2-roadmap.md).
+- **Admin / runners (Slice J):** Admin view + project Runners tab;
+  forge-aware list/pause/delete (OneDev agents: list + open).
 - **Conflict resolution (V2):** structured in-app resolve is supported;
   users may still resolve externally or in the LabDesk editor. See ADR-006
   and `Docs/v2-roadmap.md`.
-- **Admin/runners, fancy side-by-side diff, localization, MR reply
-  posting, submodule/LFS UIs:** planned as Slices J–N; not before then.
+- **Fancy side-by-side diff, localization, MR reply posting,
+  submodule/LFS UIs:** planned as Slices K–N; not before then.
 - **No OAuth/SSO** for the API in this roadmap; PAT / forge tokens only.
 - **English-only UI** until Slice L.
 - **Linux only.** No Windows or macOS.

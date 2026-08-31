@@ -21,11 +21,14 @@ Self-hosted OneDev via REST under **`/~api`**. Auth: HTTP Basic with the
 | Branch exists | `GET /~api/projects/{id}/branches/{branch}` |
 | Latest build | `GET /~api/builds?query=…` |
 | Build detail | `GET /~api/builds/{id}` |
+| Agents | `GET /~api/agents` |
+| Users | `GET /~api/users` |
 
-**Not supported from LabDesk (returns `LD-API-MR-004` / `LD-API-JOB-001`):**
+**Not supported from LabDesk (returns `LD-API-MR-004` / `LD-API-JOB-001` / `LD-API-RUN-004`):**
 - Draft PR create
 - Changing PR target branch
 - Playing a manual CI job
+- Agent pause / delete via API (open `{base}/~administration/agents`)
 
 Play manual job: **not supported** (capability gate → `LD-API-JOB-001`).
 

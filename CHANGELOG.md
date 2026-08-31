@@ -20,6 +20,14 @@ bullets without a stamp predate this convention.
 
  ### Added
 
+- **01:49:37  01/09/2026** — Slice J admin + runners/agents: Admin view
+  (instance runners + users), repo Runners tab; GitLab / Gitea / Forgejo
+  pause·enable·delete; OneDev agents list + open (`LD-API-RUN-004` for
+  pause/delete). Capability matrix + docs/contracts.
+- **01:42:44  01/09/2026** — Slice J runner/agent + admin-user API helpers on
+  Gitea, Forgejo, and OneDev (mirror GitLab); uniform optional
+  `project_id`/`path_hint` on pause/delete; `LD-API-RUN-001` /
+  `LD-API-RUN-004`.
 - **00:59:16  01/09/2026** — Slice I from-scratch in-app editor:
   `QPlainTextEdit` + line numbers, find/replace, basic syntax highlight,
   save/undo, large/binary caps; **Edit in LabDesk** from Changes /

@@ -97,11 +97,38 @@ impl ForgeKind {
         matches!(self, Self::Gitlab | Self::Gitea | Self::Forgejo)
     }
 
+    /// List CI runners / agents (instance and/or project).
+    pub fn supports_runners(self) -> bool {
+        true
+    }
+
+    /// Pause / enable (or disable) a runner via API.
+    pub fn supports_runner_pause(self) -> bool {
+        matches!(self, Self::Gitlab | Self::Gitea | Self::Forgejo)
+    }
+
+    /// Delete a runner via API.
+    pub fn supports_runner_delete(self) -> bool {
+        matches!(self, Self::Gitlab | Self::Gitea | Self::Forgejo)
+    }
+
+    /// List instance users (admin token usually required).
+    pub fn supports_admin_users(self) -> bool {
+        true
+    }
+
     pub fn ci_tab_label(self) -> &'static str {
         match self {
             Self::Gitlab => "Pipelines",
             Self::Gitea | Self::Forgejo => "Actions",
             Self::Onedev => "Builds",
+        }
+    }
+
+    pub fn runners_label(self) -> &'static str {
+        match self {
+            Self::Gitlab | Self::Gitea | Self::Forgejo => "Runners",
+            Self::Onedev => "Agents",
         }
     }
 }
@@ -120,6 +147,10 @@ mod capability_tests {
         assert!(f.supports_mr_merge());
         assert!(f.supports_mr_notes());
         assert!(f.supports_draft_mr());
+        assert!(f.supports_runners());
+        assert!(f.supports_runner_pause());
+        assert!(f.supports_runner_delete());
+        assert!(f.supports_admin_users());
     }
 
     #[test]
@@ -132,6 +163,10 @@ mod capability_tests {
         assert!(f.supports_mr_merge());
         assert!(f.supports_mr_notes());
         assert!(f.supports_draft_mr());
+        assert!(f.supports_runners());
+        assert!(f.supports_runner_pause());
+        assert!(f.supports_runner_delete());
+        assert!(f.supports_admin_users());
     }
 
     #[test]
@@ -144,6 +179,9 @@ mod capability_tests {
         assert!(f.supports_mr_merge());
         assert!(f.supports_mr_notes());
         assert!(f.supports_draft_mr());
+        assert!(f.supports_runners());
+        assert!(f.supports_runner_pause());
+        assert!(f.supports_runner_delete());
     }
 
     #[test]
@@ -156,6 +194,11 @@ mod capability_tests {
         assert!(f.supports_mr_merge());
         assert!(f.supports_mr_notes());
         assert!(!f.supports_draft_mr());
+        assert!(f.supports_runners());
+        assert!(!f.supports_runner_pause());
+        assert!(!f.supports_runner_delete());
+        assert!(f.supports_admin_users());
+        assert_eq!(f.runners_label(), "Agents");
     }
 }
 
@@ -246,6 +289,33 @@ pub struct ForgeJob {
     pub status: Option<String>,
     pub stage: Option<String>,
     pub when: Option<String>,
+    pub web_url: Option<String>,
+}
+
+/// CI runner / agent row for Admin + project runners UI (Slice J).
+#[derive(Debug, Clone)]
+pub struct ForgeRunner {
+    pub id: String,
+    pub description: Option<String>,
+    pub active: bool,
+    pub online: Option<bool>,
+    pub paused: Option<bool>,
+    pub is_shared: Option<bool>,
+    pub tag_list: Vec<String>,
+    pub runner_type: Option<String>,
+    pub web_url: Option<String>,
+    pub scope: Option<String>,
+}
+
+/// Instance user row for Admin users list (Slice J).
+#[derive(Debug, Clone)]
+pub struct ForgeAdminUser {
+    pub id: u64,
+    pub username: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub is_admin: Option<bool>,
+    pub state: Option<String>,
     pub web_url: Option<String>,
 }
 

@@ -105,7 +105,11 @@ LabDesk prefers the selected host’s Base URL instead.
   (`classic` / `sidebar`), **Projects list layout** (`table` / `cards`),
   clone/push progress fill colour + alpha, and whether to check for
   Flatpak updates.
-- **View** menu: switch Projects / Settings and layout.
+- **View** menu: switch Projects / **Admin** / Settings and layout.
+- **Admin:** instance **Runners** (or **Agents** on OneDev) and **Users**
+  lists. Pause/enable/delete runners where the forge API allows (admin
+  token often required). **Open in …** / **Open admin…** for the forge
+  UI. Users list is read-only.
 - Do **not** put PATs or passwords in config files.
 - If startup hangs for a long time, LabDesk may restore the last good
   settings and show an error with a code like **`LD-CFG-010`**.
@@ -216,6 +220,19 @@ If someone else pushed while you were committing locally:
   for now; an in-app log tail may come later.
 - After an online refresh, the last status and jobs are kept so you can
   still see them offline. **Play is disabled offline.**
+
+---
+
+## 7b. Runners / agents
+
+- **Admin** (main window): instance-wide runners (GitLab / Gitea /
+  Forgejo Actions) or **agents** (OneDev), plus a read-only **Users**
+  list (admin token usually required).
+- Repo window **Runners** tab: runners linked to the current project
+  (empty on OneDev — agents are instance-scoped).
+- **Pause** / **Enable** / **Delete…** when the forge supports it;
+  otherwise use **Open in …**. Failures use `LD-API-RUN-001` /
+  `LD-API-RUN-004`.
 
 ---
 

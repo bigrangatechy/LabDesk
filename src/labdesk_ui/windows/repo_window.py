@@ -255,6 +255,9 @@ class RepoWindow(QMainWindow):
         self._pipelines_tab_index = self.tabs.addTab(
             self._build_pipelines_tab(), "Pipelines"
         )
+        self._runners_tab_index = self.tabs.addTab(
+            self._build_runners_tab(), "Runners"
+        )
         self._mrs_tab_index = self.tabs.addTab(
             self._build_mrs_tab(), "Merge requests"
         )
@@ -307,12 +310,24 @@ class RepoWindow(QMainWindow):
         try:
             self.tabs.setTabText(self._pipelines_tab_index, ci)
             self.tabs.setTabText(self._mrs_tab_index, plural)
+            if hasattr(self, "_runners_tab_index"):
+                self.tabs.setTabText(
+                    self._runners_tab_index, str(info.get("runners_label") or "Runners")
+                )
         except Exception:
             pass
         if hasattr(self, "btn_mr_open"):
             self.btn_mr_open.setText(open_lbl)
         if hasattr(self, "btn_pipeline_open"):
             self.btn_pipeline_open.setText(open_lbl)
+        if hasattr(self, "btn_runner_open"):
+            self.btn_runner_open.setText(open_lbl)
+        can_pause = bool(info.get("supports_runner_pause"))
+        can_delete = bool(info.get("supports_runner_delete"))
+        if hasattr(self, "btn_runner_pause"):
+            self.btn_runner_pause.setVisible(can_pause)
+            self.btn_runner_enable.setVisible(can_pause)
+            self.btn_runner_delete.setVisible(can_delete)
         if hasattr(self, "btn_job_play"):
             playable = bool(info.get("supports_play_job", True))
             self.btn_job_play.setVisible(playable)
@@ -483,12 +498,45 @@ class RepoWindow(QMainWindow):
         self.pipeline_jobs.currentItemChanged.connect(self._on_pipeline_job_selected)
         return page
 
+    def _build_runners_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        self.runners_summary = QLabel("No project runners loaded yet.")
+        self.runners_summary.setWordWrap(True)
+        layout.addWidget(self.runners_summary)
+        self.project_runners = QListWidget()
+        self.project_runners.currentItemChanged.connect(self._on_project_runner_selected)
+        layout.addWidget(self.project_runners, stretch=1)
+        row = QHBoxLayout()
+        self.btn_runners_refresh = QPushButton("Refresh runners")
+        self.btn_runners_refresh.clicked.connect(self._refresh_project_runners)
+        row.addWidget(self.btn_runners_refresh)
+        self.btn_runner_pause = QPushButton("Pause")
+        self.btn_runner_pause.clicked.connect(lambda: self._set_project_runner_paused(True))
+        row.addWidget(self.btn_runner_pause)
+        self.btn_runner_enable = QPushButton("Enable")
+        self.btn_runner_enable.clicked.connect(
+            lambda: self._set_project_runner_paused(False)
+        )
+        row.addWidget(self.btn_runner_enable)
+        self.btn_runner_delete = QPushButton("Delete…")
+        self.btn_runner_delete.clicked.connect(self._delete_project_runner)
+        row.addWidget(self.btn_runner_delete)
+        self.btn_runner_open = QPushButton("Open in forge")
+        self.btn_runner_open.clicked.connect(self._open_project_runner)
+        row.addWidget(self.btn_runner_open)
+        row.addStretch(1)
+        layout.addLayout(row)
+        self._set_project_runner_actions(False)
+        return page
+
     def refresh(self) -> None:
         """Reload local git panels (async) plus online pipeline/MR panels."""
         self._maybe_fetch_on_focus(force=False)
         self._history_offset = 0
         self._refresh_local_async()
         self._refresh_pipelines()
+        self._refresh_project_runners()
         self._refresh_mrs()
 
     def _refresh_local_async(self) -> None:
@@ -2603,6 +2651,176 @@ class RepoWindow(QMainWindow):
                 self,
                 "Job log",
                 "No job URL available. Use Open in … on the pipeline, or refresh online.",
+            )
+            return
+        try:
+            open_url(url)
+        except Exception as exc:
+            code, msg = format_error(exc)
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}")
+
+    def _set_project_runner_actions(self, enabled: bool) -> None:
+        info = getattr(self, "_forge_info", None) or forge_info()
+        can_pause = bool(info.get("supports_runner_pause"))
+        can_delete = bool(info.get("supports_runner_delete"))
+        if hasattr(self, "btn_runner_pause"):
+            self.btn_runner_pause.setEnabled(enabled and can_pause)
+            self.btn_runner_enable.setEnabled(enabled and can_pause)
+            self.btn_runner_delete.setEnabled(enabled and can_delete)
+            self.btn_runner_open.setEnabled(enabled)
+
+    def _on_project_runner_selected(self, current, _prev) -> None:
+        ok = bool(current and isinstance(current.data(Qt.ItemDataRole.UserRole), dict))
+        self._set_project_runner_actions(ok)
+
+    def _selected_project_runner(self) -> dict | None:
+        item = (
+            self.project_runners.currentItem()
+            if hasattr(self, "project_runners")
+            else None
+        )
+        if item is None:
+            return None
+        data = item.data(Qt.ItemDataRole.UserRole)
+        return data if isinstance(data, dict) else None
+
+    def _refresh_project_runners(self) -> None:
+        if not hasattr(self, "project_runners"):
+            return
+        if not self._network_available:
+            self.runners_summary.setText("Offline — cannot load project runners.")
+            return
+        from labdesk_ui.utils.async_jobs import run_in_background
+        from labdesk_ui.plugins.admin_view import _runner_row_text
+
+        path = self.repo_path
+
+        def work():
+            import labdesk_core
+
+            project = labdesk_core.resolve_repo_project(path) or {}
+            pid = project.get("project_id") or project.get("id")
+            if pid is None:
+                return {"error": "no_project", "rows": []}
+            hint = project.get("path_with_namespace")
+            rows = list(labdesk_core.list_project_runners(int(pid), hint) or [])
+            return {"error": None, "rows": rows, "project_id": int(pid)}
+
+        def on_ok(data) -> None:
+            data = data or {}
+            self.project_runners.clear()
+            if data.get("error") == "no_project":
+                self.runners_summary.setText(
+                    "No forge project linked — clone/open from Projects to manage runners."
+                )
+                return
+            rows = list(data.get("rows") or [])
+            self._runner_project_id = data.get("project_id")
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                item = QListWidgetItem(_runner_row_text(row))
+                item.setData(Qt.ItemDataRole.UserRole, row)
+                self.project_runners.addItem(item)
+            label = (getattr(self, "_forge_info", None) or forge_info()).get(
+                "runners_label"
+            ) or "Runners"
+            self.runners_summary.setText(f"{len(rows)} project {str(label).lower()}.")
+            self._set_project_runner_actions(False)
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            self.project_runners.clear()
+            self.runners_summary.setText(f"[{code}] {msg}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_runners_refresh]
+            if hasattr(self, "btn_runners_refresh")
+            else [],
+            status=lambda t: self.runners_summary.setText(t),
+            working_message="Loading project runners…",
+        )
+
+    def _set_project_runner_paused(self, paused: bool) -> None:
+        row = self._selected_project_runner()
+        if not row:
+            return
+        rid = str(row.get("id") or "")
+        pid = getattr(self, "_runner_project_id", None)
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        def work():
+            import labdesk_core
+
+            return labdesk_core.set_runner_paused(rid, paused, pid)
+
+        def on_ok(_r) -> None:
+            self._refresh_project_runners()
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_runner_pause, self.btn_runner_enable],
+            status=lambda t: self.runners_summary.setText(t),
+            working_message="Updating runner…",
+        )
+
+    def _delete_project_runner(self) -> None:
+        row = self._selected_project_runner()
+        if not row:
+            return
+        rid = str(row.get("id") or "")
+        desc = row.get("description") or rid
+        reply = QMessageBox.question(
+            self,
+            "Delete runner?",
+            f"Delete runner '{desc}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        pid = getattr(self, "_runner_project_id", None)
+        from labdesk_ui.utils.async_jobs import run_in_background
+
+        def work():
+            import labdesk_core
+
+            labdesk_core.delete_runner(rid, pid)
+            return True
+
+        def on_ok(_r) -> None:
+            self._refresh_project_runners()
+
+        def on_err(code: str, msg: str, exc: BaseException) -> None:
+            QMessageBox.warning(self, f"Error {code}", f"[{code}] {msg}\n\n{exc}")
+
+        run_in_background(
+            self,
+            work,
+            on_success=on_ok,
+            on_error=on_err,
+            busy_widgets=[self.btn_runner_delete],
+            status=lambda t: self.runners_summary.setText(t),
+            working_message="Deleting runner…",
+        )
+
+    def _open_project_runner(self) -> None:
+        row = self._selected_project_runner()
+        url = (row or {}).get("web_url") if row else None
+        if not url:
+            QMessageBox.information(
+                self,
+                "Runners",
+                "No runner URL — use Admin → Open admin for the instance list.",
             )
             return
         try:

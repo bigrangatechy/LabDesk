@@ -108,6 +108,8 @@ Examples: `LD-AUTH-001`, `LD-CFG-010`, `LD-API-429`.
 | `LD-API-MR-003` | Merge MR/PR via API failed | "Failed to merge MR." | Preserve UI; allow retry |
 | `LD-API-MR-004` | MR/PR feature unsupported on this forge | "… is not supported on this forge." | Disable control; do not retry same action |
 | `LD-API-JOB-001` | Play / pipeline job failed | "Failed to run CI job: {summary}" | Preserve UI; allow retry |
+| `LD-API-RUN-001` | Pause / delete runner failed | "Failed to update/delete runner." | Preserve UI; allow retry |
+| `LD-API-RUN-004` | Runner/agent action unsupported on forge | "Agent pause/delete is not supported via API from LabDesk; open in OneDev." | Open forge UI; do not retry |
 
 Prefer mapping HTTP failures to `LD-API-<status>` when the status is the
 main signal; use `LD-AUTH-001` for auth UX even if the wire code was 401.

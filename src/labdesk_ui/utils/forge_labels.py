@@ -18,6 +18,11 @@ def forge_info() -> dict:
         "supports_mr_merge": True,
         "supports_mr_notes": True,
         "supports_draft_mr": True,
+        "supports_runners": True,
+        "supports_runner_pause": True,
+        "supports_runner_delete": True,
+        "supports_admin_users": True,
+        "runners_label": "Runners",
         "open_in_label": "Open in GitLab",
     }
     try:

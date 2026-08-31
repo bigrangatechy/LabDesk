@@ -75,5 +75,6 @@ def list_views() -> list[RegisteredView]:
 def ensure_builtin_views() -> None:
     """Import built-in plugins so they register themselves."""
     # Local imports avoid cycles at package import time.
+    from labdesk_ui.plugins import admin_view as _admin  # noqa: F401
     from labdesk_ui.plugins import projects_view as _projects  # noqa: F401
     from labdesk_ui.plugins import settings_view as _settings  # noqa: F401

@@ -2,8 +2,8 @@
 
 use crate::error::{ErrorInfo, LabDeskError, Result};
 use crate::forge_types::{
-    CreatedPullRequest, ForgeJob, ForgeKind, ForgeNote, ForgePipeline, ForgeProject,
-    ForgePullRequest, ForgePullRequestDetail, ForgeUser, ForgeVersion,
+    CreatedPullRequest, ForgeAdminUser, ForgeJob, ForgeKind, ForgeNote, ForgePipeline, ForgeProject,
+    ForgePullRequest, ForgePullRequestDetail, ForgeRunner, ForgeUser, ForgeVersion,
 };
 use crate::{forgejo, gitea, gitlab, onedev};
 
@@ -480,6 +480,181 @@ pub fn list_merge_request_notes(
     }
 }
 
+fn unsupported_runner(
+    forge: ForgeKind,
+    code: &'static str,
+    message: &str,
+    feature: &str,
+) -> LabDeskError {
+    LabDeskError::App(
+        ErrorInfo::new(code, message).with_detail(format!(
+            "{} does not support {feature} from LabDesk.",
+            forge.forge_display_name()
+        )),
+    )
+}
+
+pub fn list_instance_runners(
+    forge: ForgeKind,
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+) -> Result<Vec<ForgeRunner>> {
+    if !forge.supports_runners() {
+        return Err(unsupported_runner(
+            forge,
+            "LD-API-RUN-004",
+            "Runners are not supported on this forge.",
+            "listing runners",
+        ));
+    }
+    match forge {
+        ForgeKind::Gitlab => gitlab::list_instance_runners(base_url, pat, ssl_mode),
+        ForgeKind::Gitea => gitea::list_instance_runners(base_url, pat, ssl_mode),
+        ForgeKind::Forgejo => forgejo::list_instance_runners(base_url, pat, ssl_mode),
+        ForgeKind::Onedev => onedev::list_instance_runners(base_url, pat, ssl_mode),
+    }
+}
+
+pub fn list_project_runners(
+    forge: ForgeKind,
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    path_hint: Option<&str>,
+) -> Result<Vec<ForgeRunner>> {
+    if !forge.supports_runners() {
+        return Err(unsupported_runner(
+            forge,
+            "LD-API-RUN-004",
+            "Runners are not supported on this forge.",
+            "listing project runners",
+        ));
+    }
+    match forge {
+        ForgeKind::Gitlab => {
+            gitlab::list_project_runners(base_url, pat, ssl_mode, project_id, path_hint)
+        }
+        ForgeKind::Gitea => {
+            gitea::list_project_runners(base_url, pat, ssl_mode, project_id, path_hint)
+        }
+        ForgeKind::Forgejo => {
+            forgejo::list_project_runners(base_url, pat, ssl_mode, project_id, path_hint)
+        }
+        ForgeKind::Onedev => {
+            onedev::list_project_runners(base_url, pat, ssl_mode, project_id, path_hint)
+        }
+    }
+}
+
+pub fn set_runner_paused(
+    forge: ForgeKind,
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    runner_id: &str,
+    paused: bool,
+    project_id: Option<i64>,
+    path_hint: Option<&str>,
+) -> Result<ForgeRunner> {
+    if !forge.supports_runner_pause() {
+        return Err(unsupported_runner(
+            forge,
+            "LD-API-RUN-004",
+            "Pausing runners is not supported on this forge.",
+            "pausing/enabling runners",
+        ));
+    }
+    match forge {
+        ForgeKind::Gitlab => gitlab::set_runner_paused(
+            base_url, pat, ssl_mode, runner_id, paused, project_id, path_hint,
+        ),
+        ForgeKind::Gitea => gitea::set_runner_paused(
+            base_url, pat, ssl_mode, runner_id, paused, project_id, path_hint,
+        ),
+        ForgeKind::Forgejo => forgejo::set_runner_paused(
+            base_url, pat, ssl_mode, runner_id, paused, project_id, path_hint,
+        ),
+        ForgeKind::Onedev => onedev::set_runner_paused(
+            base_url, pat, ssl_mode, runner_id, paused, project_id, path_hint,
+        ),
+    }
+}
+
+pub fn delete_runner(
+    forge: ForgeKind,
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    runner_id: &str,
+    project_id: Option<i64>,
+    path_hint: Option<&str>,
+) -> Result<()> {
+    if !forge.supports_runner_delete() {
+        return Err(unsupported_runner(
+            forge,
+            "LD-API-RUN-004",
+            "Deleting runners is not supported on this forge.",
+            "deleting runners",
+        ));
+    }
+    match forge {
+        ForgeKind::Gitlab => {
+            gitlab::delete_runner(base_url, pat, ssl_mode, runner_id, project_id, path_hint)
+        }
+        ForgeKind::Gitea => {
+            gitea::delete_runner(base_url, pat, ssl_mode, runner_id, project_id, path_hint)
+        }
+        ForgeKind::Forgejo => {
+            forgejo::delete_runner(base_url, pat, ssl_mode, runner_id, project_id, path_hint)
+        }
+        ForgeKind::Onedev => {
+            onedev::delete_runner(base_url, pat, ssl_mode, runner_id, project_id, path_hint)
+        }
+    }
+}
+
+pub fn list_admin_users(
+    forge: ForgeKind,
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+) -> Result<Vec<ForgeAdminUser>> {
+    if !forge.supports_admin_users() {
+        return Err(unsupported_runner(
+            forge,
+            "LD-API-RUN-004",
+            "Listing users is not supported on this forge.",
+            "listing admin users",
+        ));
+    }
+    match forge {
+        ForgeKind::Gitlab => gitlab::list_admin_users(base_url, pat, ssl_mode),
+        ForgeKind::Gitea => gitea::list_admin_users(base_url, pat, ssl_mode),
+        ForgeKind::Forgejo => forgejo::list_admin_users(base_url, pat, ssl_mode),
+        ForgeKind::Onedev => onedev::list_admin_users(base_url, pat, ssl_mode),
+    }
+}
+
+pub fn runners_admin_web_url(forge: ForgeKind, base_url: &str) -> String {
+    let base = base_url.trim_end_matches('/');
+    match forge {
+        ForgeKind::Gitlab => format!("{base}/admin/runners"),
+        ForgeKind::Gitea | ForgeKind::Forgejo => format!("{base}/admin/actions/runners"),
+        ForgeKind::Onedev => format!("{base}/~administration/agents"),
+    }
+}
+
+pub fn admin_users_web_url(forge: ForgeKind, base_url: &str) -> String {
+    let base = base_url.trim_end_matches('/');
+    match forge {
+        ForgeKind::Gitlab => format!("{base}/admin/users"),
+        ForgeKind::Gitea | ForgeKind::Forgejo => format!("{base}/admin/users"),
+        ForgeKind::Onedev => format!("{base}/~administration/users"),
+    }
+}
+
 #[cfg(test)]
 mod unsupported_feature_tests {
     use super::*;
@@ -506,6 +681,22 @@ mod unsupported_feature_tests {
             .expect_err("onedev play");
         assert_eq!(err.info().code, "LD-API-JOB-001");
         assert!(err.info().detail.as_deref().unwrap_or("").contains("OneDev"));
+    }
+
+    #[test]
+    fn onedev_runner_pause_is_rejected() {
+        let err = set_runner_paused(
+            ForgeKind::Onedev,
+            "http://od.lan",
+            "tok",
+            "strict",
+            "1",
+            true,
+            None,
+            None,
+        )
+        .expect_err("onedev pause");
+        assert_eq!(err.info().code, "LD-API-RUN-004");
     }
 
     #[test]

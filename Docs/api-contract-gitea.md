@@ -15,5 +15,10 @@ Self-hosted Gitea via REST **`/api/v1`**. Auth: `Authorization: token <PAT>`.
 | Branch exists | `GET /repos/{owner}/{repo}/branches/{branch}` |
 | Actions runs | `GET /repos/{owner}/{repo}/actions/runs` |
 | Run jobs | `GET /repos/{owner}/{repo}/actions/runs/{id}/jobs` |
+| Admin runners | `GET/PATCH/DELETE /admin/actions/runners[/{id}]` |
+| Repo runners | `GET/PATCH/DELETE /repos/{owner}/{repo}/actions/runners[/{id}]` |
+| Admin users | `GET /admin/users` |
 
 Play manual job: **not supported** in LabDesk for Gitea.
+Pause/delete runners: `PATCH` with `{ "disabled": true|false }`; errors
+`LD-API-RUN-001`.

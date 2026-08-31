@@ -362,6 +362,8 @@ dev guide.
 - OAuth / session cookie login.
 - Admin, runners, registry, packages, wikis, issues (unless a future
   ADR expands scope).
+  **Exception (Slice J):** runners/agents + admin user list are in
+  scope — see Appendix — Runners and sibling forge contracts.
 - `gitlab.com` or other SaaS hosts.
 
 ---
@@ -384,3 +386,18 @@ semantics require:
 2. Note in `CHANGELOG.md` under `[Unreleased]`.
 3. ADR only if the change alters architecture (e.g. switching away from
    `PRIVATE-TOKEN`).
+
+---
+
+## Appendix — Runners (Slice J)
+
+| Action | Method / path |
+|--------|----------------|
+| Owned / available | `GET /runners?per_page=100` |
+| Instance (admin) | `GET /runners/all?per_page=100` (fallback to `/runners` on 403) |
+| Project | `GET /projects/:id/runners` |
+| Pause / enable | `PUT /runners/:id` JSON `{ "paused": true\|false }` |
+| Delete | `DELETE /runners/:id` |
+| Users (admin) | `GET /users?per_page=100` |
+
+Web UI: `{base_url}/admin/runners`, `{base_url}/admin/users`.

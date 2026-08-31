@@ -1776,6 +1776,219 @@ fn play_job(py: Python<'_>, project_id: i64, job_id: u64) -> PyResult<PyObject> 
     Ok(d.into())
 }
 
+fn runner_to_dict(py: Python<'_>, r: &forge_types::ForgeRunner) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("id", &r.id)?;
+    d.set_item("description", &r.description)?;
+    d.set_item("active", r.active)?;
+    d.set_item("online", r.online)?;
+    d.set_item("paused", r.paused)?;
+    d.set_item("is_shared", r.is_shared)?;
+    d.set_item("tag_list", r.tag_list.clone())?;
+    d.set_item("runner_type", &r.runner_type)?;
+    d.set_item("web_url", &r.web_url)?;
+    d.set_item("scope", &r.scope)?;
+    Ok(d.into())
+}
+
+/// List instance (or owned) CI runners / agents for the active host.
+#[pyfunction]
+fn list_instance_runners(py: Python<'_>) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
+    let keyring = acc.keyring_account.clone();
+    let rows = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        forge::list_instance_runners(forge, &base_url, &pat, &ssl_mode)
+    })?;
+    let list = pyo3::types::PyList::empty(py);
+    for r in &rows {
+        list.append(runner_to_dict(py, r)?)?;
+    }
+    Ok(list.into())
+}
+
+/// List runners linked to a forge project.
+#[pyfunction]
+#[pyo3(signature = (project_id, path_hint=None))]
+fn list_project_runners(
+    py: Python<'_>,
+    project_id: i64,
+    path_hint: Option<String>,
+) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
+    let keyring = acc.keyring_account.clone();
+    let account_id = acc.id.clone();
+    let hint = path_hint.or_else(|| project_path_hint(&paths, &account_id, project_id));
+    let rows = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        forge::list_project_runners(
+            forge,
+            &base_url,
+            &pat,
+            &ssl_mode,
+            project_id,
+            hint.as_deref(),
+        )
+    })?;
+    let list = pyo3::types::PyList::empty(py);
+    for r in &rows {
+        list.append(runner_to_dict(py, r)?)?;
+    }
+    Ok(list.into())
+}
+
+/// Pause or enable a runner (`paused=true` → pause / disable).
+#[pyfunction]
+#[pyo3(signature = (runner_id, paused, project_id=None, path_hint=None))]
+fn set_runner_paused(
+    py: Python<'_>,
+    runner_id: String,
+    paused: bool,
+    project_id: Option<i64>,
+    path_hint: Option<String>,
+) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
+    let keyring = acc.keyring_account.clone();
+    let r = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        forge::set_runner_paused(
+            forge,
+            &base_url,
+            &pat,
+            &ssl_mode,
+            &runner_id,
+            paused,
+            project_id,
+            path_hint.as_deref(),
+        )
+    })?;
+    runner_to_dict(py, &r)
+}
+
+/// Delete a runner / agent registration.
+#[pyfunction]
+#[pyo3(signature = (runner_id, project_id=None, path_hint=None))]
+fn delete_runner(
+    py: Python<'_>,
+    runner_id: String,
+    project_id: Option<i64>,
+    path_hint: Option<String>,
+) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
+    let keyring = acc.keyring_account.clone();
+    py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        forge::delete_runner(
+            forge,
+            &base_url,
+            &pat,
+            &ssl_mode,
+            &runner_id,
+            project_id,
+            path_hint.as_deref(),
+        )
+    })?;
+    Ok(())
+}
+
+/// List instance users (typically requires an admin token).
+#[pyfunction]
+fn list_admin_users(py: Python<'_>) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let Some((acc, inst)) = cfg.active_connection() else {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-AUTH-004",
+            "No access token configured.",
+        ))
+        .into());
+    };
+    let base_url = inst.base_url.clone();
+    let ssl_mode = inst.ssl_mode.clone();
+    let forge = forge_kind_of(inst);
+    let keyring = acc.keyring_account.clone();
+    let rows = py.allow_threads(|| {
+        let pat = secrets::load_pat(&keyring)?;
+        forge::list_admin_users(forge, &base_url, &pat, &ssl_mode)
+    })?;
+    let list = pyo3::types::PyList::empty(py);
+    for u in rows {
+        let d = PyDict::new(py);
+        d.set_item("id", u.id)?;
+        d.set_item("username", u.username)?;
+        d.set_item("name", u.name)?;
+        d.set_item("email", u.email)?;
+        d.set_item("is_admin", u.is_admin)?;
+        d.set_item("state", u.state)?;
+        d.set_item("web_url", u.web_url)?;
+        list.append(d)?;
+    }
+    Ok(list.into())
+}
+
+/// Convenience URLs for opening admin runners / users in the forge browser.
+#[pyfunction]
+fn admin_web_urls(py: Python<'_>) -> PyResult<PyObject> {
+    let paths = paths::AppPaths::detect();
+    let cfg = config::load_or_default(&paths)?;
+    let forge = cfg
+        .active_instance()
+        .map(forge_kind_of)
+        .unwrap_or(ForgeKind::Gitlab);
+    let base = cfg
+        .active_instance()
+        .map(|i| i.base_url.clone())
+        .unwrap_or_default();
+    let d = PyDict::new(py);
+    d.set_item("runners", forge::runners_admin_web_url(forge, &base))?;
+    d.set_item("users", forge::admin_users_web_url(forge, &base))?;
+    Ok(d.into())
+}
+
 /// Metadata for forge-aware UI labels (MR vs PR, Pipelines vs Actions, …).
 #[pyfunction]
 fn active_forge_info(py: Python<'_>) -> PyResult<PyObject> {
@@ -1801,6 +2014,11 @@ fn active_forge_info(py: Python<'_>) -> PyResult<PyObject> {
     d.set_item("supports_mr_merge", forge.supports_mr_merge())?;
     d.set_item("supports_mr_notes", forge.supports_mr_notes())?;
     d.set_item("supports_draft_mr", forge.supports_draft_mr())?;
+    d.set_item("supports_runners", forge.supports_runners())?;
+    d.set_item("supports_runner_pause", forge.supports_runner_pause())?;
+    d.set_item("supports_runner_delete", forge.supports_runner_delete())?;
+    d.set_item("supports_admin_users", forge.supports_admin_users())?;
+    d.set_item("runners_label", forge.runners_label())?;
     d.set_item(
         "open_in_label",
         format!("Open in {}", forge.forge_display_name()),
@@ -1827,6 +2045,11 @@ fn forge_feature_matrix(py: Python<'_>) -> PyResult<PyObject> {
         d.set_item("supports_mr_merge", forge.supports_mr_merge())?;
         d.set_item("supports_mr_notes", forge.supports_mr_notes())?;
         d.set_item("supports_draft_mr", forge.supports_draft_mr())?;
+        d.set_item("supports_runners", forge.supports_runners())?;
+        d.set_item("supports_runner_pause", forge.supports_runner_pause())?;
+        d.set_item("supports_runner_delete", forge.supports_runner_delete())?;
+        d.set_item("supports_admin_users", forge.supports_admin_users())?;
+        d.set_item("runners_label", forge.runners_label())?;
         out.set_item(forge.as_str(), d)?;
     }
     Ok(out.into())
@@ -2378,6 +2601,12 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cache_pipeline, m)?)?;
     m.add_function(wrap_pyfunction!(cached_pipeline, m)?)?;
     m.add_function(wrap_pyfunction!(play_job, m)?)?;
+    m.add_function(wrap_pyfunction!(list_instance_runners, m)?)?;
+    m.add_function(wrap_pyfunction!(list_project_runners, m)?)?;
+    m.add_function(wrap_pyfunction!(set_runner_paused, m)?)?;
+    m.add_function(wrap_pyfunction!(delete_runner, m)?)?;
+    m.add_function(wrap_pyfunction!(list_admin_users, m)?)?;
+    m.add_function(wrap_pyfunction!(admin_web_urls, m)?)?;
     m.add_function(wrap_pyfunction!(list_trusted_certs, m)?)?;
     m.add_function(wrap_pyfunction!(import_trusted_cert, m)?)?;
     m.add_function(wrap_pyfunction!(remove_trusted_cert, m)?)?;

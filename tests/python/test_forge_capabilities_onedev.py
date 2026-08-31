@@ -23,6 +23,10 @@ def test_onedev_matrix_no_draft_retarget_or_play_job():
     assert od["supports_mr_merge"] is True
     assert od["supports_mr_notes"] is True
     assert od["supports_draft_mr"] is False
+    assert od["supports_runners"] is True
+    assert od["supports_runner_pause"] is False
+    assert od["supports_runner_delete"] is False
+    assert od["runners_label"] == "Agents"
 
 
 def test_onedev_mr_dialog_hides_draft_when_forge_info_says_so(qapp, monkeypatch):

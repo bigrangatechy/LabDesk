@@ -10,5 +10,6 @@ LabDesk keeps a **separate** Forgejo backend module and tests even when
 endpoints match Gitea, so Forgejo-specific drift does not break Gitea
 regressions (and vice versa).
 
-Endpoint map: same as [`api-contract-gitea.md`](api-contract-gitea.md).
+Endpoint map: same as [`api-contract-gitea.md`](api-contract-gitea.md)
+(including Actions runners + admin users for Slice J).
 Play manual job: **not supported**.

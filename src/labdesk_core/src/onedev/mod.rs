@@ -855,6 +855,205 @@ pub fn list_merge_request_notes(
         .collect())
 }
 
+// --- Slice J: runners (agents) + admin users ---
+
+#[derive(Debug, Deserialize)]
+struct RawAgent {
+    #[serde(default)]
+    id: Option<i64>,
+    #[serde(default, alias = "agentName")]
+    name: Option<String>,
+    #[serde(default, alias = "ipAddress")]
+    ip_address: Option<String>,
+    #[serde(default)]
+    paused: Option<bool>,
+    #[serde(default, alias = "alive")]
+    online: Option<bool>,
+    #[serde(default)]
+    os: Option<String>,
+}
+
+fn map_agent(a: RawAgent, base_url: &str) -> crate::forge_types::ForgeRunner {
+    let id = a
+        .id
+        .map(|i| i.to_string())
+        .unwrap_or_else(|| "unknown".into());
+    let paused = a.paused;
+    let active = !paused.unwrap_or(false);
+    let mut tags = Vec::new();
+    if let Some(ip) = a.ip_address.filter(|s| !s.is_empty()) {
+        tags.push(ip);
+    }
+    if let Some(os) = a.os.filter(|s| !s.is_empty()) {
+        tags.push(os);
+    }
+    crate::forge_types::ForgeRunner {
+        id,
+        description: a.name,
+        active,
+        online: a.online,
+        paused,
+        is_shared: Some(true),
+        tag_list: tags,
+        runner_type: Some("agent".into()),
+        web_url: Some(format!(
+            "{}/~administration/agents",
+            base_url.trim_end_matches('/')
+        )),
+        scope: Some("instance".into()),
+    }
+}
+
+/// Instance agents (`GET /~api/agents`).
+pub fn list_instance_runners(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+) -> Result<Vec<crate::forge_types::ForgeRunner>> {
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/agents", api_root(base_url));
+    let resp = apply_auth(client.get(&url), pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    let raw: Vec<RawAgent> = serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "OneDev API error.")
+                .with_detail(format!("decode agents: {e}")),
+        )
+    })?;
+    Ok(raw
+        .into_iter()
+        .map(|a| map_agent(a, base_url))
+        .collect())
+}
+
+/// Agents are instance-scoped in OneDev; no project agent list.
+pub fn list_project_runners(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    project_id: i64,
+    path_hint: Option<&str>,
+) -> Result<Vec<crate::forge_types::ForgeRunner>> {
+    let _ = (base_url, pat, ssl_mode, project_id, path_hint);
+    Ok(vec![])
+}
+
+pub fn set_runner_paused(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    runner_id: &str,
+    paused: bool,
+    project_id: Option<i64>,
+    path_hint: Option<&str>,
+) -> Result<crate::forge_types::ForgeRunner> {
+    let _ = (base_url, pat, ssl_mode, runner_id, paused, project_id, path_hint);
+    Err(LabDeskError::App(ErrorInfo::new(
+        "LD-API-RUN-004",
+        "Agent pause/delete is not supported via API from LabDesk; open in OneDev.",
+    )))
+}
+
+pub fn delete_runner(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+    runner_id: &str,
+    project_id: Option<i64>,
+    path_hint: Option<&str>,
+) -> Result<()> {
+    let _ = (base_url, pat, ssl_mode, runner_id, project_id, path_hint);
+    Err(LabDeskError::App(ErrorInfo::new(
+        "LD-API-RUN-004",
+        "Agent pause/delete is not supported via API from LabDesk; open in OneDev.",
+    )))
+}
+
+#[derive(Debug, Deserialize)]
+struct RawAdminUser {
+    id: u64,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default, alias = "fullName")]
+    full_name: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default, alias = "admin")]
+    is_admin: Option<bool>,
+    #[serde(default)]
+    disabled: Option<bool>,
+}
+
+pub fn list_admin_users(
+    base_url: &str,
+    pat: &str,
+    ssl_mode: &str,
+) -> Result<Vec<crate::forge_types::ForgeAdminUser>> {
+    let client = client_for(ssl_mode)?;
+    let url = format!("{}/users", api_root(base_url));
+    let resp = apply_auth(client.get(&url), pat)
+        .header("Accept", "application/json")
+        .send()
+        .map_err(|e| {
+            LabDeskError::App(
+                ErrorInfo::new("LD-NET-001", "Cannot reach instance. Working offline.")
+                    .with_detail(e.to_string()),
+            )
+        })?;
+    let status = resp.status();
+    let body = resp.text().unwrap_or_default();
+    if !status.is_success() {
+        return Err(err_map(status, &body));
+    }
+    let raw: Vec<RawAdminUser> = serde_json::from_str(&body).map_err(|e| {
+        LabDeskError::App(
+            ErrorInfo::new("LD-API-001", "OneDev API error.")
+                .with_detail(format!("decode users: {e}")),
+        )
+    })?;
+    Ok(raw
+        .into_iter()
+        .map(|u| {
+            let username = u
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("user-{}", u.id));
+            let name = u
+                .full_name
+                .filter(|s| !s.trim().is_empty())
+                .or(u.name.filter(|s| !s.trim().is_empty()));
+            let state = u.disabled.map(|d| {
+                if d {
+                    "inactive".into()
+                } else {
+                    "active".into()
+                }
+            });
+            crate::forge_types::ForgeAdminUser {
+                id: u.id,
+                username,
+                name,
+                email: u.email,
+                is_admin: u.is_admin,
+                state,
+                web_url: None,
+            }
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

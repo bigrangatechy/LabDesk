@@ -32,6 +32,9 @@ def test_forgejo_and_gitea_capability_parity():
         "supports_mr_merge",
         "supports_mr_notes",
         "supports_draft_mr",
+        "supports_runners",
+        "supports_runner_pause",
+        "supports_runner_delete",
     ]
     for key in keys:
         assert matrix["forgejo"][key] == matrix["gitea"][key], key

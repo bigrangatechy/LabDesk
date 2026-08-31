@@ -20,3 +20,6 @@ def test_gitlab_matrix_full_mr_and_play_job():
     assert gl["supports_mr_merge"] is True
     assert gl["supports_mr_notes"] is True
     assert gl["supports_draft_mr"] is True
+    assert gl["supports_runners"] is True
+    assert gl["supports_runner_pause"] is True
+    assert gl["supports_runner_delete"] is True

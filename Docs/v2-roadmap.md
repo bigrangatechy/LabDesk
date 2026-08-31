@@ -35,8 +35,8 @@ admin, localization, review, and git-extension surfaces. Delivery is
 | G | SSH host-switch + richer diffs | Done |
 | H | Notifications + V1 completeness pack | Done |
 | I | Full in-app code editor (from scratch on Qt; no QScintilla) | Done |
-| J | Admin / runner management | Next |
-| K | Side-by-side fancy diff editor | — |
+| J | Admin / runner management | Done |
+| K | Side-by-side fancy diff editor | Next |
 | L | Localization | — |
 | M | MR comment replies / full review workflows | — |
 | N | Submodule / LFS management UIs | — |
@@ -50,8 +50,10 @@ admin, localization, review, and git-extension surfaces. Delivery is
   Shipped subset: open/save, undo/redo, find/replace, line numbers,
   basic language highlight, large/binary file policy; **Open external**
   remains available. Not Scintilla feature parity.
-- **J — Admin/runners:** Instance admin and CI runner management UIs
-  (forge-aware; capability-gated like play-job).
+- **J — Admin/runners:** Instance **Admin** view (runners/agents + users)
+  and repo **Runners** tab. Forge-aware: GitLab runners, Gitea/Forgejo
+  Actions runners, OneDev agents (list + open; pause/delete via API on
+  GitLab/Gitea/Forgejo). Capability-gated like play-job.
 - **K — Fancy diff:** Side-by-side (and related) diff product beyond
   read-only unified `QTextEdit` views; may reuse highlighter /
   chrome patterns from Slice I; still no QScintilla.
