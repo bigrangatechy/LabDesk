@@ -18,6 +18,20 @@ bullets without a stamp predate this convention.
 
 ## [Unreleased]
 
+ ### Changed
+
+- **16:16:50  01/09/2026** — Single end-user guide: keep only
+  `Docs/user-guide.md` (Help + Flatpak share); remove the duplicate under
+  `src/labdesk_ui/docs/`. Dev notes stay in `Docs/dev-guide.md`. Docs
+  synced for Settings categories, Admin/Settings nav, and Slice N Git tab.
+- **16:02:04  01/09/2026** — Settings and Admin no longer show a
+  redundant “Back to Projects” / Done control; use the main
+  Projects / Admin / Settings navigation. Settings is grouped into
+  Appearance, Projects, Repositories, Updates, and Paths; exposes
+  `fetch_on_focus`, `history_page_size`, and `browse_files_page_size`
+  (host/account ids and active view stay connect-flow / nav /
+  config-only). First UX-polish items after Slice N.
+
  ### Fixed
 
 - **03:56:40  01/09/2026** — CI pytest: projects layout toggle test
@@ -39,7 +53,7 @@ bullets without a stamp predate this convention.
 
 - **03:09:06  01/09/2026** — Flatpak smoke-test deps: bundle `git`
   2.49 + `git-lfs` 3.8, `--socket=ssh-auth`, rebuild `.qm` at package
-  time, put `/app/bin` on the launcher PATH.
+  time, put `/app/bin` on the launcher PATH. Closes Slice N packaging.
 - **02:58:07  01/09/2026** — Slice N submodule / LFS: repo **Git** tab
   (libgit2 submodule list/init/update/sync; `git-lfs` status + pull
   when available); codes `LD-GIT-050`–`054`, `LD-GIT-060`–`062`.

@@ -10,15 +10,19 @@ from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayo
 
 
 def resolve_user_guide_path() -> Path | None:
-    """Locate bundled ``user-guide.md`` (packaged, repo checkout, Flatpak share)."""
+    """Locate ``Docs/user-guide.md`` (repo checkout) or Flatpak share copy.
+
+    Canonical source is always ``Docs/user-guide.md``. Flatpak installs that
+    file to ``/app/share/labdesk/user-guide.md`` only — no second tree copy.
+    """
     here = Path(__file__).resolve()
     candidates = [
-        # Packaged with labdesk_ui (dev install + Flatpak /app/lib/labdesk/…)
-        here.parent.parent / "docs" / "user-guide.md",
         # Repo checkout: Docs/ next to src/
         here.parents[3] / "Docs" / "user-guide.md",
-        # Flatpak share path (explicit install)
+        # Flatpak / packaged share path
         Path("/app/share/labdesk/user-guide.md"),
+        # CWD fallback (tests / unusual launch)
+        Path.cwd() / "Docs" / "user-guide.md",
     ]
     for path in candidates:
         try:

@@ -40,7 +40,7 @@ admin, localization, review, and git-extension surfaces. Delivery is
 | L | Localization | Done |
 | M | MR comment replies / full review workflows | Done |
 | N | Submodule / LFS management UIs | Done |
-| UX | UI/UX polish pass (after I–N) | Next |
+| UX | UI/UX polish pass (after I–N) | In progress |
 
 ### Slice notes (I–N + UX)
 
@@ -73,11 +73,14 @@ admin, localization, review, and git-extension surfaces. Delivery is
   libgit2: list/status, **Init**, **Update…** (network, auth reused),
   **Sync**. Git LFS: status + **Pull LFS objects…** when `git-lfs` is
   available (`LD-GIT-060` if missing). Flatpak bundles `git` +
-  `git-lfs` and enables `--socket=ssh-auth`. Deferred (N.2):
-  add/deinit submodule, recurse-on-clone, LFS push/track/locks.
-- **UX — Polish pass:** After feature slices A–N, one pass for layout,
-  density, keyboard/focus, empty states, and consistency — not new
-  product features.
+  `git-lfs` and enables `--socket=ssh-auth` (packaging closed with N).
+  Deferred (N.2): add/deinit submodule, recurse-on-clone, LFS
+  push/track/locks.
+- **UX — Polish pass:** After feature slices A–N. First items: remove
+  redundant Settings/Admin “back to projects” controls; categorize
+  Settings and promote ready prefs (`fetch_on_focus`, page sizes).
+  Remaining: layout density, keyboard/focus, empty states, consistency
+  — not new product features.
 
 ## Still deferred (not in slice list)
 

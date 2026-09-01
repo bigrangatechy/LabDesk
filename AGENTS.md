@@ -71,8 +71,8 @@ guides, git UI) must not block continuing the vertical slice.
 | GitLab REST usage | `Docs/api-contract.md` |
 | Config / SQLite / entities | `Docs/data-model.md` |
 | Error codes (`LD-…`) | `Docs/error-codes.md` |
-| End-user help (shell) | `Docs/user-guide.md` |
-| Contributor guide (shell) | `Docs/dev-guide.md` |
+| End-user help | `Docs/user-guide.md` (single copy; Help + Flatpak share) |
+| Contributor guide | `Docs/dev-guide.md` |
 | UX flows | `Docs/user-journey.md` |
 | Human contribution rules | `CONTRIBUTING.md` |
 | What changed | `CHANGELOG.md` |

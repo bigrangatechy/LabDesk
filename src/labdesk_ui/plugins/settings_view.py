@@ -14,11 +14,13 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -28,31 +30,28 @@ from labdesk_ui.plugins import AppContext, register_view
 from labdesk_ui.utils.helpers import format_error
 
 
+def _section(title: str) -> tuple[QGroupBox, QFormLayout]:
+    box = QGroupBox(title)
+    form = QFormLayout(box)
+    return box, form
+
+
 class SettingsView(QWidget):
     def __init__(self, parent: QWidget, ctx: AppContext) -> None:
         super().__init__(parent)
         self._ctx = ctx
 
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.addWidget(QLabel(tr("Settings")))
 
-        header = QHBoxLayout()
-        back = QPushButton(tr("← Back to Projects"))
-        back.clicked.connect(lambda: self._ctx.switch_view("projects"))
-        header.addWidget(back)
-        header.addWidget(QLabel(tr("Settings")), stretch=1)
-        layout.addLayout(header)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        body = QWidget()
+        layout = QVBoxLayout(body)
 
-        form = QFormLayout()
-
-        clone_row = QHBoxLayout()
-        self.clone_dir = QLineEdit()
-        self.clone_dir.setPlaceholderText(tr("e.g. ~/Documents/gitlab"))
-        clone_row.addWidget(self.clone_dir, stretch=1)
-        browse = QPushButton(tr("Browse…"))
-        browse.clicked.connect(self._browse_clone_dir)
-        clone_row.addWidget(browse)
-        form.addRow(tr("Clone into"), clone_row)
-
+        # --- Appearance ---
+        appearance, form = _section(tr("Appearance"))
         self.theme = QComboBox()
         self.theme.addItem(tr("System"), "system")
         self.theme.addItem(tr("Light"), "light")
@@ -70,7 +69,10 @@ class SettingsView(QWidget):
         self.ui_shell.addItem(tr("Classic"), "classic")
         self.ui_shell.addItem(tr("Sidebar"), "sidebar")
         form.addRow(tr("Main window layout"), self.ui_shell)
+        layout.addWidget(appearance)
 
+        # --- Projects ---
+        projects, form = _section(tr("Projects"))
         self.projects_layout = QComboBox()
         self.projects_layout.addItem(tr("Table"), "table")
         self.projects_layout.addItem(tr("Cards"), "cards")
@@ -85,29 +87,67 @@ class SettingsView(QWidget):
         self.progress_alpha = QSpinBox()
         self.progress_alpha.setRange(0, 255)
         self.progress_alpha.setValue(70)
-        self.progress_alpha.setToolTip(tr("Transparency of the clone/push fill (0 = invisible, 255 = solid)"))
+        self.progress_alpha.setToolTip(
+            tr("Transparency of the clone/push fill (0 = invisible, 255 = solid)")
+        )
         progress_row.addWidget(QLabel(tr("Alpha")))
         progress_row.addWidget(self.progress_alpha)
         progress_row.addStretch(1)
         form.addRow(tr("Clone/push fill colour"), progress_row)
+        layout.addWidget(projects)
 
+        # --- Repositories ---
+        repos, form = _section(tr("Repositories"))
+        clone_row = QHBoxLayout()
+        self.clone_dir = QLineEdit()
+        self.clone_dir.setPlaceholderText(tr("e.g. ~/Documents/gitlab"))
+        clone_row.addWidget(self.clone_dir, stretch=1)
+        browse = QPushButton(tr("Browse…"))
+        browse.clicked.connect(self._browse_clone_dir)
+        clone_row.addWidget(browse)
+        form.addRow(tr("Clone into"), clone_row)
+
+        self.fetch_on_focus = QCheckBox(tr("Fetch when the repo window gains focus"))
+        self.fetch_on_focus.setToolTip(
+            tr("When enabled, opening or focusing a repo window may fetch from the remote.")
+        )
+        form.addRow(tr("Remote fetch"), self.fetch_on_focus)
+
+        self.history_page_size = QSpinBox()
+        self.history_page_size.setRange(10, 5000)
+        self.history_page_size.setSingleStep(50)
+        self.history_page_size.setValue(200)
+        self.history_page_size.setToolTip(
+            tr("How many commits to load per page in the History tab (10–5000).")
+        )
+        form.addRow(tr("History page size"), self.history_page_size)
+
+        self.browse_files_page_size = QSpinBox()
+        self.browse_files_page_size.setRange(10, 5000)
+        self.browse_files_page_size.setSingleStep(50)
+        self.browse_files_page_size.setValue(200)
+        self.browse_files_page_size.setToolTip(
+            tr("How many tracked files to list per page when browsing (10–5000).")
+        )
+        form.addRow(tr("Browse files page size"), self.browse_files_page_size)
+        layout.addWidget(repos)
+
+        # --- Updates ---
+        updates, form = _section(tr("Updates"))
         self.check_updates = QCheckBox(tr("Check LabDesk Flatpak updates on startup"))
-        form.addRow(tr("Updates"), self.check_updates)
-
-        layout.addLayout(form)
-        self._refresh_progress_color_btn()
-
-        update_row = QHBoxLayout()
+        form.addRow(tr("On startup"), self.check_updates)
         self.btn_check_updates = QPushButton(tr("Check for updates now…"))
         self.btn_check_updates.clicked.connect(self._check_updates_now)
-        update_row.addWidget(self.btn_check_updates)
-        update_row.addStretch(1)
-        layout.addLayout(update_row)
+        form.addRow("", self.btn_check_updates)
+        layout.addWidget(updates)
 
+        # --- Paths (read-only) ---
+        paths_box, paths_form = _section(tr("Paths"))
         self.paths = QLabel("")
         self.paths.setWordWrap(True)
         self.paths.setStyleSheet("color: palette(mid); font-size: 11px;")
-        layout.addWidget(self.paths)
+        paths_form.addRow(self.paths)
+        layout.addWidget(paths_box)
 
         btns = QHBoxLayout()
         save = QPushButton(tr("Save settings"))
@@ -116,22 +156,26 @@ class SettingsView(QWidget):
         reload_btn = QPushButton(tr("Reload from config"))
         reload_btn.clicked.connect(self._load)
         btns.addWidget(reload_btn)
-        done = QPushButton(tr("Done"))
-        done.clicked.connect(lambda: self._ctx.switch_view("projects"))
-        btns.addWidget(done)
         btns.addStretch(1)
         layout.addLayout(btns)
 
         hint = QLabel(
-            tr("This screen only shows options that are ready for everyday use. "
-            "config.toml holds the full preference surface (including "
-            "config-only keys for testing). Saving here updates only the "
-            "fields above and preserves other keys in the file.")
+            tr(
+                "This screen only shows options that are ready for everyday use. "
+                "config.toml holds the full preference surface (including "
+                "config-only keys such as active host/account ids). Saving here "
+                "updates only the fields above and preserves other keys in the file. "
+                "Use Projects, Admin, and Settings in the main navigation to switch views."
+            )
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: palette(mid);")
         layout.addWidget(hint)
         layout.addStretch(1)
+
+        scroll.setWidget(body)
+        root.addWidget(scroll, stretch=1)
+        self._refresh_progress_color_btn()
 
     def on_activated(self) -> None:
         self._load()
@@ -164,6 +208,9 @@ class SettingsView(QWidget):
             self._progress_color = str(general.get("progress_overlay_color") or "#2ecc71")
             self.progress_alpha.setValue(int(general.get("progress_overlay_alpha") or 70))
             self._refresh_progress_color_btn()
+            self.fetch_on_focus.setChecked(bool(general.get("fetch_on_focus", True)))
+            self.history_page_size.setValue(int(general.get("history_page_size") or 200))
+            self.browse_files_page_size.setValue(int(general.get("browse_files_page_size") or 200))
             self.check_updates.setChecked(bool(general.get("check_for_updates", True)))
 
             paths = labdesk_core.get_paths()
@@ -272,6 +319,9 @@ class SettingsView(QWidget):
             )
             progress_color = self._progress_color
             progress_alpha = int(self.progress_alpha.value())
+            fetch_on_focus = self.fetch_on_focus.isChecked()
+            history_page_size = int(self.history_page_size.value())
+            browse_files_page_size = int(self.browse_files_page_size.value())
             check_updates = self.check_updates.isChecked()
 
             labdesk_core.set_default_clone_dir(clone)
@@ -290,6 +340,12 @@ class SettingsView(QWidget):
                 self._ctx.set_ui_shell(shell, persist=False)
             labdesk_core.set_projects_layout(layout_choice)
             labdesk_core.set_progress_overlay(progress_color, progress_alpha)
+            if hasattr(labdesk_core, "set_fetch_on_focus"):
+                labdesk_core.set_fetch_on_focus(fetch_on_focus)
+            if hasattr(labdesk_core, "set_history_page_size"):
+                labdesk_core.set_history_page_size(history_page_size)
+            if hasattr(labdesk_core, "set_browse_files_page_size"):
+                labdesk_core.set_browse_files_page_size(browse_files_page_size)
             labdesk_core.set_check_for_updates(check_updates)
             projects = None
             if hasattr(self._ctx, "view_widget"):

@@ -2679,6 +2679,20 @@ fn set_progress_overlay(color: String, alpha: u8) -> PyResult<()> {
     Ok(())
 }
 
+#[pyfunction]
+fn set_history_page_size(size: u32) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    config::set_history_page_size(&paths, size)?;
+    Ok(())
+}
+
+#[pyfunction]
+fn set_browse_files_page_size(size: u32) -> PyResult<()> {
+    let paths = paths::AppPaths::detect();
+    config::set_browse_files_page_size(&paths, size)?;
+    Ok(())
+}
+
 /// Poll clone/push progress (for UI overlay). Empty/inactive when idle.
 #[pyfunction]
 fn get_git_op_progress(py: Python<'_>) -> PyResult<PyObject> {
@@ -2798,6 +2812,8 @@ fn labdesk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_locale, m)?)?;
     m.add_function(wrap_pyfunction!(set_projects_layout, m)?)?;
     m.add_function(wrap_pyfunction!(set_progress_overlay, m)?)?;
+    m.add_function(wrap_pyfunction!(set_history_page_size, m)?)?;
+    m.add_function(wrap_pyfunction!(set_browse_files_page_size, m)?)?;
     m.add_function(wrap_pyfunction!(get_git_op_progress, m)?)?;
     m.add_function(wrap_pyfunction!(validate_base_url, m)?)?;
     m.add_function(wrap_pyfunction!(http_clone_url_for, m)?)?;

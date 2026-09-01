@@ -1014,6 +1014,37 @@ pub fn set_progress_overlay(paths: &AppPaths, color: &str, alpha: u8) -> Result<
     Ok(())
 }
 
+fn validate_page_size(value: u32, key: &str) -> Result<u32> {
+    // Keep lists usable: too small wastes round-trips; too large freezes the UI.
+    if !(10..=5000).contains(&value) {
+        return Err(LabDeskError::App(ErrorInfo::new(
+            "LD-CFG-003",
+            format!("Config value invalid: {key} (expected 10–5000)"),
+        )));
+    }
+    Ok(value)
+}
+
+/// Persist `general.history_page_size` (repo History tab page size).
+pub fn set_history_page_size(paths: &AppPaths, size: u32) -> Result<()> {
+    let size = validate_page_size(size, "history_page_size")?;
+    let mut cfg = load_or_default(paths)?;
+    cfg.general.history_page_size = size;
+    save(paths, &mut cfg)?;
+    let _ = save_known_good(paths);
+    Ok(())
+}
+
+/// Persist `general.browse_files_page_size` (tracked-files browse dialog).
+pub fn set_browse_files_page_size(paths: &AppPaths, size: u32) -> Result<()> {
+    let size = validate_page_size(size, "browse_files_page_size")?;
+    let mut cfg = load_or_default(paths)?;
+    cfg.general.browse_files_page_size = size;
+    save(paths, &mut cfg)?;
+    let _ = save_known_good(paths);
+    Ok(())
+}
+
 #[allow(dead_code)]
 pub fn path_exists(path: &Path) -> bool {
     path.exists()

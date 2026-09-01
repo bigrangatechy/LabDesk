@@ -175,6 +175,9 @@ def test_settings_save_snapshots_layout_before_shell_reload(qapp, monkeypatch, p
                     "progress_overlay_alpha": saved.get("alpha", 70),
                     "check_for_updates": saved.get("updates", True),
                     "default_clone_dir": "~/Projects",
+                    "fetch_on_focus": saved.get("fetch_on_focus", True),
+                    "history_page_size": saved.get("history_page_size", 200),
+                    "browse_files_page_size": saved.get("browse_files_page_size", 200),
                 }
             }
 
@@ -206,6 +209,18 @@ def test_settings_save_snapshots_layout_before_shell_reload(qapp, monkeypatch, p
         def set_progress_overlay(color, alpha):
             saved["color"] = color
             saved["alpha"] = alpha
+
+        @staticmethod
+        def set_fetch_on_focus(enabled):
+            saved["fetch_on_focus"] = enabled
+
+        @staticmethod
+        def set_history_page_size(size):
+            saved["history_page_size"] = size
+
+        @staticmethod
+        def set_browse_files_page_size(size):
+            saved["browse_files_page_size"] = size
 
         @staticmethod
         def set_check_for_updates(enabled):

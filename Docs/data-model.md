@@ -107,17 +107,20 @@ V1 Settings stays small; the file may grow ahead of the UI.
 
 | Key | Type | Required | Exposure | Notes |
 |-----|------|----------|----------|--------|
-| `theme` | string | yes | **UI-exposed** | `"light"` \| `"dark"` \| `"system"` |
-| `locale` | string | no | **UI-exposed** | UI language: `"system"` \| `"en"` \| `"es"` \| `"de"` \| `"fr"` \| `"pt_BR"`; default `system` |
-| `default_clone_dir` | string | yes | **UI-exposed** | Clone destination folder |
-| `check_for_updates` | bool | yes | **UI-exposed** | Check the **LabDesk Flatpak remote** (from `Ranga/flatpaks`, ADR-004); Settings toggle + Check now |
-| `active_instance_id` | string | no | **config / connect flow** | Active host; kept in lockstep with the active account’s `instance_id` |
-| `active_account_id` | string | no | **config / connect flow** | Active account (PAT); **required** once ≥1 account exists; drives API auth |
-| `active_ui_view` | string | no | **View menu** (+ config) | Pluggable main view id (`projects`, `settings`, …); default `projects` |
-| `ui_shell` | string | no | **UI-exposed** | Main-window shell layout: `"classic"` \| `"sidebar"`; default `classic` |
-| `projects_layout` | string | no | **UI-exposed** | Projects list: `"table"` \| `"cards"`; default `table` |
-| `progress_overlay_color` | string | no | **UI-exposed** | Hex `#RRGGBB` fill for clone/push progress on the active project row/card; default `#2ecc71` |
-| `progress_overlay_alpha` | int | no | **UI-exposed** | 0–255 alpha for that fill; default `70` |
+| `theme` | string | yes | **UI-exposed** | `"light"` \| `"dark"` \| `"system"` — Settings → Appearance |
+| `locale` | string | no | **UI-exposed** | UI language: `"system"` \| `"en"` \| `"es"` \| `"de"` \| `"fr"` \| `"pt_BR"`; default `system` — Settings → Appearance |
+| `default_clone_dir` | string | yes | **UI-exposed** | Clone destination folder — Settings → Repositories |
+| `fetch_on_focus` | bool | no | **UI-exposed** | Fetch when a repo window gains focus; default `true` — Settings → Repositories |
+| `history_page_size` | int | no | **UI-exposed** | Commits per History page (10–5000); default `200` — Settings → Repositories |
+| `browse_files_page_size` | int | no | **UI-exposed** | Tracked files per browse page (10–5000); default `200` — Settings → Repositories |
+| `check_for_updates` | bool | yes | **UI-exposed** | Check the **LabDesk Flatpak remote** (from `Ranga/flatpaks`, ADR-004); Settings → Updates toggle + Check now |
+| `active_instance_id` | string | no | **config / connect flow** | Active host; kept in lockstep with the active account’s `instance_id` — **not** in Settings |
+| `active_account_id` | string | no | **config / connect flow** | Active account (PAT); **required** once ≥1 account exists; drives API auth — **not** in Settings |
+| `active_ui_view` | string | no | **View menu / nav** (+ config) | Pluggable main view id (`projects`, `admin`, `settings`, …); default `projects` — **not** in Settings form |
+| `ui_shell` | string | no | **UI-exposed** | Main-window shell layout: `"classic"` \| `"sidebar"`; default `classic` — Settings → Appearance |
+| `projects_layout` | string | no | **UI-exposed** | Projects list: `"table"` \| `"cards"`; default `table` — Settings → Projects |
+| `progress_overlay_color` | string | no | **UI-exposed** | Hex `#RRGGBB` fill for clone/push progress on the active project row/card; default `#2ecc71` — Settings → Projects |
+| `progress_overlay_alpha` | int | no | **UI-exposed** | 0–255 alpha for that fill; default `70` — Settings → Projects |
 
 ### 3.2 `[[instances]]` — Instance (GitLab host)
 
@@ -160,6 +163,9 @@ Example (illustrative):
 [general]
 theme = "system"
 default_clone_dir = "~/Projects"
+fetch_on_focus = true
+history_page_size = 200
+browse_files_page_size = 200
 check_for_updates = true
 active_instance_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 active_account_id = "11111111-2222-3333-4444-555555555555"

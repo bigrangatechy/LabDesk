@@ -26,16 +26,16 @@ rejected at instance setup (see ADR-001).
 │                                                             │
 │  UI Layer (Python + PySide6)                                │
 │  ├── MainWindow (menubar + stacked ViewPlugin host)         │
-│  ├── View plugins (Projects, Settings; more later)          │
-│  ├── RepoWindow (Changes, History, Branches, Pipelines)     │
-│  ├── DiffViewer (read-only QTextEdit)                       │
+│  ├── View plugins (Projects, Admin, Settings)               │
+│  ├── RepoWindow (Changes, History, Branches, Git, …)        │
+│  ├── DiffViewer (unified / side-by-side; read-only)         │
 │  ├── InstanceConfigDialog (forge + URL + PAT; git auth via helper) │
-│  └── MRDialog (merge / pull request form; forge-aware title)       │
+│  └── MRDialog / MR detail (forge-aware; notes)              │
 │                                                             │
 │  ──── PyO3 Bridge ────────────────────────────────────      │
 │                                                             │
 │  Core Layer (Rust)                                          │
-│  ├── git_ops (libgit2 + credential helper; SSH; list/diff caps) │
+│  ├── git_ops / git_ext (libgit2; submodules; optional git-lfs) │
 │  ├── api / forge backends (GitLab, Gitea, Forgejo, OneDev)   │
 │  ├── cache (SQLite read/write, sync logic)                  │
 │  ├── diff_engine (libgit2 diff → text for QTextEdit)        │
@@ -208,15 +208,18 @@ revert to a **last known good** config, relaunch, and show an error
 # Example (Flatpak path shown; XDG path equivalent in unpackaged runs)
 
 [general]
-theme = "system"                 # UI: Settings — "light", "dark", "system"
-default_clone_dir = "~/Projects" # UI: Settings
-check_for_updates = true         # UI: Settings — Flatpak remote (Ranga/flatpaks)
-active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-active_ui_view = "projects"      # View menu (+ config); not Settings form
-ui_shell = "classic"             # UI: Settings / View — "classic" | "sidebar"
-projects_layout = "table"        # UI: Settings — "table" | "cards"
-progress_overlay_color = "#2ecc71"  # UI: Settings — clone/push row fill
-progress_overlay_alpha = 70      # UI: Settings — 0–255
+theme = "system"                 # UI: Settings → Appearance — "light", "dark", "system"
+default_clone_dir = "~/Projects" # UI: Settings → Repositories
+fetch_on_focus = true            # UI: Settings → Repositories
+history_page_size = 200          # UI: Settings → Repositories (10–5000)
+browse_files_page_size = 200     # UI: Settings → Repositories (10–5000)
+check_for_updates = true         # UI: Settings → Updates — Flatpak remote (Ranga/flatpaks)
+active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"  # connect flow; not Settings
+active_ui_view = "projects"      # View menu / nav (+ config); not Settings form
+ui_shell = "classic"             # UI: Settings → Appearance — "classic" | "sidebar"
+projects_layout = "table"        # UI: Settings → Projects — "table" | "cards"
+progress_overlay_color = "#2ecc71"  # UI: Settings → Projects — clone/push row fill
+progress_overlay_alpha = 70      # UI: Settings → Projects — 0–255
 [[instances]]
 id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 name = "BigRanga Tech GitLab"

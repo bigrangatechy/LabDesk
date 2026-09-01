@@ -63,13 +63,8 @@ class AdminView(QWidget):
         self._ctx = ctx
 
         layout = QVBoxLayout(self)
-        header = QHBoxLayout()
-        back = QPushButton(tr("← Back to Projects"))
-        back.clicked.connect(lambda: self._ctx.switch_view("projects"))
-        header.addWidget(back)
         self.title = QLabel(tr("Admin"))
-        header.addWidget(self.title, stretch=1)
-        layout.addLayout(header)
+        layout.addWidget(self.title)
 
         self.status = QLabel("")
         self.status.setWordWrap(True)

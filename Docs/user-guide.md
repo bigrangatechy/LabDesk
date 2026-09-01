@@ -101,17 +101,27 @@ LabDesk prefers the selected host’s Base URL instead.
 
 ## 4. Settings & preferences
 
-- **Settings → Preferences:** clone folder, theme, **Language**, window
-  layout (`classic` / `sidebar`), **Projects list layout** (`table` /
-  `cards`), clone/push progress fill colour + alpha, and whether to
-  check for Flatpak updates. Language options: system default, English,
-  Español, Deutsch, Français, Português (Brasil). Restart LabDesk after
-  changing language so every window refreshes.
-- **View** menu: switch Projects / **Admin** / Settings and layout.
+- **Settings** (main nav / View menu) is grouped into categories:
+  - **Appearance:** theme, **Language**, main window layout
+    (`classic` / `sidebar`).
+  - **Projects:** list layout (`table` / `cards`), clone/push progress
+    fill colour + alpha.
+  - **Repositories:** default clone folder, fetch-on-focus, History
+    page size, browse-files page size.
+  - **Updates:** check Flatpak updates on startup + **Check now**.
+  - **Paths:** read-only config and cache locations.
+- Language options: system default, English, Español, Deutsch,
+  Français, Português (Brasil). Restart LabDesk after changing language
+  so every window refreshes.
+- **View** menu and the main **Projects / Admin / Settings** controls
+  switch views (there is no separate “back to projects” button on
+  Settings or Admin).
 - **Admin:** instance **Runners** (or **Agents** on OneDev) and **Users**
   lists. Pause/enable/delete runners where the forge API allows (admin
   token often required). **Open in …** / **Open admin…** for the forge
   UI. Users list is read-only.
+- Host/account selection and TLS live in the **connect** flow, not
+  Settings. Extra keys may exist only in `config.toml` until promoted.
 - Do **not** put PATs or passwords in config files.
 - If startup hangs for a long time, LabDesk may restore the last good
   settings and show an error with a code like **`LD-CFG-010`**.
@@ -273,7 +283,7 @@ If someone else pushed while you were committing locally:
 | Keyring error (`LD-AUTH-002`) | Unlock your password manager / Secret Service |
 | Git auth failed | SSH agent, credential helper, or HTTPS with a PAT |
 | 2FA blocks password git | Use SSH or HTTPS with a PAT |
-| Certificate not trusted | Change TLS mode in Settings, or fix the host CA |
+| Certificate not trusted | Change TLS mode when connecting the host, or fix the host CA |
 | Projects list looks stale | Refresh projects while online |
 | No update in Discover | Run `flatpak update`, or wait for the next published build |
 
@@ -291,4 +301,6 @@ If someone else pushed while you were committing locally:
 
 ## Document history
 
-Living end-user guide. Contributor / build notes live in `dev-guide.md`.
+Living end-user guide — **only** copy is this file (`Docs/user-guide.md`).
+Help → User Guide and Flatpak `/app/share/labdesk/user-guide.md` read it.
+Contributor / build notes live in `Docs/dev-guide.md`.

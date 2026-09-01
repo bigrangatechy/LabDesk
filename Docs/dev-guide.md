@@ -203,17 +203,19 @@ when needed, then runs `tests/python/`.
 | Version / errors | `test_version_and_helpers.py` | `APP_VERSION`, `format_error` |
 | Packaging | `test_packaging_sanity.py` | CI YAML / Flatpak manifest basics |
 | Pipeline jobs UI | `test_pipeline_jobs.py` | Playable heuristics + sort / row format |
-| In-app Help | `test_help_dialog.py` | Bundled `user-guide.md` path resolution |
+| In-app Help | `test_help_dialog.py` | Resolves `Docs/user-guide.md` (or Flatpak share) |
 
-Keep `src/labdesk_ui/docs/user-guide.md` in sync with `Docs/user-guide.md`
-when editing the guide (Help dialog reads the packaged copy first).
+**Guides:** end-user help is **only** `Docs/user-guide.md` (Help dialog
+and Flatpak install that one file under `/app/share/labdesk/`). Contributor
+build/test notes are **only** `Docs/dev-guide.md`. Do not keep a second
+copy under `src/labdesk_ui/docs/`.
 
 CI job `python_pytest` runs the UI suite (no Rust toolchain in that
 image). Full suite including `labdesk_core` URL tests: local
 `./scripts/run-tests.sh`.
 
 Rust: `cd src/labdesk_core && cargo test`.
-Beta smoke checklist: `user-guide.md` (install + update).
+Beta smoke checklist: `Docs/user-guide.md` (install + update).
 
 ---
 

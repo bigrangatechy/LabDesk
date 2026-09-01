@@ -1,11 +1,12 @@
 # User Journeys — LabDesk
 
-**Status:** Draft (docs stage)  
-**Audience:** Product / UX reference; feeds the future **user guide**  
+**Status:** Draft (living)  
+**Audience:** Product / UX reference; pairs with `Docs/user-guide.md`  
 **Platform:** Linux only (Flatpak primary)
 
 These journeys describe what a person does with LabDesk today. They are
-not UI mock pixel specs.
+not UI mock pixel specs. End-user wording for Help lives only in
+`Docs/user-guide.md`; contributor notes in `Docs/dev-guide.md`.
 
 ---
 
@@ -52,9 +53,11 @@ an `[[instances]]` array for a later multi-instance UI.
 4. Clone via libgit2 (**HTTPS via credential helper**, or **SSH**).
    Progress shows as a translucent fill on the project’s table row or
    card (colour configurable in Settings).
-5. Open the repo in the main RepoView (**Changes** / **History**;
-   Branches later). History lists local commits (newest first) with
-   patch vs parent.
+5. Open the repo in the main RepoView (**Changes** / **History** /
+   **Branches** / **Compare** / **Git** / pipelines / MRs as available).
+   The **Git** tab lists submodules (init / update / sync) and Git LFS
+   status with **Pull LFS objects…** when `git-lfs` is available.
+   History lists local commits (newest first) with patch vs parent.
 
 **Existing clones:** If the project is already checked out under the
 default clone folder (`{clone_dir}/{path_with_namespace}`), **Open
