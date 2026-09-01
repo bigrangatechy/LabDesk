@@ -18,6 +18,15 @@ bullets without a stamp predate this convention.
 
 ## [Unreleased]
 
+ ### Fixed
+
+- **16:35:48  01/09/2026** — Crash reporting: uncaught Python errors and
+  async UI callback failures show **LD-SYS-001** with a full traceback
+  dialog and write ``~/.local/share/labdesk/logs/last-crash.log`` (plus
+  faulthandler for native aborts). Quit/close drains background jobs so
+  PySide is less likely to abort while libgit2 I/O is still running
+  (today’s Konsole python crash matched that teardown path).
+
  ### Changed
 
 - **16:27:58  01/09/2026** — UI/UX polish: hide idle repo pipeline/sync/

@@ -279,6 +279,7 @@ If someone else pushed while you were committing locally:
 
 | Symptom | What to try |
 |---------|-------------|
+| Something went wrong (`LD-SYS-001`) / app aborts | Check **Help** is not needed — open `~/.local/share/labdesk/logs/last-crash.log` (or Flatpak data dir `logs/`) and the dialog Details if shown; include that when reporting. Native aborts also append `faulthandler.log`. Avoid quitting while a long clone/fetch is mid-flight if possible. |
 | Auth failed (`LD-AUTH-001`) | Re-enter PAT; check scopes / expiry |
 | Keyring error (`LD-AUTH-002`) | Unlock your password manager / Secret Service |
 | Git auth failed | SSH agent, credential helper, or HTTPS with a PAT |

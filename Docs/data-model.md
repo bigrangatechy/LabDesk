@@ -20,7 +20,7 @@ GitLab hosts (instances)** and **multiple accounts (users) per host**.
 | Config TOML | Config dir / `config.toml` | Preferences + instance/account metadata (no secrets) |
 | Trusted CAs | Config dir / `trusted_certs/` | PEM files when `ssl_mode = imported_ca` |
 | SQLite cache | Data dir / `cache.db` | Projects, local repos, pipeline cache (keyed by **account**) |
-| Logs | Data dir / `logs/` | Application logs (redacted) |
+| Logs | Data dir / `logs/` | Application crash / fault logs (`last-crash.log`, `faulthandler.log`) |
 | OS keyring | Secret Service | API PAT only (per account) |
 | Git credential helper | Helper-defined | Git HTTPS username/password (or PAT-as-password) |
 | Git working copies | User-chosen paths | Real git repos on disk (libgit2); not inside LabDesk data dir |

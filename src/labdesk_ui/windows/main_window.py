@@ -426,14 +426,23 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # Closing the main window closes owned repo windows (WA_DeleteOnClose).
+        from labdesk_ui.utils.async_jobs import drain_async_jobs
+
         for win in list(self._repo_windows):
             if not self._repo_window_alive(win):
                 continue
             try:
+                drain_async_jobs(win, timeout_ms=1500)
                 win.close()
             except RuntimeError:
                 continue
         self._repo_windows.clear()
+        for view in list(self._view_widgets.values()):
+            try:
+                drain_async_jobs(view, timeout_ms=500)
+            except Exception:
+                pass
+        drain_async_jobs(self, timeout_ms=500)
         super().closeEvent(event)
 
     def is_network_available(self) -> bool:

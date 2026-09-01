@@ -28,6 +28,9 @@ def main() -> int:
     app.setDesktopFileName("com.bigrangatech.LabDesk")
     app.setOrganizationName("BigRanga Tech")
     app.setOrganizationDomain("bigrangatech.com")
+    from labdesk_ui.utils.crash_report import install_crash_reporting
+
+    install_crash_reporting()
     from labdesk_ui.i18n import install_translators
 
     install_translators(app)
@@ -40,6 +43,23 @@ def main() -> int:
     window._startup_recovery = recovery
     if not icon.isNull():
         window.setWindowIcon(icon)
+
+    def _drain_on_quit() -> None:
+        from labdesk_ui.utils.async_jobs import drain_async_jobs
+
+        drain_async_jobs(window)
+        for win in list(getattr(window, "_repo_windows", []) or []):
+            try:
+                drain_async_jobs(win)
+            except Exception:
+                pass
+        for view in list(getattr(window, "_view_widgets", {}) or {}).values():
+            try:
+                drain_async_jobs(view)
+            except Exception:
+                pass
+
+    app.aboutToQuit.connect(_drain_on_quit)
 
     tray: QSystemTrayIcon | None = None
     if not icon.isNull() and QSystemTrayIcon.isSystemTrayAvailable():

@@ -76,6 +76,8 @@ class _ResultBridge(QObject):
         try:
             if self._on_success is not None:
                 self._on_success(result)
+        except Exception as exc:
+            self._report_callback_failure(exc)
         finally:
             self._cleanup(touch_widgets=True)
 
@@ -88,8 +90,19 @@ class _ResultBridge(QObject):
             if self._on_error is not None:
                 err = exc if isinstance(exc, BaseException) else Exception(str(exc))
                 self._on_error(code, msg, err)
+        except Exception as callback_exc:
+            self._report_callback_failure(callback_exc)
         finally:
             self._cleanup(touch_widgets=True)
+
+    def _report_callback_failure(self, exc: BaseException) -> None:
+        try:
+            from labdesk_ui.utils.crash_report import report_exception
+
+            report_exception(type(exc), exc, exc.__traceback__, kind="async-callback")
+        except Exception:
+            code, msg = format_error(exc)
+            print(f"[{code}] {msg}\n{exc}", file=__import__("sys").stderr)
 
     def _cleanup(self, *, touch_widgets: bool) -> None:
         if self._done:
@@ -192,3 +205,47 @@ def run_in_background(
     thread.finished.connect(worker.deleteLater)
     thread.finished.connect(thread.deleteLater)
     thread.start()
+
+
+def drain_async_jobs(owner: QObject, *, timeout_ms: int = 2500) -> None:
+    """Ask in-flight worker threads to quit and wait briefly (safe shutdown)."""
+    handles = list(getattr(owner, "_labdesk_async_handles", None) or [])
+    if not handles:
+        return
+    from shiboken6 import isValid
+
+    for handle in handles:
+        thread = handle.get("thread")
+        try:
+            if thread is not None and isValid(thread) and thread.isRunning():
+                thread.quit()
+        except Exception:
+            pass
+
+    # Pump the event loop a little so queued finished/cleanup can run.
+    try:
+        from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+
+        app = QCoreApplication.instance()
+        if app is not None:
+            loop = QEventLoop()
+            QTimer.singleShot(min(200, max(50, timeout_ms // 10)), loop.quit)
+            loop.exec()
+    except Exception:
+        pass
+
+    remaining = max(0, int(timeout_ms))
+    for handle in handles:
+        thread = handle.get("thread")
+        try:
+            if thread is None or not isValid(thread) or not thread.isRunning():
+                continue
+            waited = thread.wait(remaining if remaining > 0 else 1)
+            if not waited and remaining > 0:
+                # Still running (often blocked in libgit2 I/O) — leave it;
+                # further wait won't help and can hang quit.
+                remaining = 0
+            elif waited and remaining > 0:
+                remaining = max(0, remaining - 50)
+        except Exception:
+            pass

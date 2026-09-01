@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QAbstractListModel, QModelIndex, QStringListModel
-from PySide6.QtGui import QKeySequence, QShortcut, QTextCursor
+from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut, QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -277,6 +277,12 @@ class RepoWindow(QMainWindow):
         self._load_list_page_sizes()
         self._last_mr_updated: str | None = None
         self._setup_shortcuts()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        from labdesk_ui.utils.async_jobs import drain_async_jobs
+
+        drain_async_jobs(self, timeout_ms=2000)
+        super().closeEvent(event)
 
     def _load_list_page_sizes(self) -> None:
         """Config-first knobs for history / browse page sizes (Slice B)."""
