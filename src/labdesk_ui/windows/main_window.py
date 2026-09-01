@@ -437,7 +437,15 @@ class MainWindow(QMainWindow):
             except RuntimeError:
                 continue
         self._repo_windows.clear()
-        for view in list(self._view_widgets.values()):
+        views = self._view_widgets
+        view_list = (
+            list(views.values())
+            if isinstance(views, dict)
+            else list(views)
+            if isinstance(views, (list, tuple))
+            else []
+        )
+        for view in view_list:
             try:
                 drain_async_jobs(view, timeout_ms=500)
             except Exception:

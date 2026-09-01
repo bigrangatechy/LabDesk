@@ -20,6 +20,9 @@ bullets without a stamp predate this convention.
 
  ### Fixed
 
+- **16:49:25  01/09/2026** — Quit drain: tolerate ``_view_widgets`` as dict
+  or list and never raise during ``aboutToQuit`` (closing could show
+  ``AttributeError: 'list' object has no attribute 'values'``).
 - **16:35:48  01/09/2026** — Crash reporting: uncaught Python errors and
   async UI callback failures show **LD-SYS-001** with a full traceback
   dialog and write ``~/.local/share/labdesk/logs/last-crash.log`` (plus

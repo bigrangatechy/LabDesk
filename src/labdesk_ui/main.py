@@ -47,17 +47,29 @@ def main() -> int:
     def _drain_on_quit() -> None:
         from labdesk_ui.utils.async_jobs import drain_async_jobs
 
-        drain_async_jobs(window)
-        for win in list(getattr(window, "_repo_windows", []) or []):
-            try:
-                drain_async_jobs(win)
-            except Exception:
-                pass
-        for view in list(getattr(window, "_view_widgets", {}) or {}).values():
-            try:
-                drain_async_jobs(view)
-            except Exception:
-                pass
+        def _views(owner) -> list:
+            widgets = getattr(owner, "_view_widgets", None)
+            if isinstance(widgets, dict):
+                return list(widgets.values())
+            if isinstance(widgets, (list, tuple)):
+                return list(widgets)
+            return []
+
+        try:
+            drain_async_jobs(window)
+            for win in list(getattr(window, "_repo_windows", None) or []):
+                try:
+                    drain_async_jobs(win)
+                except Exception:
+                    pass
+            for view in _views(window):
+                try:
+                    drain_async_jobs(view)
+                except Exception:
+                    pass
+        except Exception:
+            # Never block / abort quit because of drain bookkeeping.
+            pass
 
     app.aboutToQuit.connect(_drain_on_quit)
 
