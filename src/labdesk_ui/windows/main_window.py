@@ -36,11 +36,6 @@ _SHELL_STYLE = """
 QMainWindow {
     background: palette(window);
 }
-QLabel#LabDeskTitle {
-    font-size: 18px;
-    font-weight: 600;
-    padding: 2px 0 6px 0;
-}
 QLabel#LabDeskStatus {
     padding: 4px 0;
 }
@@ -91,10 +86,6 @@ class MainWindow(QMainWindow):
         self._root_layout = QVBoxLayout(root)
         self._root_layout.setContentsMargins(14, 12, 14, 12)
         self._root_layout.setSpacing(8)
-
-        title = QLabel(tr("LabDesk"))
-        title.setObjectName("LabDeskTitle")
-        self._root_layout.addWidget(title)
 
         self.status = QLabel(tr("Loading…"))
         self.status.setObjectName("LabDeskStatus")

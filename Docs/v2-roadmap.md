@@ -76,11 +76,14 @@ admin, localization, review, and git-extension surfaces. Delivery is
   `git-lfs` and enables `--socket=ssh-auth` (packaging closed with N).
   Deferred (N.2): add/deinit submodule, recurse-on-clone, LFS
   push/track/locks.
-- **UX — Polish pass:** After feature slices A–N. First items: remove
-  redundant Settings/Admin “back to projects” controls; categorize
-  Settings and promote ready prefs (`fetch_on_focus`, page sizes).
-  Remaining: layout density, keyboard/focus, empty states, consistency
-  — not new product features.
+- **UX — Polish pass:** After feature slices A–N. Done so far: remove
+  redundant Settings/Admin “back to projects”; categorize Settings;
+  promote ready prefs; trim idle repo chips / in-sync banner; drop
+  redundant page/app titles; clearer empty states; plain **Refresh**
+  labels; **Open external…** consistency; shortcut tooltips; Projects
+  filter focus (Ctrl+F / Escape) and split action rows. Remaining:
+  further density, keyboard/focus, and consistency — not new product
+  features.
 
 ## Still deferred (not in slice list)
 

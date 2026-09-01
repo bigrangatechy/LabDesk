@@ -20,6 +20,12 @@ bullets without a stamp predate this convention.
 
  ### Changed
 
+- **16:27:58  01/09/2026** — UI/UX polish: hide idle repo pipeline/sync/
+  notify chips; drop redundant main/Settings/Admin titles; quieter clean-
+  tree Changes; clearer empty lists (filter miss, MRs, runners, users,
+  branches); plain **Refresh** on repo tabs; **Open external…** on the
+  toolbar; shortcut tooltips; Projects filter focus (Ctrl+F / Escape) and
+  split host vs clone action rows.
 - **16:16:50  01/09/2026** — Single end-user guide: keep only
   `Docs/user-guide.md` (Help + Flatpak share); remove the duplicate under
   `src/labdesk_ui/docs/`. Dev notes stay in `Docs/dev-guide.md`. Docs

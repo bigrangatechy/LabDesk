@@ -177,15 +177,18 @@ class RepoWindow(QMainWindow):
         self.pipeline_chip = QLabel("")
         self.pipeline_chip.setWordWrap(True)
         self.pipeline_chip.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.pipeline_chip.hide()
         layout.addWidget(self.pipeline_chip)
 
         self.sync_banner = QLabel("")
         self.sync_banner.setWordWrap(True)
         self.sync_banner.setStyleSheet("padding: 4px;")
+        self.sync_banner.hide()
         layout.addWidget(self.sync_banner)
 
         self.notify_chip = QLabel("")
         self.notify_chip.setWordWrap(True)
+        self.notify_chip.hide()
         layout.addWidget(self.notify_chip)
 
         row = QHBoxLayout()
@@ -230,7 +233,7 @@ class RepoWindow(QMainWindow):
         self.btn_editor.clicked.connect(self._open_in_editor)
         self.btn_editor.setEnabled(False)
         row.addWidget(self.btn_editor)
-        self.btn_external = QPushButton(tr("Open external"))
+        self.btn_external = QPushButton(tr("Open external…"))
         self.btn_external.clicked.connect(self._open_external)
         self.btn_external.setEnabled(False)
         row.addWidget(self.btn_external)
@@ -411,7 +414,7 @@ class RepoWindow(QMainWindow):
         self.lfs_summary.setWordWrap(True)
         layout.addWidget(self.lfs_summary)
         lfs_row = QHBoxLayout()
-        self.btn_lfs_refresh = QPushButton(tr("Refresh LFS"))
+        self.btn_lfs_refresh = QPushButton(tr("Refresh"))
         self.btn_lfs_refresh.clicked.connect(self._refresh_git_ext)
         lfs_row.addWidget(self.btn_lfs_refresh)
         self.btn_lfs_pull = QPushButton(tr("Pull LFS objects…"))
@@ -494,7 +497,7 @@ class RepoWindow(QMainWindow):
         self.mr_list = QListWidget()
         layout.addWidget(self.mr_list, stretch=1)
         row = QHBoxLayout()
-        self.btn_mr_refresh = QPushButton(tr("Refresh MRs"))
+        self.btn_mr_refresh = QPushButton(tr("Refresh"))
         self.btn_mr_refresh.clicked.connect(self._refresh_mrs)
         row.addWidget(self.btn_mr_refresh)
         self.btn_mr_open = QPushButton(tr("Open in GitLab"))
@@ -520,7 +523,7 @@ class RepoWindow(QMainWindow):
         self.pipeline_jobs = QListWidget()
         layout.addWidget(self.pipeline_jobs, stretch=1)
         row = QHBoxLayout()
-        self.btn_pipeline_refresh = QPushButton(tr("Refresh pipeline"))
+        self.btn_pipeline_refresh = QPushButton(tr("Refresh"))
         self.btn_pipeline_refresh.clicked.connect(self._refresh_pipelines)
         row.addWidget(self.btn_pipeline_refresh)
         self.btn_pipeline_open = QPushButton(tr("Open in GitLab"))
@@ -552,7 +555,7 @@ class RepoWindow(QMainWindow):
         self.project_runners.currentItemChanged.connect(self._on_project_runner_selected)
         layout.addWidget(self.project_runners, stretch=1)
         row = QHBoxLayout()
-        self.btn_runners_refresh = QPushButton(tr("Refresh runners"))
+        self.btn_runners_refresh = QPushButton(tr("Refresh"))
         self.btn_runners_refresh.clicked.connect(self._refresh_project_runners)
         row.addWidget(self.btn_runners_refresh)
         self.btn_runner_pause = QPushButton(tr("Pause"))
@@ -709,37 +712,52 @@ class RepoWindow(QMainWindow):
         except Exception:
             pass
 
+    def _set_status_chip(self, widget: QLabel | None, text: str) -> None:
+        """Show a header chip only when it has something useful to say."""
+        if widget is None:
+            return
+        cleaned = (text or "").strip()
+        widget.setText(cleaned)
+        if hasattr(widget, "setVisible"):
+            widget.setVisible(bool(cleaned))
+
     def _update_sync_banner(
         self, ahead: int, behind: int, upstream: str, conflicts: list
     ) -> None:
         if not hasattr(self, "sync_banner"):
             return
         if conflicts:
-            self.sync_banner.setText(
+            self._set_status_chip(
+                self.sync_banner,
                 f"Conflicts in progress ({len(conflicts)} path(s)) — "
-                "Resolve conflicts… or open an external editor."
+                "Resolve conflicts… or open an external editor.",
             )
             return
         if not upstream:
-            self.sync_banner.setText(
-                tr("No upstream set — push then Set upstream, or fetch after tracking exists.")
+            self._set_status_chip(
+                self.sync_banner,
+                tr("No upstream set — push then Set upstream, or fetch after tracking exists."),
             )
             return
         if ahead and behind:
-            self.sync_banner.setText(
+            self._set_status_chip(
+                self.sync_banner,
                 f"Diverged from {upstream}: ↑{ahead} ↓{behind}. "
-                "Pull offers merge/rebase; Compare shows tip-to-tip diff."
+                "Pull offers merge/rebase; Compare shows tip-to-tip diff.",
             )
         elif behind:
-            self.sync_banner.setText(
-                f"Behind {upstream} by {behind} — Pull to update, or Fetch then Compare."
+            self._set_status_chip(
+                self.sync_banner,
+                f"Behind {upstream} by {behind} — Pull to update, or Fetch then Compare.",
             )
         elif ahead:
-            self.sync_banner.setText(
-                f"Ahead of {upstream} by {ahead} — Push, or create an MR/PR."
+            self._set_status_chip(
+                self.sync_banner,
+                f"Ahead of {upstream} by {ahead} — Push, or create an MR/PR.",
             )
         else:
-            self.sync_banner.setText(f"In sync with {upstream}.")
+            # Header already shows upstream when in sync — hide redundant banner.
+            self._set_status_chip(self.sync_banner, "")
 
     def _populate_changes(
         self,
@@ -794,18 +812,12 @@ class RepoWindow(QMainWindow):
 
         n_changes = len(changes)
         if n_changes == 0:
-            self.footer.setText(
-                tr("Working tree clean · dirty-only Changes "
-                "(Browse files… for a virtualized tracked list). Use History for commits.")
-            )
-            self.diff.setPlainText(
-                "Working tree clean — no local changes.\n\n"
-                "Changes shows dirty paths only.\n"
-                "Use Browse files… for a filtered, virtualized tracked listing.\n"
-                "Open the History tab for commit history.\n"
-                f"Branch: {branch}"
-                + (f"\nHEAD: {summary}" if summary else "")
-            )
+            bits = [tr("Working tree clean")]
+            if branch:
+                bits.append(f"branch {branch}")
+            if summary:
+                bits.append(summary)
+            self.footer.setText(" · ".join(bits))
         else:
             n_staged = sum(1 for e in changes if e.get("staged"))
             self.footer.setText(
@@ -846,7 +858,13 @@ class RepoWindow(QMainWindow):
     def _populate_branches(self, data: dict) -> None:
         current = data.get("current") or ""
         self.branches.clear()
-        for name in data.get("branches") or []:
+        names = list(data.get("branches") or [])
+        if not names:
+            tip = QListWidgetItem(tr("(no branches)"))
+            tip.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.branches.addItem(tip)
+            return
+        for name in names:
             label = f"* {name}" if name == current else f"  {name}"
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, name)
@@ -1823,12 +1841,14 @@ class RepoWindow(QMainWindow):
             self.mr_list.addItem(item)
         n = len(mrs)
         plural = pr_label_plural(getattr(self, "_forge_info", None))
-        meta = f"Opened {plural.lower()} ({n}"
+        if n == 0:
+            meta = tr("No open {plural}.").format(plural=plural.lower())
+        else:
+            meta = f"{n} open {plural.lower()}"
         if cached:
-            meta += ", cached"
+            meta += " (cached)"
         if fetched_at:
             meta += f", fetched_at {fetched_at}"
-        meta += ")"
         self.mr_summary.setText(meta)
         self.btn_mr_open.setEnabled(False)
         if hasattr(self, "btn_mr_detail"):
@@ -1962,15 +1982,12 @@ class RepoWindow(QMainWindow):
         self._pipeline_project_id = project_id
         if not pipe:
             self._pipeline_web_url = None
-            self.pipeline_chip.setText(
-                "Pipeline: none for current branch"
-                if not cached
-                else "Pipeline: (offline — no cache)"
-            )
+            # Detail lives on the Pipelines tab; keep header chrome quiet when idle.
+            self._set_status_chip(self.pipeline_chip, "")
             self.pipeline_summary.setText(
-                "No pipeline found for the current branch."
+                tr("No pipeline for the current branch.")
                 if not cached
-                else "Offline — no cached pipeline for this branch."
+                else tr("Offline — no cached pipeline for this branch.")
             )
             self.pipeline_jobs.clear()
             self.btn_pipeline_open.setEnabled(False)
@@ -1987,7 +2004,7 @@ class RepoWindow(QMainWindow):
         chip = f"Pipeline: {status}"
         if cached:
             chip = f"Pipeline: {status} (cached)"
-        self.pipeline_chip.setText(chip)
+        self._set_status_chip(self.pipeline_chip, chip)
         ref = pipe.get("ref") or branch or "—"
         lines = [
             f"#{pipe.get('id')}  {status}  ref={ref}",
@@ -2051,7 +2068,7 @@ class RepoWindow(QMainWindow):
             )
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
-            self.pipeline_chip.setText(tr("Pipeline: (offline)"))
+            self._set_status_chip(self.pipeline_chip, tr("Pipeline: (offline)"))
             self.pipeline_summary.setText(f"Offline — could not load cache [{code}]: {msg}")
             self.btn_play_job.setEnabled(False)
 
@@ -2100,7 +2117,7 @@ class RepoWindow(QMainWindow):
                 self.set_network_available(False)
                 self._load_cached_pipelines()
                 return
-            self.pipeline_chip.setText(f"Pipeline: [{code}]")
+            self._set_status_chip(self.pipeline_chip, f"Pipeline: [{code}]")
             self.pipeline_summary.setText(f"[{code}] {msg}")
 
         run_in_background(
@@ -2196,6 +2213,16 @@ class RepoWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+Shift+F"), self, activated=self._fetch)
         QShortcut(QKeySequence("Ctrl+Shift+L"), self, activated=self._pull)
         QShortcut(QKeySequence("Ctrl+Shift+P"), self, activated=self._push)
+        if hasattr(self, "btn_stage"):
+            self.btn_stage.setToolTip(tr("Stage selected paths (Ctrl+S)"))
+        if hasattr(self, "btn_commit"):
+            self.btn_commit.setToolTip(tr("Commit staged changes (Ctrl+Return)"))
+        if hasattr(self, "btn_fetch"):
+            self.btn_fetch.setToolTip(tr("Fetch (Ctrl+Shift+F)"))
+        if hasattr(self, "btn_pull"):
+            self.btn_pull.setToolTip(tr("Pull (Ctrl+Shift+L)"))
+        if hasattr(self, "btn_push"):
+            self.btn_push.setToolTip(tr("Push (Ctrl+Shift+P)"))
 
     def _config_fetch_on_focus(self) -> bool:
         try:
@@ -2764,7 +2791,14 @@ class RepoWindow(QMainWindow):
             label = (getattr(self, "_forge_info", None) or forge_info()).get(
                 "runners_label"
             ) or "Runners"
-            self.runners_summary.setText(f"{len(rows)} project {str(label).lower()}.")
+            if rows:
+                self.runners_summary.setText(
+                    f"{len(rows)} project {str(label).lower()}."
+                )
+            else:
+                self.runners_summary.setText(
+                    tr("No project {label}.").format(label=str(label).lower())
+                )
             self._set_project_runner_actions(False)
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
@@ -2884,7 +2918,7 @@ class RepoWindow(QMainWindow):
             notes.append("MR/PR list updated since last view")
         if newest:
             self._last_mr_updated = newest
-        self.notify_chip.setText(" · ".join(notes))
+        self._set_status_chip(self.notify_chip, " · ".join(notes))
 
     def _set_submodule_actions(self, has_selection: bool) -> None:
         # Init / Update / Sync work on selection when present, else all.

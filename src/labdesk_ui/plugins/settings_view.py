@@ -42,7 +42,6 @@ class SettingsView(QWidget):
         self._ctx = ctx
 
         root = QVBoxLayout(self)
-        root.addWidget(QLabel(tr("Settings")))
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

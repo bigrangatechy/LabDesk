@@ -63,8 +63,9 @@ class AdminView(QWidget):
         self._ctx = ctx
 
         layout = QVBoxLayout(self)
-        self.title = QLabel(tr("Admin"))
-        layout.addWidget(self.title)
+        self.forge_meta = QLabel("")
+        self.forge_meta.setStyleSheet("color: palette(mid);")
+        layout.addWidget(self.forge_meta)
 
         self.status = QLabel("")
         self.status.setWordWrap(True)
@@ -135,7 +136,7 @@ class AdminView(QWidget):
         info = forge_info()
         label = info.get("runners_label") or "Runners"
         self.tabs.setTabText(0, str(label))
-        self.title.setText(f"Admin — {info.get('display_name') or 'forge'}")
+        self.forge_meta.setText(str(info.get("display_name") or ""))
         self.btn_open_runner.setText(open_in_label(info))
         can_pause = bool(info.get("supports_runner_pause"))
         can_delete = bool(info.get("supports_runner_delete"))
@@ -184,7 +185,14 @@ class AdminView(QWidget):
                 item.setData(Qt.ItemDataRole.UserRole, row)
                 self.runners.addItem(item)
             label = forge_info().get("runners_label") or "Runners"
-            self.status.setText(f"{len(rows)} {str(label).lower()} (instance / owned).")
+            if rows:
+                self.status.setText(f"{len(rows)} {str(label).lower()} (instance / owned).")
+            else:
+                self.status.setText(
+                    tr("No {label} returned (admin token may be required).").format(
+                        label=str(label).lower()
+                    )
+                )
             self._set_runner_actions(False)
 
         def on_err(code: str, msg: str, exc: BaseException) -> None:
@@ -220,11 +228,11 @@ class AdminView(QWidget):
                 self.users.addItem(item)
             note = f"{len(rows)} user(s)."
             if not rows:
-                note += " Admin token may be required."
+                note = tr("No users returned (admin token may be required).")
             # Prefer runners status unless users failed earlier; append lightly.
             cur = self.status.text() or ""
             if "runner" in cur.lower() or "agent" in cur.lower():
-                self.status.setText(f"{cur} {note}")
+                self.status.setText(f"{cur} · {note}")
             else:
                 self.status.setText(note)
 

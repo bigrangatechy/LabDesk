@@ -5,7 +5,7 @@ from __future__ import annotations
 from labdesk_ui.i18n import tr
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QRect, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QPainter
+from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QPainter, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -346,12 +346,14 @@ class ProjectsView(QWidget):
 
         layout = QVBoxLayout(self)
 
-        self.projects_meta = QLabel(tr("Projects"))
+        self.projects_meta = QLabel("")
+        self.projects_meta.setStyleSheet("color: palette(mid);")
         layout.addWidget(self.projects_meta)
 
         self.filter_edit = QLineEdit()
         self.filter_edit.setPlaceholderText(tr("Filter projects…"))
         self.filter_edit.setClearButtonEnabled(True)
+        self.filter_edit.setToolTip(tr("Filter projects (Ctrl+F); Escape clears"))
         self.filter_edit.textChanged.connect(self._on_filter_text_changed)
         layout.addWidget(self.filter_edit)
 
@@ -396,41 +398,47 @@ class ProjectsView(QWidget):
 
         layout.addWidget(self._layout_stack, stretch=1)
 
-        row = QHBoxLayout()
+        host_row = QHBoxLayout()
         self.btn_connect = QPushButton(tr("Add host / account…"))
         self.btn_connect.clicked.connect(self._ctx.show_connect_dialog)
-        row.addWidget(self.btn_connect)
+        host_row.addWidget(self.btn_connect)
 
         self.btn_refresh_user = QPushButton(tr("Refresh user"))
         self.btn_refresh_user.clicked.connect(self._ctx.refresh_connection_banner)
-        row.addWidget(self.btn_refresh_user)
+        host_row.addWidget(self.btn_refresh_user)
 
         self.btn_refresh_projects = QPushButton(tr("Refresh projects"))
         self.btn_refresh_projects.clicked.connect(self._refresh_projects)
-        row.addWidget(self.btn_refresh_projects)
+        host_row.addWidget(self.btn_refresh_projects)
+        host_row.addStretch(1)
+        layout.addLayout(host_row)
 
+        action_row = QHBoxLayout()
         self.btn_open_local = QPushButton(tr("Open local"))
         self.btn_open_local.clicked.connect(self._open_local_repo)
-        row.addWidget(self.btn_open_local)
+        action_row.addWidget(self.btn_open_local)
 
         self.btn_add_existing = QPushButton(tr("Add existing…"))
         self.btn_add_existing.clicked.connect(self._add_existing_clone)
-        row.addWidget(self.btn_add_existing)
+        action_row.addWidget(self.btn_add_existing)
 
         self.btn_open = QPushButton(tr("Open in browser"))
         self.btn_open.clicked.connect(self._open_in_browser)
-        row.addWidget(self.btn_open)
+        action_row.addWidget(self.btn_open)
 
         self.btn_clone = QPushButton(tr("Clone"))
         self.btn_clone.clicked.connect(lambda: self._clone_with_transport("https"))
-        row.addWidget(self.btn_clone)
+        action_row.addWidget(self.btn_clone)
 
         self.btn_clone_ssh = QPushButton(tr("Clone (SSH)"))
         self.btn_clone_ssh.clicked.connect(lambda: self._clone_with_transport("ssh"))
-        row.addWidget(self.btn_clone_ssh)
-
-        layout.addLayout(row)
+        action_row.addWidget(self.btn_clone_ssh)
+        action_row.addStretch(1)
+        layout.addLayout(action_row)
         self.apply_prefs()
+
+        QShortcut(QKeySequence("Ctrl+F"), self, activated=self._focus_filter)
+        QShortcut(QKeySequence("Escape"), self.filter_edit, activated=self._clear_filter)
 
     def on_activated(self) -> None:
         self.apply_prefs()
@@ -439,6 +447,16 @@ class ProjectsView(QWidget):
             self.set_network_available(self._ctx.is_network_available())
         if not self._progress_timer.isActive():
             self._progress_timer.start()
+        if self._all_projects:
+            QTimer.singleShot(0, self._focus_filter)
+
+    def _focus_filter(self) -> None:
+        self.filter_edit.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self.filter_edit.selectAll()
+
+    def _clear_filter(self) -> None:
+        if self.filter_edit.hasFocus() and self.filter_edit.text():
+            self.filter_edit.clear()
 
     def on_deactivated(self) -> None:
         if not self._git_busy:
@@ -576,13 +594,14 @@ class ProjectsView(QWidget):
         if self._all_projects:
             fetched = self._all_projects[0].get("fetched_at")
         q = self.filter_edit.text().strip()
-        if q:
-            meta = f"Projects (showing {shown} of {total}"
+        if q and shown == 0:
+            meta = tr("No projects match this filter ({total} cached)").format(total=total)
+        elif q:
+            meta = f"Showing {shown} of {total}"
         else:
-            meta = f"Projects ({total} cached"
+            meta = f"{total} cached"
         if fetched:
             meta += f", fetched_at {fetched}"
-        meta += ")"
         if hasattr(self._ctx, "is_network_available") and not self._ctx.is_network_available():
             if "offline" not in meta.lower():
                 meta += " · offline (cached)"
@@ -596,6 +615,12 @@ class ProjectsView(QWidget):
                 w.deleteLater()
         self._cards = []
         cols = max(1, self.cards_scroll.viewport().width() // 260) if self.cards_scroll.width() else 2
+        if not projects:
+            empty = QLabel(tr("No projects match this filter.") if self.filter_edit.text().strip() else tr("No projects to show."))
+            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty.setStyleSheet("color: palette(mid); padding: 24px;")
+            self.cards_grid.addWidget(empty, 0, 0)
+            return
         for i, project in enumerate(projects):
             if not isinstance(project, dict):
                 continue
