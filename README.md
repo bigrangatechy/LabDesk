@@ -12,19 +12,23 @@ PyO3/Maturin. License: **GPLv2+**.
 > `codeberg.org`, and `code.onedev.io` are rejected at setup
 > (see [ADR-001](Docs/adr/adr-001-self-hosted-only.md)).
 
-## Features (current slice)
+## Features (current)
 
-- Connect a self-hosted forge (forge picker; API token in the system keyring)
-- Browse projects; clone or open an existing local repo
-- Changes: stage / unstage / commit; read-only diffs (`QTextEdit`);
-  large-repo list and preview caps
-- Branches: list, create, switch, clean local merge; Compare tab
-- Fetch / pull / push (force push only with confirmation); ahead/behind
-- Create merge / pull requests (wording follows the forge); open files
-  externally
-- Pipelines / CI tab (play manual jobs on GitLab when supported)
+- Connect self-hosted forges (GitLab / Gitea / Forgejo / OneDev); API
+  token in the system keyring; multi-host / multi-account selectors
+- Browse projects (table or cards); clone HTTPS/SSH or open an existing
+  local repo; **File → Open repository…** / Recent repositories
+- Changes: stage / unstage / commit / discard; **Unified** or **Side by
+  side** diffs; dirty-only list + Browse files…; **Edit in LabDesk** or
+  open externally
+- Branches, Compare, History; stash / rebase / conflict resolve
+- Fetch / pull / push (force push only with confirmation); fetch-on-focus
+- Merge / pull requests (detail, merge, notes); Pipelines / CI; Admin
+  runners/agents + users; repo **Git** tab (submodules + LFS)
 - Offline banner when the instance is unreachable
-- Settings for theme, clone folder, UI shell, Flatpak update checks
+- Localization (system / en / es / de / fr / pt_BR)
+- Settings: Appearance, Projects, Repositories, Updates, Paths
+  (confirmed prefs only; full surface in `config.toml`)
 
 ## Install (Flatpak)
 

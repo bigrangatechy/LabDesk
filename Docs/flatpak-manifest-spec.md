@@ -40,7 +40,8 @@ checkouts (see root `.gitignore`).
 
 | Finish arg / permission | Why |
 |-------------------------|-----|
-| `--share=network` | GitLab API + git HTTPS/SSH **and LAN** (no extra finish-arg for private IPs) |
+| `--share=network` | Forge API + git HTTPS/SSH **and LAN** (no extra finish-arg for private IPs) |
+| `--share=ipc` | Qt / Wayland IPC as required by the runtime |
 | `--socket=wayland` / `--socket=fallback-x11` | UI |
 | `--device=dri` | Qt rendering |
 | `--socket=session-bus` | D-Bus for Secret Service / tray |

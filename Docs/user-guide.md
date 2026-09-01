@@ -49,8 +49,8 @@ update from a terminal:
 flatpak update com.bigrangatech.LabDesk
 ```
 
-Optional: Settings → **Check for updates** does the same check inside
-LabDesk.
+Optional: Settings → **Updates** → **Check for updates now…** does the
+same check inside LabDesk (startup check is a separate toggle).
 
 ### 2.3 Where LabDesk stores data
 
@@ -140,7 +140,8 @@ LabDesk prefers the selected host’s Base URL instead.
 - **Clone** (HTTPS or SSH) into the default clone folder. While cloning
   or pushing, the matching project row/card fills left→right with the
   configured translucent colour.
-- **Open local** / **Add existing…** attach an already-cloned folder.
+- **Open local** / **Add existing…** / **File → Open repository…**
+  attach an already-cloned folder.
 - Double-click a project or use Open local to open a **repo window**.
 - **File → Recent repositories** lists recently opened local clones.
 

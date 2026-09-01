@@ -1,15 +1,15 @@
 # Data Model — LabDesk
 
-**Status:** Draft (docs stage)  
+**Status:** Living  
 **Related:** Technical Specification §4, `api-contract.md`,
 `security-credentials.md`, ADR-004, ADR-006, ADR-008
 
 This document describes **what LabDesk persists and caches**, and how
-entities relate. It is the on-disk / in-app model — not the full GitLab
+entities relate. It is the on-disk / in-app model — not the full forge
 server schema.
 
-V1 shipped with one active connection; storage now supports **multiple
-GitLab hosts (instances)** and **multiple accounts (users) per host**.
+Storage supports **multiple forge hosts (instances)** and **multiple
+accounts (users) per host**; the UI keeps one active account at a time.
 
 ---
 
@@ -33,7 +33,7 @@ Flatpak vs XDG locations: Technical Specification §4.1.
 
 ```text
 AppPreferences (1)
-    ├── active_instance_id? ──► Instance (GitLab host, 1..N)
+    ├── active_instance_id? ──► Instance (forge host, 1..N)
     └── active_account_id?  ──► Account (user/PAT on a host, 1..N)
                                     │
                                     ├── instance_id ──► Instance
@@ -122,7 +122,7 @@ V1 Settings stays small; the file may grow ahead of the UI.
 | `progress_overlay_color` | string | no | **UI-exposed** | Hex `#RRGGBB` fill for clone/push progress on the active project row/card; default `#2ecc71` — Settings → Projects |
 | `progress_overlay_alpha` | int | no | **UI-exposed** | 0–255 alpha for that fill; default `70` — Settings → Projects |
 
-### 3.2 `[[instances]]` — Instance (GitLab host)
+### 3.2 `[[instances]]` — Instance (forge host)
 
 | Key | Type | Required | Notes |
 |-----|------|----------|--------|
@@ -259,7 +259,7 @@ LabDesk needs to remember working copies the user opened/cloned.
 | `clone_url` | TEXT NULL | URL used at clone time |
 | `added_at` | TEXT | |
 | `last_opened_at` | TEXT NULL | |
-| `last_push_at` | TEXT NULL | **UI frame of reference:** when this working copy was last successfully pushed to its remote. Helps people who leave commits (or unfinished work) sitting locally for a while. Updated when LabDesk completes a push/force-push; exact derivation from git state vs LabDesk-only recording can be settled at implementation time |
+| `last_push_at` | TEXT NULL | When this working copy was last successfully pushed (LabDesk records on push/force-push success). UI frame of reference only — not a substitute for ahead/behind |
 
 If `path` no longer exists, mark missing in UI; do not auto-delete
 without user action (exact UX in user guide later).
@@ -267,13 +267,14 @@ without user action (exact UX in user guide later).
 **Host switch (domain ↔ LAN):** When `active_instance_id` changes to a
 host with a different `base_url`, LabDesk may rewrite `origin` on rows
 in `local_repos` whose remote still points at the previous host **and**
-whose project path exists under the newly selected account. Only http(s)
-remotes whose host matched the **previous** instance are considered; the
-row’s `account_id` / `project_id` / `clone_url` are updated to the new
+whose project path exists under the newly selected account. Matching
+**http(s)** and **SSH** (`git@host:…` / `ssh://`) remotes whose host
+matched the **previous** instance are considered; the row’s
+`account_id` / `project_id` / `clone_url` are updated to the new
 account. Cached `projects.http_url_to_repo` / `web_url` (and pipeline
 web URLs) for that account are also rewritten onto the new Base URL so
-clone and Open-in follow the same host. SSH remotes and clones that do
-not overlap the new account’s projects are not changed.
+clone and Open-in follow the same host. Remotes / clones that do not
+overlap the new account’s projects are not changed.
 
 **Note on `last_push_at`:** This is not a substitute for `git status` /
 ahead-behind. It answers “how long since I last got this onto the
@@ -379,9 +380,8 @@ proves what libgit2 / the UI can reliably provide.
    spec §4.2 aligned.
 2. ~~**Project list staleness**~~ — **Accepted:** per-row `fetched_at`
    on `projects`.
-3. **`last_push_at` on `local_repos`** — **Intent accepted** (UI frame:
-   time since last successful push to remote). Recording vs deriving
-   from git: decide while implementing.
+3. ~~**`last_push_at` on `local_repos`**~~ — **Accepted:** stamped on
+   successful push / force-push from LabDesk.
 4. ~~**`merge_requests` table**~~ — **Accepted:** opened MRs per project
    for the Merge requests tab (`account_id`); replace on refresh.
 5. ~~**Pipeline primary key / history depth**~~ — **Accepted:** latest

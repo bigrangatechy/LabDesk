@@ -32,6 +32,12 @@ bullets without a stamp predate this convention.
 
  ### Changed
 
+- **17:54:32  01/09/2026** — Docs accuracy pass: AGENTS / README /
+  tech-spec / data-model / user-journey / dev-guide / error-codes /
+  flatpak-spec aligned with multi-forge + multi-account UI, Slice I–N
+  surface, categorized Settings, SSH host-switch, crash logs, and
+  shipped Pipelines / Flatpak update check (no longer “post-V1” /
+  “one GitLab instance only”).
 - **16:27:58  01/09/2026** — UI/UX polish: hide idle repo pipeline/sync/
   notify chips; drop redundant main/Settings/Admin titles; quieter clean-
   tree Changes; clearer empty lists (filter miss, MRs, runners, users,

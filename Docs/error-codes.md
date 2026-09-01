@@ -1,6 +1,6 @@
 # Error Codes — LabDesk
 
-**Status:** Draft (living doc)  
+**Status:** Living  
 **Related:** Technical Specification §6, `api-contract.md` §7,
 `data-model.md` §3.0, `security-credentials.md`
 
@@ -100,17 +100,17 @@ Examples: `LD-AUTH-001`, `LD-CFG-010`, `LD-API-429`.
 | `LD-GIT-061` | `git lfs status` failed | "Failed to read LFS status." | Retry; check install |
 | `LD-GIT-062` | `git lfs pull` failed | "Failed to pull LFS objects." | Retry; check auth / LFS endpoint |
 
-### API — GitLab REST
+### API — forge REST
 
 | Code | When | User message (default) | Action |
 |------|------|------------------------|--------|
-| `LD-API-001` | Unexpected API / JSON error | "GitLab API error: {summary}" | Log body (redacted) |
+| `LD-API-001` | Unexpected API / JSON error | "API error: {summary}" (forge name may appear in detail) | Log body (redacted) |
 | `LD-API-401` | HTTP 401 | (use `LD-AUTH-001` at UI; log may cite both) | Clear PAT |
-| `LD-API-403` | HTTP 403 | "Access denied by GitLab." | Do not wipe PAT by default |
+| `LD-API-403` | HTTP 403 | "Access denied by the forge." | Do not wipe PAT by default |
 | `LD-API-404` | HTTP 404 | "Not found or no access." | User-visible |
 | `LD-API-422` | HTTP 422 (e.g. MR validation) | "Request rejected: {summary}" | Preserve form |
 | `LD-API-429` | HTTP 429 | "Rate limited. Retrying in N seconds." | Backoff |
-| `LD-API-5XX` | HTTP 5xx | "GitLab server error ({status})." | Bounded retry then fail |
+| `LD-API-5XX` | HTTP 5xx | "Forge server error ({status})." | Bounded retry then fail |
 | `LD-API-MR-001` | Create MR failed (mapped) | "Failed to create MR: {error}" | Preserve form |
 | `LD-API-MR-002` | Update MR/PR metadata failed | "Failed to update MR." | Preserve form |
 | `LD-API-MR-003` | Merge MR/PR via API failed | "Failed to merge MR." | Preserve UI; allow retry |

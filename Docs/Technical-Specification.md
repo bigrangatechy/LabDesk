@@ -29,6 +29,7 @@ rejected at instance setup (see ADR-001).
 │  ├── View plugins (Projects, Admin, Settings)               │
 │  ├── RepoWindow (Changes, History, Branches, Git, …)        │
 │  ├── DiffViewer (unified / side-by-side; read-only)         │
+│  ├── Code editor (from-scratch QPlainTextEdit; Slice I)     │
 │  ├── InstanceConfigDialog (forge + URL + PAT; git auth via helper) │
 │  └── MRDialog / MR detail (forge-aware; notes)              │
 │                                                             │
@@ -38,20 +39,21 @@ rejected at instance setup (see ADR-001).
 │  ├── git_ops / git_ext (libgit2; submodules; optional git-lfs) │
 │  ├── api / forge backends (GitLab, Gitea, Forgejo, OneDev)   │
 │  ├── cache (SQLite read/write, sync logic)                  │
-│  ├── diff_engine (libgit2 diff → text for QTextEdit)        │
-│  ├── config (TOML parser, instance management)              │
-│  └── secrets (system keyring for API PAT)                   │
+│  ├── diff_engine (libgit2 diff → text for DiffView)         │
+│  ├── config (TOML parser, instance/account management)      │
+│  └── secrets (system keyring for API tokens)                │
 │                                                             │
 │  Storage                                                    │
 │  ├── SQLite (cache: projects, branches, MR metadata)        │
-│  ├── TOML (config: instance + preferences; no raw secrets)  │
-│  ├── OS keyring (API PAT)                                   │
+│  ├── TOML (config: hosts + accounts + preferences; no raw secrets) │
+│  ├── OS keyring (API tokens)                                │
 │  └── Git credential helper store (HTTPS git creds)          │
 │                                                             │
 ├─────────────────────────────────────────────────────────────┤
 │ External Interfaces                                         │
 ├─────────────────────────────────────────────────────────────┤
-│  GitLab API v4 (REST over HTTPS, PRIVATE-TOKEN)             │
+│  Forge REST (GitLab v4 PRIVATE-TOKEN; Gitea/Forgejo token;  │
+│              OneDev access token) over HTTPS (or LAN http)  │
 │  Git Protocol (SSH, or HTTPS via credential helper)         │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -189,9 +191,9 @@ handled by the **Git credential helper** (ADR-008).
 
 ### 4.2 Configuration Structure
 
-V1 UX configures **one** GitLab instance. The on-disk schema uses an
-`[[instances]]` array so multiple instances can be added later without
-a storage redesign.
+The UI exposes **host** and **account** selectors (one **active** account
+at a time). On disk, `[[instances]]` + `[[accounts]]` hold hosts and
+tokens (keyring references on accounts). See `data-model.md`.
 
 **Config philosophy:** `config.toml` is the source of truth and the
 **wide** preference surface — document and ship keys there early
@@ -209,28 +211,37 @@ revert to a **last known good** config, relaunch, and show an error
 
 [general]
 theme = "system"                 # UI: Settings → Appearance — "light", "dark", "system"
+locale = "system"                # UI: Settings → Appearance
 default_clone_dir = "~/Projects" # UI: Settings → Repositories
 fetch_on_focus = true            # UI: Settings → Repositories
 history_page_size = 200          # UI: Settings → Repositories (10–5000)
 browse_files_page_size = 200     # UI: Settings → Repositories (10–5000)
 check_for_updates = true         # UI: Settings → Updates — Flatpak remote (Ranga/flatpaks)
-active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"  # connect flow; not Settings
+active_instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"  # connect / Host selector
+active_account_id = "11111111-2222-3333-4444-555555555555"   # connect / Account selector
 active_ui_view = "projects"      # View menu / nav (+ config); not Settings form
 ui_shell = "classic"             # UI: Settings → Appearance — "classic" | "sidebar"
 projects_layout = "table"        # UI: Settings → Projects — "table" | "cards"
 progress_overlay_color = "#2ecc71"  # UI: Settings → Projects — clone/push row fill
 progress_overlay_alpha = 70      # UI: Settings → Projects — 0–255
+
 [[instances]]
 id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 name = "BigRanga Tech GitLab"
+forge = "gitlab"                 # gitlab | gitea | forgejo | onedev
 base_url = "https://gitlab.bigrangatech.com"
-api_version = "v4"               # Detected/confirmed on first connect
-api_auth = "PAT"                 # API always uses PRIVATE-TOKEN + PAT
-# API PAT lives in the OS keyring; config only references it.
-keyring_account = "labdesk:https://gitlab.bigrangatech.com"
-# Git HTTPS uses the Git credential helper (username/password or PAT-as-password).
-git_https_auth = "credential_helper"
+api_version = "v4"
 ssl_mode = "strict"              # "strict", "allow_self_signed", "imported_ca"
+created_at = "2026-07-01T12:00:00Z"
+
+[[accounts]]
+id = "11111111-2222-3333-4444-555555555555"
+instance_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+name = "Jessie"
+api_auth = "PAT"
+# API token lives in the OS keyring; config only references it.
+keyring_account = "labdesk:https://gitlab.bigrangatech.com:11111111-2222-3333-4444-555555555555"
+git_https_auth = "credential_helper"
 created_at = "2026-07-01T12:00:00Z"
 last_connected = "2026-07-01T15:30:00Z"
 ```
@@ -238,9 +249,8 @@ last_connected = "2026-07-01T15:30:00Z"
 SaaS base URLs such as `https://gitlab.com` must be rejected when adding
 an instance. **HTTPS** is required for public DNS names; **`http://`**
 is allowed only for loopback and RFC1918 hosts (LAN / offline-domain
-GitLab). Instance `id` and `active_instance_id` are required for
-cache foreign keys and a future multi-instance UI; V1 still exposes one
-active instance in the UI. See `data-model.md`.
+forges). Instance / account ids and `active_*` keys drive cache
+partitioning and the Host / Account selectors. See `data-model.md`.
 
 ## 5. V1 Feature Matrix
 
@@ -291,29 +301,29 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
 | Keyring unavailable  | `LD-AUTH-002`  | "Cannot access system keyring."              | Block PAT save; explain            |
 | Startup hang         | `LD-CFG-010`   | "Startup hung; config reset to last known good. {detail}" | Revert config snapshot; relaunch |
 
-## 7. Known Constraints (V1)
+## 7. Known Constraints
 
-- **One active instance in the UI** for now; storage schema remains
-  multi-instance-ready.
-- **One human user of the app; one API PAT** for that instance (no
-  multi-account per instance).
-- **API auth:** PAT via **`PRIVATE-TOKEN`** only. No OAuth, SSO, or
-  LDAP pass-through for the API (ADR-008).
+- **One active account at a time** in the UI (Host + Account selectors);
+  schema and UI support multiple hosts and accounts per host.
+- **API auth:** forge tokens in the system keyring — GitLab
+  **`PRIVATE-TOKEN`**, Gitea/Forgejo `Authorization: token …`, OneDev
+  access-token header. No OAuth, SSO, or LDAP pass-through for the API
+  (ADR-008).
 - **Git HTTPS auth:** Git **credential helper** (username/password when
   the instance allows it, or username + PAT as password). **SSH** also
   supported.
-- **API PAT in system keyring only** — never plaintext in config. Git
+- **API tokens in system keyring only** — never plaintext in config. Git
   passwords are not stored in `config.toml` either.
 - **Force push** is available behind an explicit confirmation dialog;
   it is not the default recovery from a rejected push.
 - **In-app code editing (Slice I):** from-scratch editor on PySide6/Qt
   (`QPlainTextEdit` + line numbers / find / basic highlight). Diff and
-  conflict previews stay read-only `QTextEdit`. External editor via
-  `xdg-open` / portal remains available. **Not** Riverbank QScintilla
-  (ADR-002, ADR-003). See [`v2-roadmap.md`](v2-roadmap.md).
+  conflict previews stay read-only `QTextEdit` / DiffView. External
+  editor via `xdg-open` / portal remains available. **Not** Riverbank
+  QScintilla (ADR-002, ADR-003). See [`v2-roadmap.md`](v2-roadmap.md).
 - **Admin / runners (Slice J):** Admin view + project Runners tab;
   forge-aware list/pause/delete (OneDev agents: list + open).
-- **Conflict resolution (V2):** structured in-app resolve is supported;
+- **Conflict resolution:** structured in-app resolve is supported;
   users may still resolve externally or in the LabDesk editor. See ADR-006
   and `Docs/v2-roadmap.md`.
 - **Fancy side-by-side diff (Slice K):** DiffView toggle on Changes /
@@ -323,7 +333,9 @@ plus a short message. Authoritative catalog: [`error-codes.md`](error-codes.md).
   source language.
 - **MR reply posting, submodule/LFS UIs:** Slices M–N landed; see
   `v2-roadmap.md` for deferred M.2 / N.2 items.
+- **Unexpected failures:** `LD-SYS-001` dialog +
+  `data_dir/logs/last-crash.log` (faulthandler for native aborts).
 - **No OAuth/SSO** for the API in this roadmap; PAT / forge tokens only.
 - **Linux only.** No Windows or macOS.
-- **V2 roadmap:** slices A–N + post-feature UI/UX pass — see
+- **Roadmap:** slices A–N done; **UI/UX polish** in progress — see
   [`v2-roadmap.md`](v2-roadmap.md).

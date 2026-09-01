@@ -50,10 +50,14 @@ tests/          pytest suite (see §8); `tests/python/`
 
 ## 2. Architecture snapshot
 
-- UI: Python + PySide6; read-only diffs via `QTextEdit` (ADR-002).
-- Core: Rust via Maturin/PyO3 — git (libgit2), API client, cache, config.
-- Auth: API PAT + `PRIVATE-TOKEN`; git HTTPS via credential helper
-  (ADR-008).
+- UI: Python + PySide6; diffs via DiffView (`QTextEdit` unified /
+  side-by-side); in-app editor from-scratch on `QPlainTextEdit`
+  (ADR-002 / ADR-003 — no QScintilla).
+- Core: Rust via Maturin/PyO3 — git (libgit2 + optional git-lfs),
+  multi-forge API clients, cache, config.
+- Auth: forge API tokens in system keyring (GitLab `PRIVATE-TOKEN`;
+  Gitea/Forgejo / OneDev forge headers); git HTTPS via credential
+  helper (ADR-008).
 - License: GPLv2+ (ADR-003).
 
 Point to ADRs rather than restating them.
@@ -124,10 +128,14 @@ Known-good snapshot: `~/.config/labdesk/config.known-good.toml`
 - `maturin develop --uv` — editable install of `labdesk_core` into the
   active uv venv (plain `maturin develop` needs `pip`).
 - Manual launch from **repo root**: `PYTHONPATH=src python -m labdesk_ui.main`
-- Current slice: instance connect, projects, clone / add existing,
-  repo Changes (stage/commit/diff) + History + Branches, create MR,
-  open in external editor, offline banner, 45s startup hang recovery,
-  push/pull, pluggable UI shells, Settings for confirmed prefs only.
+- Prefer unpackaged `./scripts/run-labdesk.sh` for UI testing before
+  Flatpak rebuilds.
+- Current surface (high level): multi-forge connect + Host/Account
+  selectors; Projects (table/cards); repo Changes / History / Branches /
+  Compare / Git (submodules+LFS) / CI / MRs / Runners; Admin view;
+  in-app editor; side-by-side diffs; i18n; categorized Settings;
+  Flatpak update check; `LD-SYS-001` crash logs; 45s startup hang
+  recovery. See `user-guide.md` and `v2-roadmap.md`.
 
 ---
 
@@ -204,11 +212,13 @@ when needed, then runs `tests/python/`.
 | Packaging | `test_packaging_sanity.py` | CI YAML / Flatpak manifest basics |
 | Pipeline jobs UI | `test_pipeline_jobs.py` | Playable heuristics + sort / row format |
 | In-app Help | `test_help_dialog.py` | Resolves `Docs/user-guide.md` (or Flatpak share) |
+| Crash reporting | `test_crash_report.py` | `LD-SYS-001` log path helpers |
 
 **Guides:** end-user help is **only** `Docs/user-guide.md` (Help dialog
 and Flatpak install that one file under `/app/share/labdesk/`). Contributor
 build/test notes are **only** `Docs/dev-guide.md`. Do not keep a second
-copy under `src/labdesk_ui/docs/`.
+copy under `src/labdesk_ui/docs/`. Unexpected failures write
+`data_dir/logs/last-crash.log` (and `faulthandler.log` for native aborts).
 
 CI job `python_pytest` runs the UI suite (no Rust toolchain in that
 image). Full suite including `labdesk_core` URL tests: local

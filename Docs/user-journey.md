@@ -36,8 +36,8 @@ that LabDesk is self-hosted only and **do not** save (`LD-CFG-004`).
 through the **Git credential helper** when cloning/pushing over HTTPS
 (ADR-008) — not as a substitute for the API PAT.
 
-**V1 note:** UI is built around **one** instance. Storage may still use
-an `[[instances]]` array for a later multi-instance UI.
+**V1 note:** Host and Account selectors choose the active connection;
+storage already supports multiple hosts and accounts.
 
 ---
 
@@ -80,10 +80,10 @@ to SSH.
 
 1. Open an already cloned repo (**Open local**, **Add existing…**, or
    **File → Open repository…**).
-2. **Changes:** view status; **stage / unstage**; read-only **diff** in
-   `QTextEdit`.
+2. **Changes:** view status; **stage / unstage**; read-only **diff**
+   (**Unified** or **Side by side**).
 3. To edit files: **Edit in LabDesk** (from-scratch Qt editor) or
-   **Open external** (`xdg-open` / portal).
+   **Open external…** (`xdg-open` / portal).
 4. Enter commit message → **commit** locally (libgit2; uses git
    `user.name` / `user.email`).
 5. Create / switch branches locally (**Branches** tab).
@@ -143,7 +143,8 @@ actions with a clear reason.
 1. Preference `check_for_updates` means checking the **LabDesk Flatpak
    remote** backed by `Ranga/flatpaks` (ADR-004) — not a custom
    sideloaded updater and not “any Flathub package”.
-2. Until the in-app check is UI-wired, use
+2. In-app: Settings → **Updates** (startup check toggle + **Check for
+   updates now…**), or CLI
    `flatpak update com.bigrangatech.LabDesk` (see `user-guide.md` §2).
 3. New versions appear only after **labdesk CI** has pushed a build into
    `http://git.bigrangatech.com/Ranga/flatpaks.git`.
@@ -152,22 +153,23 @@ actions with a clear reason.
 
 ---
 
-## Journey G — Pipeline status (post-V1)
+## Journey G — Pipeline / CI status
 
-Show latest pipeline status for the current branch and play manual jobs
-(see `api-contract.md` §6). Offline: disable play/refresh; header may
-still show last-known status when available.
+Show latest pipeline (or forge CI) status for the current branch and
+play manual jobs where supported (see `api-contract.md` §6). Offline:
+disable play/refresh; header may still show last-known status when
+available. Repo **Pipelines** / CI tab is shipped (forge-aware labels).
 
 ---
 
-## Journey summary (V1)
+## Journey summary
 
-| Journey | Network | V1 |
-|---------|---------|----|
-| A Connect instance | Yes | Required |
-| B Clone project | Yes | Required |
-| C Local commit / branch / diff | No | Required |
-| D Push / force push + create MR | Yes | Required |
-| E Offline local work | No | Required |
-| F Flatpak updates | Yes | Required (mechanism) |
-| G Pipelines | Yes | Post-V1 |
+| Journey | Network | Status |
+|---------|---------|--------|
+| A Connect host / account | Yes | Shipped |
+| B Clone project | Yes | Shipped |
+| C Local commit / branch / diff | No | Shipped |
+| D Push / force push + create MR/PR | Yes | Shipped |
+| E Offline local work | No | Shipped |
+| F Flatpak updates | Yes | Shipped |
+| G Pipelines / CI | Yes | Shipped |
